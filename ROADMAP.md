@@ -7,12 +7,15 @@ want to take it. Nothing here is committed - it's a menu, not a schedule.
 
 Three systems (Red Admiral, Monarch, Apollo) sharing one validated engine core; four playable
 settings (Petrograd 1917, Britannia 876, Rome 59 BCE, Crusades 1097); custom character creation;
-local SQLite accounts with optional Discord login; deployed to a free public URL; an opt-in
-per-campaign Council Mode for higher-effort, multi-judge-reviewed narration on high-stakes turns
-(2026-08-20 - see `council.py` and `NOTES.md`, not yet playtested against live APIs). See
-`README.md` for the honest status checklist - a few real gaps are called out there (OpenAI's
-Responses API path hasn't been exercised against the live API yet; the free hosting tier's storage
-isn't durable; Council Mode specifically needs a real-cost playtest before it's recommended to
+local SQLite accounts with optional Discord login; deployed to a free public URL; an always-on,
+router-sized multi-judge Council Mode reviewing every turn's narration (2026-08-20, redesigned from
+an initial opt-in/stakes-gated version the same night - see `council.py` and `NOTES.md`). Every
+model call in the app is currently locked to GPT-5.6 Luna only (`providers.LOCKED_MODEL_KEY`), a
+deliberate temporary default pending real cost data, not a removal. See `README.md` for the honest
+status checklist - a few real gaps are called out there (OpenAI's Responses API path hasn't been
+exercised against the live API yet; the free hosting tier's storage isn't durable; Council Mode
+specifically needs a real-cost playtest, and per `NOTES.md`'s cost math the $0.10 default budget
+likely needs raising now that Council Mode always runs, before either is recommended to
 anyone).
 
 ## Phase 1 — Make tonight's deploy actually solid (days, not weeks)

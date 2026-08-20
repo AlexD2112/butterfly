@@ -74,22 +74,29 @@ several API calls (the request_check/propose_state_update tool loop) gets cut of
 than allowed to run arbitrarily past budget. See `NOTES.md` for caveats and things worth a
 deliberate look before relying on this for real cost control.
 
-## Council Mode (opt-in)
+## Council Mode (always on)
 
-A per-campaign toggle (in the game header) for higher-effort narration on high-stakes turns.
-Mechanics are never affected - dice/state updates always happen exactly once, on the normal trusted
-path. When a turn's outcome trips a rule-based stakes gate (`council.should_convene_council` - a
-critical roll, a canon event firing, a resource crossing a label-band boundary, a liability gained),
-the narration gets regenerated: an independent second candidate is drafted, 6 specialist judges score
-both against their own rubric (rules/mechanics, canon/continuity, characterization, groundedness,
-and a "what should go right" / "what should go wrong" pair), a chairman synthesizes a final version
-from all of it, and a cheap-model voice-editor pass polishes word choice. See `council.py`'s module
-docstring for the full design and `NOTES.md` for what's been verified versus what still needs a real
-playtest - this has NOT yet been run against live APIs, only against mocked providers.
+Every turn's narration gets reviewed by a panel of specialist judges before the player sees it -
+not optional, no toggle. Mechanics are never affected - dice/state updates always happen exactly
+once, on the normal trusted path; the council only ever rewrites prose describing an already-decided
+outcome. A cheap router call picks the panel for each turn (at least 3 judges, up to all 6, sized to
+how consequential the turn looks), then: an independent second narration candidate is drafted, the
+routed judges score both candidates against their own rubric (rules/mechanics, canon/continuity,
+characterization, groundedness, and a "what should go right" / "what should go wrong" pair), a
+chairman synthesizes a final version from all of it, and a cheap-model voice-editor pass polishes
+word choice. See `council.py`'s module docstring for the full design.
 
-Regardless of Council Mode, every turn's base narration prompt already includes a banned-word list
-and anti-purple-prose/anti-hand-waving guidance (`council.VOICE_GUIDANCE`) - that part is always on
-and free, no gating needed.
+**Cost**: this materially increases per-turn cost - see `NOTES.md` for the actual math (roughly
+$0.009-0.010/turn with Council Mode versus ~$0.004/turn without it, meaning the $0.10 default budget
+affords roughly 11 turns rather than 25). **Model lock**: every call in the app (main narration,
+council router/judges/chairman/candidates) is currently locked to GPT-5.6 Luna only - see
+`providers.LOCKED_MODEL_KEY` - a deliberate, easily-reversible temporary default, not a removal of
+the other registered models. This has NOT yet been run against live APIs, only against mocked
+providers - see `NOTES.md` for what's verified versus what still needs a real playtest.
+
+Regardless of Council Mode's panel, every turn's base narration prompt already includes a
+banned-word list and anti-purple-prose/anti-hand-waving guidance (`council.VOICE_GUIDANCE`) - that
+part is free and unconditional.
 
 ## Setup
 
