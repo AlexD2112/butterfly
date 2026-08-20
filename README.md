@@ -24,34 +24,50 @@ Three layers, each swappable independently:
 reference, no longer active.
 
 Playable two ways, sharing all the same underlying logic:
-- **`server.py`** — the webapp (browser UI): start menu (Preset → setting → gameplay mode →
-  character select/creation) → game. Accounts are automatic (a local profile per browser via a
-  session cookie) with optional "Login with Discord". This is the primary way to play.
+- **`server.py`** — the webapp (browser UI): a landing page ("Butterfly — Change history") → start
+  menu (Preset → setting → gameplay mode → character select/creation) → game. Accounts are automatic
+  (a local profile per browser via a session cookie) with optional "Login with Discord", both shown
+  on the landing page. Every account starts with a small ($0.10) LLM usage budget, tracked per-call
+  against real provider pricing and enforced before/during each turn - see "Usage budget" below.
+  This is the primary way to play.
 - **`loop.py`** — a terminal CLI for scripting/quick testing, always playing a chosen setting's
-  premade character to a single legacy save file (no accounts/multiple characters).
+  premade character to a single legacy save file (no accounts/multiple characters/budget tracking).
 
 ## Layout
 
 ```
-ai_rpg/
-  core_rules.md                    - original v1 rulebook (superseded, kept for reference)
-  engine.py                        - SETTING_REGISTRY, SYSTEM_REGISTRY, prompt building, the
-                                      provider-agnostic turn loop - shared by loop.py and server.py
-  providers.py                     - Anthropic + OpenAI adapters, MODEL_REGISTRY
-  db.py                            - SQLite persistence: users, characters, saves
-  discord_oauth.py                 - minimal Discord OAuth2 (login only, no token storage)
-  server.py                        - Flask webapp (routes, sessions, gunicorn entry point)
-  loop.py                          - terminal CLI
-  static/index.html                - the webapp frontend (single file, no build step)
-  requirements.txt, Procfile       - deployment (see "Deploying" below)
-  systems/
-    _shared/core.py                - shared dice/leveling/validation logic, used by every system
-    red_admiral/, monarch/, apollo/  - each: rules.md + mechanics.py (skills/feats/liabilities)
-  settings/
-    petrograd_1917/, britannia_876/, rome_59_bce/, crusades_1097/  - each: character_sheet.json
-    (docs), new_campaign_state.json (real starting state), npcs.md, factions.md,
-    canon_timeline.md, opening_scene.md, resource_schema.json
+core_rules.md                    - original v1 rulebook (superseded, kept for reference)
+engine.py                        - SETTING_REGISTRY, SYSTEM_REGISTRY, prompt building, the
+                                    provider-agnostic turn loop - shared by loop.py and server.py
+providers.py                     - Anthropic + OpenAI adapters, MODEL_REGISTRY
+pricing.py                       - $/1M-token rates per model + cost estimation for the usage budget
+db.py                            - SQLite persistence: users, characters, usage_events (spend ledger)
+discord_oauth.py                 - minimal Discord OAuth2 (login only, no token storage)
+server.py                        - Flask webapp (routes, sessions, gunicorn entry point)
+loop.py                          - terminal CLI
+static/index.html                - the webapp frontend (single file, no build step)
+requirements.txt, Procfile       - deployment (see "Deploying" below)
+tests/                           - unittest suite: pricing math, budget DB helpers, engine budget
+                                    guard, and Flask route tests with a mocked provider
+systems/
+  _shared/core.py                - shared dice/leveling/validation logic, used by every system
+  red_admiral/, monarch/, apollo/  - each: rules.md + mechanics.py (skills/feats/liabilities)
+settings/
+  petrograd_1917/, britannia_876/, rome_59_bce/, crusades_1097/  - each: character_sheet.json
+  (docs), new_campaign_state.json (real starting state), npcs.md, factions.md,
+  canon_timeline.md, opening_scene.md, resource_schema.json
 ```
+
+## Usage budget
+
+Every account (local or Discord - independently, see "Local vs. Discord accounts" below) starts
+with a $0.10 LLM usage budget. Each turn's actual token usage is read from the real Anthropic/OpenAI
+response and costed against `pricing.py`'s rate table, recorded in the `usage_events` table, and
+enforced by `server.py`'s turn route: a turn is refused (HTTP 402) once an account's remaining
+budget hits zero, and a single turn that makes several API calls (the request_check/
+propose_state_update tool loop) gets cut off mid-turn rather than allowed to run arbitrarily past
+budget. See `NOTES.md` for caveats and things worth a deliberate look before relying on this for
+real cost control.
 
 ## Setup
 
@@ -65,8 +81,8 @@ You only strictly need the key for whichever model(s) you'll actually use - the 
 ```
 cp .env.example .env
 ```
-then open `ai_rpg/.env` and fill in real values - see the comments in `.env.example` for what each
-one does (LLM provider keys, `FLASK_SECRET_KEY`, optional Discord OAuth settings). `ai_rpg/.env` is
+then open `.env` and fill in real values - see the comments in `.env.example` for what each
+one does (LLM provider keys, `FLASK_SECRET_KEY`, optional Discord OAuth settings). `.env` is
 gitignored and will never be committed. **Never put real secrets anywhere else in this codebase** -
 not in `providers.py`, not in any `.py` file. If you ever see a real key sitting in source, treat
 it as compromised and rotate it immediately, whether or not it got committed.
@@ -74,26 +90,26 @@ it as compromised and rotate it immediately, whether or not it got committed.
 ## Running the webapp locally
 
 ```
-cd ai_rpg
 python server.py
 ```
-Open `http://127.0.0.1:5000`. Every visitor gets a local profile automatically (no login needed);
-"Login with Discord" appears once Discord OAuth is configured (see below). Pick Preset → a setting
-→ Full System → a character (the setting's premade figure, one of your existing characters, or
-"Create Custom Character"), then play. Each turn shows a collapsible "Mechanics" panel with the
-actual dice rolls and state deltas. Progress autosaves to `ai_rpg/butterfly.db` after every turn.
+Open `http://127.0.0.1:5000`. You land on a landing page with your account status and usage budget;
+click Begin to reach the start menu. Every visitor gets a local profile automatically (no login
+needed); "Login with Discord" appears there once Discord OAuth is configured (see below). Pick
+Preset → a setting → Full System → a character (the setting's premade figure, one of your existing
+characters, or "Create Custom Character"), then play. Each turn shows a collapsible "Mechanics"
+panel with the actual dice rolls and state deltas. Progress autosaves to `butterfly.db` after every
+turn.
 
 ## Running the CLI
 
 ```
-cd ai_rpg
 python loop.py                              # Petrograd 1917, default model (GPT-5.6 Luna)
 python loop.py haiku                        # force a model - keys: luna, sonnet, haiku, opus
 AI_RPG_MODEL=sonnet python loop.py           # same, via env var
 AI_RPG_SETTING=rome_59_bce python loop.py    # play a different setting's premade character
 ```
-Uses a single legacy save file (`ai_rpg/save.json`), always the chosen setting's premade character
-- no accounts, no custom characters. For those, use the webapp.
+Uses a single legacy save file (`save.json`), always the chosen setting's premade character - no
+accounts, no custom characters, no usage budget tracking. For those, use the webapp.
 
 ## Deploying (Render, free tier, no domain needed)
 
@@ -103,17 +119,18 @@ domain or paying anything.
 1. **Push this repo to GitHub** if it isn't already (this repo already has a GitHub remote -
    `git push` your current branch).
 2. **Create a Render account** at render.com (free, GitHub login works) and click **New → Web
-   Service**, connect this GitHub repo.
-3. Set the **Root Directory** to `ai_rpg` (Render supports deploying a subfolder of a larger repo).
-4. Render should auto-detect Python. Confirm: **Build Command** `pip install -r requirements.txt`,
+   Service**, connect this GitHub repo. A `render.yaml` blueprint is included in the repo root, so
+   Render can pick up the service config (build/start commands, env var slots) automatically via
+   **New → Blueprint** instead of manual entry - either path works.
+3. Render should auto-detect Python. Confirm: **Build Command** `pip install -r requirements.txt`,
    **Start Command** `gunicorn server:app` (this matches the included `Procfile`, so Render may
    fill it in automatically).
-5. Under **Environment**, add each variable from `.env.example` as a real environment variable
+4. Under **Environment**, add each variable from `.env.example` as a real environment variable
    (not a `.env` file - Render doesn't read that): `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`,
    `FLASK_SECRET_KEY` (generate one: `python -c "import secrets; print(secrets.token_hex(32))"`),
    and the three `DISCORD_*` variables once you've done the Discord setup below (optional - skip
    them and the app still runs fine with local-only profiles).
-6. Deploy. Render gives you a URL like `https://butterfly-xyz.onrender.com`.
+5. Deploy. Render gives you a URL like `https://butterfly-xyz.onrender.com`.
 
 **Known limitation to know about going in:** Render's free web services don't get a persistent
 disk, so `butterfly.db` (accounts and characters) resets on every redeploy or restart - fine for a

@@ -23,9 +23,13 @@ hasn't been exercised against the live API yet; the free hosting tier's storage 
 - **Conversation length management.** Long campaigns will eventually hit context limits or get
   expensive. Add a summarization pass (compress older turns into `campaign_log_summary` entries,
   which already exist, and stop sending the full raw transcript past some turn count).
-- **Basic cost/rate controls.** Once this is a public URL, nothing currently stops someone from
-  running up your API bill. At minimum: a simple per-session or per-IP rate limit; longer-term, see
-  Phase 4's "usage controls."
+- [x] **Basic cost/rate controls.** Done 2026-08-20: every account (local or Discord) gets a
+  $0.10 starting budget, tracked per-call against real Anthropic/OpenAI usage and pricing in a new
+  `usage_events` ledger (see `db.py`, `pricing.py`), enforced in `server.py`'s turn route and
+  surfaced in the UI. See `NOTES.md` for caveats (local-profile budgets are resettable by clearing
+  cookies - this stops runaway *accidental* spend per account, not abuse from someone deliberately
+  clearing cookies; a per-IP or per-session limit is still worth adding on top if this gets real
+  public traffic).
 
 ## Phase 2 — Content and mode breadth (weeks)
 
@@ -60,10 +64,13 @@ hasn't been exercised against the live API yet; the free hosting tier's storage 
 
 ## Phase 4 — Platform maturity (as it grows)
 
-- **Account linking.** Local-profile and Discord-linked characters aren't merged today. Fix once
-  people are actually hitting this friction, not before.
-- **Usage controls.** If this gets real traffic: per-account turn limits, or a "bring your own API
-  key" option so you're not the one paying for strangers' campaigns, or both.
+- **Account linking.** Local-profile and Discord-linked characters (and now, budgets) aren't merged
+  today - confirmed still deliberately deferred as of 2026-08-20. Fix once people are actually
+  hitting this friction, not before.
+- **Usage controls.** Basic version done (see Phase 1, 2026-08-20): a fixed $0.10 per-account
+  budget. Still open if this gets real traffic: raising/customizing the per-account amount, a
+  "bring your own API key" option, or a per-IP/per-session limit to backstop the
+  cookie-clearing gap noted in `NOTES.md`.
 - **Content moderation.** These are settings involving war, political violence, and real historical
   atrocity - worth a deliberate pass on what the GM should and shouldn't narrate in graphic detail,
   independent of Anthropic's/OpenAI's own model-level guardrails, once this is more than a handful
