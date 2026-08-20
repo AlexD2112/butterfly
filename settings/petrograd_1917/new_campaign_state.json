@@ -1,0 +1,118 @@
+{
+  "setting_pack": "petrograd_1917",
+  "system": "red_admiral",
+  "turn_number": 0,
+  "date": "1917-09-25",
+  "character": {
+    "name": "Lev Davidovich Trotsky (Leon Trotsky)",
+    "role": "Bolshevik Central Committee member; Chairman, Petrograd Soviet",
+    "level": 1,
+    "xp": 0,
+    "level_up_pending": false,
+    "next_level_xp_discount": 0.0,
+    "proficiency_bonus": 2,
+    "attributes": {
+      "oration": 16,
+      "intellect": 20,
+      "resolve": 14,
+      "presence": 13,
+      "cunning": 10,
+      "physique": 12
+    },
+    "skills": {
+      "platform_speechmaking": {"attribute": "oration", "tier": 1},
+      "debate_and_public_argument": {"attribute": "oration", "tier": 2},
+      "crowd_command_and_agitation": {"attribute": "oration", "tier": 1},
+      "intimidation": {"attribute": "oration", "tier": 0},
+
+      "revolutionary_theory": {"attribute": "intellect", "tier": 2},
+      "written_propaganda": {"attribute": "intellect", "tier": 2},
+      "military_strategic_planning": {"attribute": "intellect", "tier": 0},
+      "situation_analysis": {"attribute": "intellect", "tier": 1},
+      "languages_and_translation": {"attribute": "intellect", "tier": 1},
+
+      "crisis_command": {"attribute": "resolve", "tier": 1},
+      "psychological_endurance": {"attribute": "resolve", "tier": 1},
+      "willpower_vs_coercion": {"attribute": "resolve", "tier": 0},
+
+      "inspiring_loyalty": {"attribute": "presence", "tier": 1},
+      "negotiation": {"attribute": "presence", "tier": 1},
+      "personal_persuasion": {"attribute": "presence", "tier": 1},
+      "cultivating_allies": {"attribute": "presence", "tier": 0},
+
+      "factional_maneuvering": {"attribute": "cunning", "tier": 0},
+      "deception": {"attribute": "cunning", "tier": 0},
+      "reading_hidden_agendas": {"attribute": "cunning", "tier": 0},
+      "operational_security": {"attribute": "cunning", "tier": 0},
+
+      "endurance_and_travel": {"attribute": "physique", "tier": 1},
+      "physical_confrontation": {"attribute": "physique", "tier": 0},
+      "stealth_and_evasion": {"attribute": "physique", "tier": 0}
+    },
+    "feats": [],
+    "liabilities": [
+      {
+        "id": "arrogance",
+        "name": "Arrogance",
+        "description": "On any failed Cunning or Presence check involving a named rival, automatically add 1 enmity pip (enforced by the application, not GM discretion)."
+      },
+      {
+        "id": "visible_target",
+        "name": "Visible Target",
+        "description": "Antisemitic opponents gain an edge on attempts to discredit the character in certain constituencies - the GM should reflect this in narrative framing and DC-setting when relevant, not as an automatic numeric trigger."
+      }
+    ],
+    "flags": {
+      "in_exile": false,
+      "in_prison": false,
+      "party_position": "Central Committee; Chairman, Petrograd Soviet",
+      "married_to_natalia": true,
+      "recently_joined_bolsheviks": true,
+      "has_military_command_experience": false
+    },
+    "recent_check_usage": {"attributes": [], "skills": []}
+  },
+  "relationships": {
+    "lenin": {"trust": 3, "note": "Recently reconciled - Trotsky joined the Bolsheviks outright only this summer."},
+    "stalin": {"trust": 0, "note": "Correct but cold."},
+    "kamenev": {"trust": 1, "note": "Old acquaintance from exile; more moderate, frequent friction over tactics."},
+    "zinoviev": {"trust": 0, "note": "Wary of each other; both compete for Lenin's confidence."},
+    "sverdlov": {"trust": 2, "note": "Efficient, cooperative on organizational matters."},
+    "kerensky": {"trust": -3, "note": "Head of the Provisional Government; adversary."},
+    "natalia_sedova": {"trust": 5, "note": "Wife and closest personal confidante."}
+  },
+  "enmity": {
+    "stalin": {"pips": 0, "note": "Unengaged - no open friction yet."},
+    "zinoviev": {"pips": 0, "note": "Cautious, not yet hostile."},
+    "kamenev": {"pips": 0, "note": "Cautious, not yet hostile."},
+    "kerensky": {"pips": 0, "note": "Political adversary, but not yet a personal enmity track - see relationships.kerensky for the general disposition."}
+  },
+  "resources": {
+    "mass_influence": 55,
+    "party_standing": 62,
+    "soviet_authority": 72,
+    "state_legitimacy": 20,
+    "left_sr_alliance": 45,
+    "menshevik_internationalist_alignment": 30,
+    "lenins_trust": 58,
+    "mrc_authority": 5,
+    "garrison_loyalty": 50,
+    "international_reputation": 28,
+    "personal_safety": 52
+  },
+  "commitments": {},
+  "canon_events": {
+    "trotsky_elected_chairman": {"status": "fired", "type": "locked"},
+    "lenin_returns_to_petrograd": {"status": "pending", "type": "locked"},
+    "central_committee_insurrection_vote": {"status": "pending", "type": "contingent"},
+    "october_revolution": {"status": "pending", "type": "contingent"},
+    "sovnarkom_formed": {"status": "pending", "type": "contingent"},
+    "brest_litovsk_negotiations_begin": {"status": "pending", "type": "contingent"},
+    "brest_litovsk_signed": {"status": "pending", "type": "contingent"},
+    "red_army_founded": {"status": "pending", "type": "contingent"},
+    "civil_war_begins": {"status": "pending", "type": "contingent"}
+  },
+  "divergence_score": 0,
+  "divergence_log": [],
+  "campaign_log_summary": []
+}

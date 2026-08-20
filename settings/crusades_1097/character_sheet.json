@@ -1,0 +1,30 @@
+{
+  "_note": "Reference/documentation copy of the character portion of new_campaign_state.json (the file engine.py actually loads for a fresh game). Keep these in sync if you tune starting values.",
+  "name": "Bohemond of Taranto",
+  "role": "Norman Prince, leader of the Italo-Norman crusader contingent",
+  "system": "monarch",
+  "level": 1,
+  "attributes": {
+    "oration": 13,
+    "intellect": 15,
+    "resolve": 16,
+    "presence": 15,
+    "cunning": 18,
+    "physique": 17
+  },
+  "attribute_notes": {
+    "oration": "Competent, not exceptional - his real gift is Cunning, not oratory.",
+    "intellect": "Sharp and pragmatic, particularly around siegecraft and logistics.",
+    "resolve": "Genuinely formidable under pressure - a proven battlefield commander already.",
+    "presence": "Imposing and commanding in person - contemporary Byzantine accounts (Anna Komnene) describe him as physically striking.",
+    "cunning": "His defining trait - opportunistic, calculating, and famously willing to play a longer game than his rivals expect.",
+    "physique": "A large, physically formidable warrior, matching his real historical reputation."
+  },
+  "starting_skill_highlights": {
+    "expertise": ["rallying_the_host", "intrigue_and_plot", "arms_and_armor"],
+    "untrained_of_note": ["statecraft_and_law", "sermon_and_preaching", "unyielding_oath (his relationship with sworn oaths is famously flexible)"]
+  },
+  "starting_liabilities": ["Pride of Lineage", "Blood Debt"],
+  "starting_feats": ["Silver-Tongued Courtier"],
+  "note_on_growth": "Starts as an ambitious junior partner in someone else's crusade - the growth arc (territorial_ambition especially) is built toward the historical outcome of Bohemond claiming the Principality of Antioch for himself, in defiance of his oath to Alexios, but the campaign is free to diverge from that if the player plays Bohemond as more (or less) loyal than history remembers him."
+}

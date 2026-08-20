@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "witan_authority": {"range": [0, 100], "start": 62, "description": "Standing with the Witenagemot - the council of ealdormen and bishops whose backing a West Saxon king needs to act."},
+    "popular_support": {"range": [0, 100], "start": 55, "description": "Trust of the ceorls, thegns, and burh-dwellers of Wessex."},
+    "church_favor": {"range": [0, 100], "start": 68, "description": "Standing with the Church - bishops, abbots, and the moral authority they lend a Christian king."},
+    "military_readiness": {"range": [0, 100], "start": 35, "description": "The real fighting state of the fyrd and the burh defenses - low to start, reflecting years of Viking pressure and West Saxon losses."},
+    "treasury": {"range": [0, 100], "start": 40, "description": "Coin and tribute on hand - strained by years of paying off raiders and funding defense."},
+    "foreign_standing": {"range": [0, 100], "start": 45, "description": "Relations with the other English kingdoms (Mercia especially) and the Frankish court."},
+    "saxon_unity": {"range": [0, 100], "start": 30, "description": "How far the idea of a common Anglo-Saxon cause (as opposed to separate, rival kingdoms) has actually taken hold - low to start; this is the resource Alfred's reign will be remembered for building."},
+    "hall_loyalty": {"range": [0, 100], "start": 70, "description": "Loyalty of the king's own household warriors and closest ealdormen."},
+    "personal_safety": {"range": [0, 100], "start": 48, "description": "How secure the king's own person is - low points mean real, immediate danger, not just political weakness."}
+  },
+  "per_check_max_delta": 10,
+  "notes": "Starting values reflect Wessex in the winter of 876: Guthrum's Vikings have just seized Wareham and slipped past a West Saxon fleet to take Exeter, tribute and hostages have failed to hold them off before, and the crisis that will drive Alfred into the Somerset marshes (early 878) is not far off. military_readiness and saxon_unity in particular start low and are meant to climb sharply if the campaign builds toward Edington - that arc is the point of this setting."
+}

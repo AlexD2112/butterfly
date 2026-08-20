@@ -1,0 +1,114 @@
+{
+  "setting_pack": "rome_59_bce",
+  "system": "apollo",
+  "turn_number": 0,
+  "date": "15 March, 59 BCE (Ides of March, Caesar's consulship)",
+  "character": {
+    "name": "Gaius Julius Caesar",
+    "role": "Consul of Rome",
+    "level": 1,
+    "xp": 0,
+    "level_up_pending": false,
+    "next_level_xp_discount": 0.0,
+    "proficiency_bonus": 2,
+    "attributes": {
+      "oration": 16,
+      "intellect": 18,
+      "resolve": 15,
+      "presence": 17,
+      "cunning": 17,
+      "physique": 13
+    },
+    "skills": {
+      "forensic_oratory": {"attribute": "oration", "tier": 1},
+      "contio_speechmaking": {"attribute": "oration", "tier": 2},
+      "military_exhortation": {"attribute": "oration", "tier": 1},
+      "threats_and_coercion": {"attribute": "oration", "tier": 0},
+
+      "roman_law_and_precedent": {"attribute": "intellect", "tier": 1},
+      "philosophy_and_rhetoric_theory": {"attribute": "intellect", "tier": 0},
+      "logistics_and_supply": {"attribute": "intellect", "tier": 1},
+      "provincial_administration": {"attribute": "intellect", "tier": 0},
+      "languages_of_the_mediterranean": {"attribute": "intellect", "tier": 1},
+
+      "gravitas_under_pressure": {"attribute": "resolve", "tier": 1},
+      "stoic_endurance": {"attribute": "resolve", "tier": 0},
+      "unbending_will": {"attribute": "resolve", "tier": 0},
+
+      "patrician_bearing": {"attribute": "presence", "tier": 1},
+      "patron_client_charm": {"attribute": "presence", "tier": 1},
+      "marital_and_familial_alliance": {"attribute": "presence", "tier": 0},
+      "popularis_appeal": {"attribute": "presence", "tier": 2},
+
+      "political_intrigue": {"attribute": "cunning", "tier": 2},
+      "bribery_and_graft": {"attribute": "cunning", "tier": 1},
+      "reading_hidden_agendas": {"attribute": "cunning", "tier": 1},
+      "covert_correspondence": {"attribute": "cunning", "tier": 0},
+
+      "horsemanship_and_campaigning": {"attribute": "physique", "tier": 0},
+      "swordsmanship": {"attribute": "physique", "tier": 0},
+      "physical_endurance": {"attribute": "physique", "tier": 0}
+    },
+    "feats": [
+      {
+        "id": "dignitas_personified",
+        "name": "Dignitas Personified",
+        "description": "Personal standing that precedes this character into any room. Senators and clients alike should extend a baseline deference they wouldn't extend to a man of lesser reputation."
+      }
+    ],
+    "liabilities": [
+      {
+        "id": "overweening_ambition",
+        "name": "Overweening Ambition",
+        "description": "On any failed Cunning or Presence check involving a named rival, automatically add 1 enmity pip (enforced by the application, not GM discretion)."
+      },
+      {
+        "id": "crushing_debt",
+        "name": "Crushing Debt",
+        "description": "Owes ruinous sums, as many ambitious Romans did. The GM should periodically narrate treasury quietly slipping to creditors without a check ever being called for it."
+      }
+    ],
+    "flags": {
+      "consul_in_office": true,
+      "pontifex_maximus": true,
+      "gaul_command_secured": false,
+      "married_to_calpurnia": false
+    },
+    "recent_check_usage": {"attributes": [], "skills": []}
+  },
+  "relationships": {
+    "pompey": {"trust": 3, "note": "Fellow Triumvir, soon to be son-in-law via marriage to Julia - genuinely useful, not yet fully tested."},
+    "crassus": {"trust": 2, "note": "Fellow Triumvir, funding much of what makes this alliance function - transactional but currently solid."},
+    "julia": {"trust": 5, "note": "Beloved daughter, about to be married to Pompey to cement the alliance."},
+    "cicero": {"trust": 0, "note": "Wary, morally conflicted, increasingly isolated from the Senate mainstream - could become an ally or a casualty."},
+    "clodius": {"trust": 1, "note": "Chaotic, useful, dangerous - recently helped him transfer to plebeian status; what he does with that is an open question."}
+  },
+  "enmity": {
+    "cato": {"pips": 2, "note": "Implacable optimate opponent on principle - not personal (yet), which somehow makes it worse."},
+    "bibulus": {"pips": 2, "note": "Fellow consul, currently obstructing nearly everything procedurally by 'watching the skies' for bad omens."}
+  },
+  "resources": {
+    "senate_standing": 40,
+    "popular_support": 78,
+    "military_glory": 45,
+    "triumvirate_trust": 60,
+    "patrician_network": 50,
+    "treasury": 15,
+    "religious_standing": 70,
+    "foreign_reputation": 42,
+    "personal_safety": 55
+  },
+  "commitments": {},
+  "canon_events": {
+    "lex_julia_agraria_passed": {"status": "pending", "type": "contingent"},
+    "julia_marries_pompey": {"status": "pending", "type": "contingent"},
+    "vatinian_law_grants_gaul": {"status": "pending", "type": "contingent"},
+    "clodius_engineers_ciceros_exile": {"status": "pending", "type": "contingent"},
+    "caesar_departs_for_gaul": {"status": "pending", "type": "contingent"},
+    "conference_of_luca": {"status": "pending", "type": "contingent"},
+    "crossing_of_the_rubicon": {"status": "pending", "type": "contingent"}
+  },
+  "divergence_score": 0,
+  "divergence_log": [],
+  "campaign_log_summary": []
+}

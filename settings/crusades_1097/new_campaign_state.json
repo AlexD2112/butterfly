@@ -1,0 +1,120 @@
+{
+  "setting_pack": "crusades_1097",
+  "system": "monarch",
+  "turn_number": 0,
+  "date": "June 1097 - on the march from Nicaea",
+  "character": {
+    "name": "Bohemond of Taranto",
+    "role": "Norman Prince, leader of the Italo-Norman crusader contingent",
+    "level": 1,
+    "xp": 0,
+    "level_up_pending": false,
+    "next_level_xp_discount": 0.0,
+    "proficiency_bonus": 2,
+    "attributes": {
+      "oration": 13,
+      "intellect": 15,
+      "resolve": 16,
+      "presence": 15,
+      "cunning": 18,
+      "physique": 17
+    },
+    "skills": {
+      "court_rhetoric": {"attribute": "oration", "tier": 1},
+      "sermon_and_preaching": {"attribute": "oration", "tier": 0},
+      "rallying_the_host": {"attribute": "oration", "tier": 2},
+      "blustering_threats": {"attribute": "oration", "tier": 0},
+
+      "statecraft_and_law": {"attribute": "intellect", "tier": 0},
+      "chronicle_and_scripture": {"attribute": "intellect", "tier": 0},
+      "siegecraft_and_engineering": {"attribute": "intellect", "tier": 1},
+      "terrain_and_logistics": {"attribute": "intellect", "tier": 1},
+      "tongues_of_the_realm": {"attribute": "intellect", "tier": 0},
+
+      "battle_nerve": {"attribute": "resolve", "tier": 1},
+      "penance_and_fasting": {"attribute": "resolve", "tier": 0},
+      "unyielding_oath": {"attribute": "resolve", "tier": 0},
+
+      "courtly_grace": {"attribute": "presence", "tier": 0},
+      "chivalrous_bearing": {"attribute": "presence", "tier": 1},
+      "kinship_ties": {"attribute": "presence", "tier": 0},
+      "wooing_and_alliance": {"attribute": "presence", "tier": 1},
+
+      "intrigue_and_plot": {"attribute": "cunning", "tier": 2},
+      "disguise_and_subterfuge": {"attribute": "cunning", "tier": 1},
+      "reading_intentions": {"attribute": "cunning", "tier": 1},
+      "spycraft": {"attribute": "cunning", "tier": 1},
+
+      "horsemanship": {"attribute": "physique", "tier": 1},
+      "arms_and_armor": {"attribute": "physique", "tier": 2},
+      "wilderness_endurance": {"attribute": "physique", "tier": 0}
+    },
+    "feats": [
+      {
+        "id": "silver_tongued_courtier",
+        "name": "Silver-Tongued Courtier",
+        "description": "A gift for saying the right thing at court. The GM should let a well-turned compliment or veiled threat land harder than the words alone would justify."
+      }
+    ],
+    "liabilities": [
+      {
+        "id": "pride_of_lineage",
+        "name": "Pride of Lineage",
+        "description": "On any failed Cunning or Presence check involving a named rival, automatically add 1 enmity pip (enforced by the application, not GM discretion)."
+      },
+      {
+        "id": "blood_debt",
+        "name": "Blood Debt",
+        "description": "A feud, owed or owing, that predates this campaign. At least one enmity relationship should start (or quickly develop) at an elevated level because of it."
+      }
+    ],
+    "flags": {
+      "sworn_oath_to_alexios": true,
+      "nicaea_fallen": true,
+      "antioch_reached": false,
+      "principality_claimed": false
+    },
+    "recent_check_usage": {"attributes": [], "skills": []}
+  },
+  "relationships": {
+    "godfrey_of_bouillon": {"trust": 2, "note": "Fellow crusade leader - more pious and idealistic than you, generally a straight dealer."},
+    "tancred": {"trust": 4, "note": "Your nephew and most loyal lieutenant - ambitious in his own right, but genuinely on your side."},
+    "adhemar_of_le_puy": {"trust": 2, "note": "Papal legate - the expedition's real unifying moral authority."},
+    "alexios_i": {"trust": -1, "note": "Byzantine Emperor - the crusaders swore him oaths of fealty for reclaimed territory; whether either side honors that is very much in question."}
+  },
+  "enmity": {
+    "raymond_of_toulouse": {"pips": 1, "note": "Wealthiest and most senior crusade leader - a real rival for leadership and, later, for Antioch itself."},
+    "yaghi_siyan": {"pips": 0, "note": "Seljuk governor of Antioch - not yet engaged, but the city ahead is his to defend."}
+  },
+  "resources": {
+    "crusader_leaders_regard": 48,
+    "byzantine_relations": 40,
+    "army_morale": 62,
+    "church_favor": 65,
+    "popular_support": 50,
+    "treasury": 35,
+    "territorial_ambition": 10,
+    "foreign_reputation": 30,
+    "personal_safety": 55
+  },
+  "commitments": {
+    "oath_to_alexios": {
+      "description": "Sworn fealty to Emperor Alexios I - reclaimed former Byzantine territory is to be returned to him.",
+      "parties": ["Bohemond", "Alexios I"],
+      "status": "active"
+    }
+  },
+  "canon_events": {
+    "nicaea_falls": {"status": "fired", "type": "locked"},
+    "battle_of_dorylaeum": {"status": "pending", "type": "contingent"},
+    "siege_of_antioch_begins": {"status": "pending", "type": "contingent"},
+    "antioch_falls_to_crusaders": {"status": "pending", "type": "contingent"},
+    "kerbogha_relief_army_defeated": {"status": "pending", "type": "contingent"},
+    "bohemond_claims_antioch": {"status": "pending", "type": "contingent"},
+    "siege_of_jerusalem": {"status": "pending", "type": "contingent"},
+    "jerusalem_falls": {"status": "pending", "type": "contingent"}
+  },
+  "divergence_score": 0,
+  "divergence_log": [],
+  "campaign_log_summary": []
+}

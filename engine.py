@@ -1,0 +1,217 @@
+"""
+Butterfly game engine: setting/system-agnostic state helpers, prompt construction, and the
+provider-agnostic turn loop.
+
+Three layers, each swappable independently:
+  - A **system** (systems/<name>/) is a ruleset: dice, skills, feats, leveling - see
+    systems/_shared/core.py for the shared math and SYSTEM_REGISTRY below for the roster.
+  - A **setting** (settings/<name>/) is content built on a system: a premade character, NPCs,
+    factions, canon timeline, resource categories - see SETTING_REGISTRY below.
+  - A **character** (a specific play-through, premade or custom) is state data. Persisting that
+    state across multiple characters/users is db.py's job, not this module's - engine.py works on
+    whatever state dict it's handed, it doesn't own storage. load_state()/save_state() below are
+    kept only as a single-save legacy path for loop.py's simple CLI mode.
+"""
+
+import importlib
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+SETTINGS_ROOT = ROOT / "settings"
+SAVE_FILE = ROOT / "save.json"  # legacy single-save path, used only by loop.py's simple CLI mode
+
+SYSTEM_REGISTRY = {
+    "red_admiral": {
+        "module": "systems.red_admiral.mechanics",
+        "rules_file": "systems/red_admiral/rules.md",
+        "label": "Red Admiral — d20 Skills & Progression (revolutionary-era)",
+    },
+    "monarch": {
+        "module": "systems.monarch.mechanics",
+        "rules_file": "systems/monarch/rules.md",
+        "label": "Monarch — d20 Skills & Progression (feudal/medieval)",
+    },
+    "apollo": {
+        "module": "systems.apollo.mechanics",
+        "rules_file": "systems/apollo/rules.md",
+        "label": "Apollo — d20 Skills & Progression (Roman Republic)",
+    },
+}
+
+SETTING_REGISTRY = {
+    "petrograd_1917": {
+        "system": "red_admiral",
+        "label": "Petrograd, 1917",
+        "blurb": "Leon Trotsky, Chairman of the Petrograd Soviet, on the eve of October.",
+        "premade_character_file": "new_campaign_state.json",
+        "premade_character_name": "Leon Trotsky",
+    },
+    "britannia_876": {
+        "system": "monarch",
+        "label": "Britannia, 876",
+        "blurb": "Alfred, King of the West Saxons, with Guthrum's Vikings camped in the West.",
+        "premade_character_file": "new_campaign_state.json",
+        "premade_character_name": "Alfred, King of the West Saxons",
+    },
+    "rome_59_bce": {
+        "system": "apollo",
+        "label": "Rome, 59 BCE",
+        "blurb": "Gaius Julius Caesar, Consul of Rome, at the height of the First Triumvirate.",
+        "premade_character_file": "new_campaign_state.json",
+        "premade_character_name": "Julius Caesar",
+    },
+    "crusades_1097": {
+        "system": "monarch",
+        "label": "The First Crusade, 1097",
+        "blurb": "Bohemond of Taranto, marching on Antioch with an oath he may not intend to keep.",
+        "premade_character_file": "new_campaign_state.json",
+        "premade_character_name": "Bohemond of Taranto",
+    },
+}
+DEFAULT_SETTING_KEY = "petrograd_1917"
+
+_system_module_cache = {}
+
+
+def get_system(system_key):
+    if system_key not in _system_module_cache:
+        module_path = SYSTEM_REGISTRY[system_key]["module"]
+        _system_module_cache[system_key] = importlib.import_module(module_path)
+    return _system_module_cache[system_key]
+
+
+def setting_dir(setting_key):
+    return SETTINGS_ROOT / setting_key
+
+
+def load_text(setting_key, path):
+    return (setting_dir(setting_key) / path).read_text(encoding="utf-8")
+
+
+def load_json(setting_key, path):
+    return json.loads((setting_dir(setting_key) / path).read_text(encoding="utf-8"))
+
+
+def load_premade_character_state(setting_key):
+    """Returns a fresh copy of a setting's premade signature character's starting state."""
+    info = SETTING_REGISTRY[setting_key]
+    fresh = load_json(setting_key, info["premade_character_file"])
+    fresh["_is_new"] = True
+    return fresh
+
+
+def load_state():
+    """Legacy single-save path for loop.py - always Petrograd 1917. server.py uses db.py instead,
+    which supports many characters across many settings/systems concurrently."""
+    if SAVE_FILE.exists():
+        return json.loads(SAVE_FILE.read_text(encoding="utf-8"))
+    return load_premade_character_state(DEFAULT_SETTING_KEY)
+
+
+def save_state(state):
+    state = dict(state)
+    state.pop("_is_new", None)
+    SAVE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def build_state_digest(state):
+    """Generic by design - whatever shape the active system's state has, this just strips internal
+    bookkeeping fields (leading underscore) rather than hand-picking keys, so it doesn't need to
+    change when a system's state schema changes."""
+    return {k: v for k, v in state.items() if not k.startswith("_")}
+
+
+def build_system_prompt(state, setting_key, system_key):
+    system_info = SYSTEM_REGISTRY[system_key]
+    system_rules = (ROOT / system_info["rules_file"]).read_text(encoding="utf-8")
+
+    npcs = load_text(setting_key, "npcs.md")
+    factions = load_text(setting_key, "factions.md")
+    canon = load_text(setting_key, "canon_timeline.md")
+    resource_schema = load_json(setting_key, "resource_schema.json")
+    digest = build_state_digest(state)
+
+    return f"""You are the game master for a historical RPG, running the {system_info['label']} system.
+Follow the rules below exactly - especially: you never generate your own dice rolls (use
+request_check), and all mechanical state changes go through propose_state_update or
+propose_level_up, never implied by narration alone. Feats and liabilities may only ever come from
+the system's curated catalogs (by id) - never invent one.
+
+# SYSTEM RULES
+{system_rules}
+
+# SETTING: KEY NPCS
+{npcs}
+
+# SETTING: FACTIONS
+{factions}
+
+# SETTING: CANON TIMELINE
+{canon}
+
+# RESOURCE DEFINITIONS
+{json.dumps(resource_schema, indent=2)}
+
+# CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
+{json.dumps(digest, indent=2)}
+
+Narrate in second person, present tense, evocative but not overwrought. Keep responses to a few
+paragraphs. Never resolve an uncertain action without calling request_check first. If the current
+state shows level_up_pending: true, remind the player at a natural pause and offer them the three
+level-up options from the system rules before proceeding.
+"""
+
+
+def run_turn(provider, model, state, setting_key, system_key, conversation, user_input):
+    """Returns (narration, debug_events)."""
+    system = get_system(system_key)
+    resource_schema = load_json(setting_key, "resource_schema.json")
+    provider.append_user_message(conversation, user_input)
+    system_prompt = build_system_prompt(state, setting_key, system_key)
+
+    text_parts = []
+    debug_events = []
+    while True:
+        turn_result = provider.call(model, system_prompt, system.TOOL_SPECS, conversation)
+        provider.append_assistant_turn(conversation, turn_result)
+        text_parts.extend(turn_result.text_parts)
+
+        if not turn_result.tool_calls:
+            break
+
+        results = []
+        for tc in turn_result.tool_calls:
+            if tc["name"] == "request_check":
+                inp = tc["input"]
+                result = system.roll_check(
+                    state["character"], inp["attribute"], inp.get("skill"), inp["dc"], inp.get("target_npc")
+                )
+                auto_changes = system.apply_auto_liability_effects(state, result)
+                debug_events.append({"type": "check", "description": inp.get("description", ""), **result})
+                if auto_changes:
+                    debug_events.append({"type": "state_update", "reasoning": "Automatic liability trigger.", "changes": auto_changes})
+                results.append({"id": tc["id"], "content": json.dumps(result)})
+            elif tc["name"] == "propose_state_update":
+                changes = system.apply_state_update(state, tc["input"], resource_schema)
+                debug_events.append(
+                    {"type": "state_update", "reasoning": tc["input"].get("reasoning", ""), "changes": changes}
+                )
+                results.append(
+                    {"id": tc["id"], "content": "Applied (values may have been clamped or rejected by the application)."}
+                )
+            elif tc["name"] == "propose_level_up":
+                changes = system.apply_level_up(state, tc["input"])
+                debug_events.append(
+                    {"type": "level_up", "reasoning": tc["input"].get("reasoning", ""), "changes": changes}
+                )
+                results.append({"id": tc["id"], "content": json.dumps({"changes": changes})})
+            else:
+                results.append({"id": tc["id"], "content": f"Unknown tool: {tc['name']}"})
+
+        provider.append_tool_results(conversation, turn_result, results)
+
+    narration = "\n".join(text_parts).strip()
+    state["campaign_log_summary"].append({"turn": state["turn_number"], "summary": narration[:400]})
+    state["turn_number"] += 1
+    return narration, debug_events

@@ -1,0 +1,30 @@
+{
+  "_note": "Reference/documentation copy of the character portion of new_campaign_state.json (the file engine.py actually loads for a fresh game). Keep these in sync if you tune starting values.",
+  "name": "Alfred, King of the West Saxons",
+  "role": "King of Wessex",
+  "system": "monarch",
+  "level": 1,
+  "attributes": {
+    "oration": 14,
+    "intellect": 18,
+    "resolve": 17,
+    "presence": 13,
+    "cunning": 14,
+    "physique": 10
+  },
+  "attribute_notes": {
+    "oration": "A capable speaker but not a natural crowd-charmer - his power comes more from what he says than how he says it.",
+    "intellect": "His defining trait - the scholar-king reputation is earned even this early, before the famous translation projects of the 880s-890s.",
+    "resolve": "Extraordinary endurance under sustained crisis - this is the attribute the Athelney arc is built to test.",
+    "presence": "Competent at court but not magnetic - see the untrained wooing_and_alliance skill.",
+    "cunning": "Genuinely underrated by his enemies, which is itself an asset - see the Edington campaign's use of misdirection historically.",
+    "physique": "Deliberately his weakest attribute, reflecting a real, recurring illness attested by his biographer Asser - see the Chronic Affliction liability."
+  },
+  "starting_skill_highlights": {
+    "expertise": ["statecraft_and_law", "chronicle_and_scripture", "unyielding_oath"],
+    "untrained_of_note": ["siegecraft_and_engineering", "tongues_of_the_realm (no Norse yet - a plausible growth arc)", "intrigue_and_plot", "spycraft"]
+  },
+  "starting_liabilities": ["Chronic Affliction", "Overmortgaged Demesne"],
+  "starting_feats": ["Unyielding Faith"],
+  "note_on_growth": "Starts as a king already under siege, not a blank slate - his growth arc over the campaign is less 'become powerful' and more 'survive, then rebuild Wessex, then unify the English response to the Danes,' tracked mostly through the saxon_unity and military_readiness resources and the contingent canon events (Athelney, Edington, Wedmore) rather than raw levels."
+}

@@ -1,0 +1,115 @@
+{
+  "setting_pack": "britannia_876",
+  "system": "monarch",
+  "turn_number": 0,
+  "date": "876-11-01",
+  "character": {
+    "name": "Alfred, King of the West Saxons",
+    "role": "King of Wessex",
+    "level": 1,
+    "xp": 0,
+    "level_up_pending": false,
+    "next_level_xp_discount": 0.0,
+    "proficiency_bonus": 2,
+    "attributes": {
+      "oration": 14,
+      "intellect": 18,
+      "resolve": 17,
+      "presence": 13,
+      "cunning": 14,
+      "physique": 10
+    },
+    "skills": {
+      "court_rhetoric": {"attribute": "oration", "tier": 1},
+      "sermon_and_preaching": {"attribute": "oration", "tier": 1},
+      "rallying_the_host": {"attribute": "oration", "tier": 1},
+      "blustering_threats": {"attribute": "oration", "tier": 0},
+
+      "statecraft_and_law": {"attribute": "intellect", "tier": 2},
+      "chronicle_and_scripture": {"attribute": "intellect", "tier": 2},
+      "siegecraft_and_engineering": {"attribute": "intellect", "tier": 0},
+      "terrain_and_logistics": {"attribute": "intellect", "tier": 1},
+      "tongues_of_the_realm": {"attribute": "intellect", "tier": 0},
+
+      "battle_nerve": {"attribute": "resolve", "tier": 1},
+      "penance_and_fasting": {"attribute": "resolve", "tier": 1},
+      "unyielding_oath": {"attribute": "resolve", "tier": 2},
+
+      "courtly_grace": {"attribute": "presence", "tier": 1},
+      "chivalrous_bearing": {"attribute": "presence", "tier": 0},
+      "kinship_ties": {"attribute": "presence", "tier": 1},
+      "wooing_and_alliance": {"attribute": "presence", "tier": 0},
+
+      "intrigue_and_plot": {"attribute": "cunning", "tier": 0},
+      "disguise_and_subterfuge": {"attribute": "cunning", "tier": 0},
+      "reading_intentions": {"attribute": "cunning", "tier": 1},
+      "spycraft": {"attribute": "cunning", "tier": 0},
+
+      "horsemanship": {"attribute": "physique", "tier": 1},
+      "arms_and_armor": {"attribute": "physique", "tier": 0},
+      "wilderness_endurance": {"attribute": "physique", "tier": 0}
+    },
+    "feats": [
+      {
+        "id": "unyielding_faith",
+        "name": "Unyielding Faith",
+        "description": "A deep, unshakeable faith (or ideology) that steadies this character under pressure others would break under."
+      }
+    ],
+    "liabilities": [
+      {
+        "id": "chronic_affliction",
+        "name": "Chronic Affliction",
+        "description": "A recurring illness or old wound that flares at the worst moments. The GM should periodically impose a real cost - a missed campaign season, a compromised presence at a crucial court moment - grounded in this specific ailment, not a generic 'you feel unwell.'"
+      },
+      {
+        "id": "overmortgaged_demesne",
+        "name": "Overmortgaged Demesne",
+        "description": "Lands and levies are pledged further than is wise. The GM should periodically narrate treasury or vassal-loyalty quietly slipping without a check ever being called for it."
+      }
+    ],
+    "flags": {
+      "in_exile": false,
+      "married_to_ealhswith": true,
+      "recently_crowned": false,
+      "guthrum_at_large": true
+    },
+    "recent_check_usage": {"attributes": [], "skills": []}
+  },
+  "relationships": {
+    "ealhswith": {"trust": 5, "note": "Wife and Queen - closest confidante."},
+    "ceolwulf_ii": {"trust": -1, "note": "King of Mercia in name, widely seen (fairly or not) as ruling at the Vikings' sufferance."},
+    "odda_of_devon": {"trust": 3, "note": "Ealdorman of Devon - steady, loyal, capable in the field."},
+    "wulfhere_of_wiltshire": {"trust": 0, "note": "Ealdorman of Wiltshire - correct for now, but his oath has not yet truly been tested."},
+    "waerferth": {"trust": 2, "note": "A learned churchman whose favor matters for church_favor and the scholarly reputation of the court."}
+  },
+  "enmity": {
+    "guthrum": {"pips": 2, "note": "Leader of the Great Army now camped in the West - the active, immediate threat."},
+    "halfdan_ragnarsson": {"pips": 1, "note": "Holds the North; not currently in Wessex, but his shadow is long."}
+  },
+  "resources": {
+    "witan_authority": 62,
+    "popular_support": 55,
+    "church_favor": 68,
+    "military_readiness": 35,
+    "treasury": 40,
+    "foreign_standing": 45,
+    "saxon_unity": 30,
+    "hall_loyalty": 70,
+    "personal_safety": 48
+  },
+  "commitments": {},
+  "canon_events": {
+    "wareham_exeter_taken": {"status": "fired", "type": "locked"},
+    "guthrum_slips_the_fleet": {"status": "fired", "type": "locked"},
+    "athelney_retreat": {"status": "pending", "type": "contingent"},
+    "battle_of_edington": {"status": "pending", "type": "contingent"},
+    "treaty_of_wedmore": {"status": "pending", "type": "contingent"},
+    "guthrum_baptized_as_aethelstan": {"status": "pending", "type": "contingent"},
+    "burh_system_established": {"status": "pending", "type": "contingent"},
+    "alfred_and_guthrum_treaty_lines_drawn": {"status": "pending", "type": "contingent"}
+  },
+  "divergence_score": 0,
+  "divergence_log": [],
+  "campaign_log_summary": []
+}

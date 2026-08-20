@@ -1,0 +1,30 @@
+{
+  "_note": "Reference/documentation copy of the character portion of new_campaign_state.json (the file engine.py actually loads for a fresh game). Keep these in sync if you tune starting values.",
+  "name": "Gaius Julius Caesar",
+  "role": "Consul of Rome",
+  "system": "apollo",
+  "level": 1,
+  "attributes": {
+    "oration": 16,
+    "intellect": 18,
+    "resolve": 15,
+    "presence": 17,
+    "cunning": 17,
+    "physique": 13
+  },
+  "attribute_notes": {
+    "oration": "A genuinely strong public speaker, though not yet in Cicero's class - his real gift with a crowd shows more in Presence.",
+    "intellect": "Sharp, strategic, and already a serious political operator by 59 BCE, well before the Commentaries make it famous in writing.",
+    "resolve": "Solid but not yet the legendary nerve of the Gallic and civil war years - this is a level-1 sheet, and Gaul hasn't happened yet.",
+    "presence": "His real weapon - the popularis touch that makes popular_support so high even as senate_standing lags.",
+    "cunning": "Extraordinary political maneuvering, embodied in the Triumvirate itself.",
+    "physique": "Fit and a capable rider/campaigner, but proven military genius is still ahead of him - Hispania was real, Gaul is the growth arc."
+  },
+  "starting_skill_highlights": {
+    "expertise": ["contio_speechmaking", "popularis_appeal", "political_intrigue"],
+    "untrained_of_note": ["swordsmanship", "horsemanship_and_campaigning (real but unrefined pre-Gaul)", "philosophy_and_rhetoric_theory (Cicero's specialty, not his)"]
+  },
+  "starting_liabilities": ["Overweening Ambition", "Crushing Debt"],
+  "starting_feats": ["Dignitas Personified"],
+  "note_on_growth": "Starts at the height of the First Triumvirate's power but before Gaul, before civil war, before the Rubicon - the growth arc is less 'become important' (he already is) and more 'convert this fragile political position into an unshakeable one,' with military_glory and treasury the resources most obviously set up to move if the campaign follows Caesar toward Gaul."
+}

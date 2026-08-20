@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "senate_standing": {"range": [0, 100], "start": 40, "description": "Standing with the Senate proper - badly strained this year by consular obstruction and optimate hostility."},
+    "popular_support": {"range": [0, 100], "start": 78, "description": "Standing with the plebs and the tribal assembly - genuinely high; this is where real power is actually being exercised in 59 BCE."},
+    "military_glory": {"range": [0, 100], "start": 45, "description": "Dignitas earned through proven command - real (Hispania) but modest next to what a Gallic campaign could build."},
+    "triumvirate_trust": {"range": [0, 100], "start": 60, "description": "Trust and leverage within the Caesar-Pompey-Crassus alliance specifically - unique to this exact political moment and load-bearing for almost everything else."},
+    "patrician_network": {"range": [0, 100], "start": 50, "description": "Standing among the old patrician and senatorial families, independent of popular support."},
+    "treasury": {"range": [0, 100], "start": 15, "description": "Personal wealth and liquidity - deliberately low; Caesar's debts before Gaul were legendary."},
+    "religious_standing": {"range": [0, 100], "start": 70, "description": "Standing as Pontifex Maximus (held since 63 BCE) and general religious authority - a real lever, not just ceremony."},
+    "foreign_reputation": {"range": [0, 100], "start": 42, "description": "Reputation with foreign client-kings, provincials, and powers beyond Rome."},
+    "personal_safety": {"range": [0, 100], "start": 55, "description": "Physical and legal safety from prosecution, assassination, or exile - Roman political life carries real personal risk."}
+  },
+  "per_check_max_delta": 10,
+  "notes": "Starting values reflect Caesar's first consulship (59 BCE, with Bibulus as his obstructionist colleague), the Vatinian law's grant of Gaul on the horizon, the First Triumvirate at its most powerful and most fragile, and debts that make the coming Gallic command as much a financial necessity as a military opportunity."
+}

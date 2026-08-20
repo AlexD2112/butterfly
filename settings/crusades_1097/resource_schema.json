@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "crusader_leaders_regard": {"range": [0, 100], "start": 48, "description": "Standing among the other crusade princes (Godfrey, Raymond, Robert of Normandy, and others) - a council of rivals as much as allies."},
+    "byzantine_relations": {"range": [0, 100], "start": 40, "description": "Relations with Emperor Alexios I Komnenos - fraught from the start, and central to almost everything the expedition does logistically."},
+    "army_morale": {"range": [0, 100], "start": 62, "description": "Morale and cohesion of your own contingent specifically."},
+    "church_favor": {"range": [0, 100], "start": 65, "description": "Standing with the Church and the papal legate's authority over the expedition."},
+    "popular_support": {"range": [0, 100], "start": 50, "description": "Standing with the rank-and-file pilgrims and soldiers of the wider host, beyond your own men."},
+    "treasury": {"range": [0, 100], "start": 35, "description": "Coin and supply on hand - a real, constant constraint on a campaign this far from home."},
+    "territorial_ambition": {"range": [0, 100], "start": 10, "description": "Concrete progress toward carving out a personal territorial foothold in the East - deliberately low to start; this is the resource the Antioch arc is built to move."},
+    "foreign_reputation": {"range": [0, 100], "start": 30, "description": "Reputation and diplomatic standing with regional Muslim powers (Seljuk, Fatimid, and local emirates) - relevant to negotiation as much as war."},
+    "personal_safety": {"range": [0, 100], "start": 55, "description": "Physical safety on campaign - sieges, disease, and ambush are all real threats this far from home."}
+  },
+  "per_check_max_delta": 10,
+  "notes": "Starting values reflect June 1097: Nicaea has just fallen to the crusaders (and been handed to Alexios rather than sacked, a real point of crusader resentment), the army is marching into Anatolia, and the siege of Antioch - the campaign's central Bohemond-flavored arc - is still ahead."
+}

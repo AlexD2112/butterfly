@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Butterfly: AI-Narrated Historical RPGs</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f26; --panel-2: #232732; --border: #333844;
+    --text: #e8e6df; --muted: #9099a8; --accent: #b5482f; --accent-2: #d9c07a;
+    --ok: #6fa36f; --bad: #b5482f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: var(--bg); color: var(--text); }
+
+  /* ---------- start-menu screens ---------- */
+  .menu-screen { display: none; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 24px; text-align: center; }
+  .menu-screen.active { display: flex; }
+  .menu-screen .eyebrow { font-family: sans-serif; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px; }
+  .menu-screen h1 { font-size: 26px; font-weight: normal; color: var(--accent-2); margin: 0 0 8px; }
+  .menu-screen .subtitle { font-family: sans-serif; font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+  .menu-options { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 480px; }
+  .menu-option { display: block; width: 100%; text-align: left; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; font-family: sans-serif;
+    color: var(--text); cursor: pointer; transition: border-color .15s; }
+  .menu-option:hover:not(:disabled) { border-color: var(--accent-2); }
+  .menu-option .opt-title { font-size: 14.5px; font-weight: bold; }
+  .menu-option .opt-desc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+  .menu-option:disabled { opacity: 0.45; cursor: not-allowed; }
+  .menu-option:disabled .opt-desc.coming-later { color: var(--accent-2); font-style: italic; }
+  .menu-back { align-self: flex-start; margin-bottom: 18px; background: none; border: none; color: var(--muted);
+    font-family: sans-serif; font-size: 12.5px; cursor: pointer; }
+  .menu-back:hover { color: var(--accent-2); }
+  .menu-back-row { width: 100%; max-width: 480px; display: flex; justify-content: space-between; align-items: center; }
+  .user-chip { font-family: sans-serif; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .user-chip img { width: 20px; height: 20px; border-radius: 50%; }
+  .discord-btn { background: #5865F2; color: #fff; border: none; border-radius: 4px; padding: 8px 14px;
+    font-family: sans-serif; font-size: 12.5px; cursor: pointer; margin-top: 10px; }
+  .discord-btn:hover { opacity: 0.9; }
+
+  /* ---------- character creation ---------- */
+  .creation-wrap { width: 100%; max-width: 640px; text-align: left; font-family: sans-serif; }
+  .creation-section { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 14px; margin-bottom: 14px; }
+  .creation-section h3 { margin: 0 0 8px; font-size: 12.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-2); }
+  .field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; font-size: 13px; }
+  .field-row input[type=text] { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 8px; font-family: sans-serif; }
+  .field-row select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }
+  .skill-group-creation { margin-bottom: 8px; }
+  .skill-group-creation .sg-title { font-size: 11px; text-transform: uppercase; color: var(--muted); margin: 8px 0 2px; }
+  .skill-tier-btns { display: flex; gap: 4px; }
+  .skill-tier-btns button { padding: 3px 8px; font-size: 11px; border-radius: 3px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--muted); cursor: pointer; }
+  .skill-tier-btns button.active { background: var(--accent-2); color: #1c1f26; border-color: var(--accent-2); }
+  .budget-line { font-size: 12.5px; color: var(--accent-2); margin: 8px 0; }
+  .budget-line.over { color: var(--bad); }
+  .radio-card, .check-card { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid var(--border);
+    border-radius: 4px; margin-bottom: 6px; cursor: pointer; }
+  .radio-card:hover, .check-card:hover { border-color: var(--accent-2); }
+  .radio-card .rc-title, .check-card .cc-title { font-weight: bold; font-size: 13px; }
+  .radio-card .rc-desc, .check-card .cc-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .creation-error { color: var(--bad); font-size: 12.5px; margin: 8px 0; white-space: pre-wrap; }
+  .submit-btn { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 10px 20px;
+    font-family: sans-serif; font-size: 14px; cursor: pointer; width: 100%; }
+  .submit-btn:hover { opacity: 0.9; }
+  .char-list-item { display: flex; justify-content: space-between; align-items: center; }
+  .char-list-item .cli-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ---------- game app ---------- */
+  #app { display: none; grid-template-columns: 1fr 320px; grid-template-rows: auto 1fr auto; height: 100vh; }
+  #app.active { display: grid; }
+  header { grid-column: 1 / 3; display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 16px; margin: 0; font-weight: normal; letter-spacing: 0.5px; color: var(--accent-2); }
+  header .controls { display: flex; gap: 10px; align-items: center; font-family: sans-serif; font-size: 13px; }
+  select, button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 10px; font-family: sans-serif; font-size: 13px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent-2); }
+  #log { overflow-y: auto; padding: 20px 24px; line-height: 1.55; }
+  .turn { margin-bottom: 22px; }
+  .turn.user { color: var(--accent-2); font-family: sans-serif; font-size: 13px; margin-bottom: 6px; }
+  .turn.narration { font-size: 16px; white-space: pre-wrap; }
+  .mechanics { margin-top: 8px; font-family: 'Courier New', monospace; font-size: 12px; color: var(--muted); }
+  .mechanics summary { cursor: pointer; }
+  .mechanics .line { padding: 3px 0 3px 14px; border-left: 2px solid var(--border); margin-top: 4px; }
+  .mechanics .critical-success, .mechanics .success { color: var(--ok); }
+  .mechanics .critical-failure, .mechanics .failure { color: var(--bad); }
+  .mechanics .clamped { color: var(--accent-2); }
+  #sidebar { grid-row: 2 / 4; background: var(--panel); border-left: 1px solid var(--border);
+    padding: 16px; overflow-y: auto; font-family: sans-serif; font-size: 12.5px; }
+  #sidebar h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-2);
+    border-bottom: 1px solid var(--border); padding-bottom: 4px; margin: 18px 0 8px; }
+  #sidebar h2:first-child { margin-top: 0; }
+  .attr-row, .res-row, .rel-row, .skill-row, .enmity-row { display: flex; justify-content: space-between; margin: 4px 0; }
+  .bar-wrap { background: var(--panel-2); border-radius: 3px; height: 6px; margin-top: 2px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent-2); }
+  .canon-event { display: flex; justify-content: space-between; padding: 2px 0; }
+  .canon-event.fired { color: var(--ok); }
+  .canon-event.pending { color: var(--muted); }
+  .level-line { font-size: 13px; margin-bottom: 4px; }
+  .xp-bar-wrap { background: var(--panel-2); border-radius: 3px; height: 8px; margin: 4px 0 2px; overflow: hidden; }
+  .xp-bar-fill { height: 100%; background: var(--ok); }
+  .level-up-banner { background: var(--accent); color: #fff; border-radius: 4px; padding: 6px 8px;
+    font-size: 11.5px; margin: 6px 0; text-align: center; }
+  .skill-group { margin-bottom: 6px; }
+  .skill-group-title { font-size: 11px; text-transform: uppercase; color: var(--muted); margin: 6px 0 2px; }
+  .skill-row .tier-untrained { color: var(--muted); }
+  .skill-row .tier-proficiency { color: var(--text); }
+  .skill-row .tier-expertise { color: var(--accent-2); font-weight: bold; }
+  .card-list .card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 6px 8px; margin: 4px 0; }
+  .card-list .card .card-title { font-weight: bold; font-size: 12px; }
+  .card-list .card .card-desc { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .liability .card-title { color: var(--bad); }
+  .enmity-row .pips { letter-spacing: 1px; }
+  .enmity-row.pips-0 .pips { color: var(--muted); }
+  .enmity-row.pips-1 .pips { color: var(--accent-2); }
+  .enmity-row.pips-2, .enmity-row.pips-3 { color: var(--bad); }
+  .enmity-row.pips-2 .pips, .enmity-row.pips-3 .pips { color: var(--bad); }
+  .commitment-status { font-size: 10.5px; text-transform: uppercase; color: var(--muted); }
+  .commitment-status.active { color: var(--accent-2); }
+  .commitment-status.fulfilled { color: var(--ok); }
+  .commitment-status.broken { color: var(--bad); }
+  .divergence-entry { font-size: 11.5px; color: var(--muted); padding: 3px 0; border-bottom: 1px dotted var(--border); }
+  #inputbar { grid-column: 1 / 2; display: flex; gap: 8px; padding: 14px 16px; background: var(--panel);
+    border-top: 1px solid var(--border); }
+  #inputbox { flex: 1; resize: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px; font-family: sans-serif; font-size: 14px; height: 44px; }
+  #status { font-family: sans-serif; font-size: 12px; color: var(--muted); padding: 4px 16px; }
+</style>
+</head>
+<body>
+
+<!-- Screen 1: Start Menu -->
+<div class="menu-screen active" id="screen-start">
+  <div class="eyebrow">Butterfly</div>
+  <h1>AI-Narrated Historical RPGs</h1>
+  <div class="subtitle">Choose how you want to begin.</div>
+  <div id="user-status" class="user-chip"></div>
+  <div class="menu-options" style="margin-top:18px;">
+    <button class="menu-option" id="opt-preset">
+      <div class="opt-title">Preset</div>
+      <div class="opt-desc">Choose a setting, then a ready-made or custom character.</div>
+    </button>
+    <button class="menu-option" id="opt-custom" disabled>
+      <div class="opt-title">Custom</div>
+      <div class="opt-desc coming-later">Build your own setting and world — will be added later.</div>
+    </button>
+  </div>
+</div>
+
+<!-- Screen 2: Setting selection -->
+<div class="menu-screen" id="screen-setting">
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-start">&larr; Back</button></div>
+  <div class="eyebrow">Preset</div>
+  <h1>Choose a Setting</h1>
+  <div class="subtitle">Where and when do you want to play?</div>
+  <div class="menu-options" id="setting-options"></div>
+</div>
+
+<!-- Screen 3: Gameplay mode selection -->
+<div class="menu-screen" id="screen-mode">
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-setting">&larr; Back</button></div>
+  <div class="eyebrow" id="mode-eyebrow">Setting chosen</div>
+  <h1>Choose a Gameplay Mode</h1>
+  <div class="subtitle">How much mechanical structure do you want under the narration?</div>
+  <div class="menu-options">
+    <button class="menu-option" id="mode-freeform" disabled>
+      <div class="opt-title">Freeform AI</div>
+      <div class="opt-desc coming-later">The AI narrates and resolves everything on its own — no dice, no attributes. Coming later.</div>
+    </button>
+    <button class="menu-option" id="mode-attributes" disabled>
+      <div class="opt-title">Attributes &amp; Feats</div>
+      <div class="opt-desc coming-later">A lighter middle ground: attribute checks without the full rules/canon system. Coming later.</div>
+    </button>
+    <button class="menu-option" id="mode-full">
+      <div class="opt-title">Full System</div>
+      <div class="opt-desc">The complete rules engine: dice checks, validated state changes, feats/liabilities, and a tracked canon timeline.</div>
+    </button>
+  </div>
+</div>
+
+<!-- Screen 4: Character selection -->
+<div class="menu-screen" id="screen-character">
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-mode">&larr; Back</button></div>
+  <div class="eyebrow" id="character-eyebrow">Full System</div>
+  <h1>Choose a Character</h1>
+  <div class="subtitle">Play the setting's signature character, resume one of your own, or build someone new.</div>
+  <div class="menu-options" id="character-options"></div>
+</div>
+
+<!-- Screen 5: Custom character creation -->
+<div class="menu-screen" id="screen-create-custom">
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-character">&larr; Back</button></div>
+  <div class="eyebrow">Custom Character</div>
+  <h1>Build Your Character</h1>
+  <div class="creation-wrap" id="creation-form"></div>
+</div>
+
+<!-- Screen 6: the game itself -->
+<div id="app">
+  <header>
+    <h1 id="game-header">Butterfly</h1>
+    <div class="controls">
+      <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
+      <label for="model-select">Model:</label>
+      <select id="model-select"></select>
+    </div>
+  </header>
+  <div id="log"></div>
+  <aside id="sidebar"></aside>
+  <div id="inputbar">
+    <textarea id="inputbox" placeholder="What does your character do or say?"></textarea>
+    <button id="send-btn">Send</button>
+  </div>
+</div>
+<div id="status"></div>
+
+<script>
+// ==================== global state ====================
+let CURRENT_USER = null;
+let SETTINGS = [];
+let SELECTED_SETTING = null;
+let CREATION_SCHEMA = null;
+let CREATION_SKILL_TIERS = {};
+let CURRENT_CHARACTER_ID = null;
+
+function showScreen(id) {
+  document.querySelectorAll('.menu-screen').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+document.querySelectorAll('.menu-back').forEach(btn => {
+  btn.addEventListener('click', () => showScreen(btn.dataset.back));
+});
+
+// ==================== screen 1: start / login ====================
+async function loadMe() {
+  const res = await fetch('/api/me');
+  CURRENT_USER = await res.json();
+  const el = document.getElementById('user-status');
+  if (CURRENT_USER.is_local) {
+    let html = `Playing as a local profile on this browser.`;
+    if (CURRENT_USER.discord_login_available) {
+      html += `<br><button class="discord-btn" id="discord-login-btn">Login with Discord</button>`;
+    }
+    el.innerHTML = html;
+  } else {
+    const avatar = CURRENT_USER.avatar_url ? `<img src="${CURRENT_USER.avatar_url}">` : '';
+    el.innerHTML = `${avatar}<span>Logged in as ${escapeHtml(CURRENT_USER.username)}</span>
+      <button id="logout-btn" style="margin-left:8px;">Log out</button>`;
+  }
+  const loginBtn = document.getElementById('discord-login-btn');
+  if (loginBtn) loginBtn.addEventListener('click', () => { window.location.href = '/auth/discord/login'; });
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) logoutBtn.addEventListener('click', async () => {
+    await fetch('/auth/logout', { method: 'POST' });
+    loadMe();
+  });
+}
+
+document.getElementById('opt-preset').addEventListener('click', async () => {
+  if (SETTINGS.length === 0) await loadSettings();
+  showScreen('screen-setting');
+});
+
+async function loadSettings() {
+  const res = await fetch('/api/settings');
+  const data = await res.json();
+  SETTINGS = data.settings;
+  document.getElementById('setting-options').innerHTML = SETTINGS.map(s => `
+    <button class="menu-option" data-setting="${s.key}">
+      <div class="opt-title">${escapeHtml(s.label)}</div>
+      <div class="opt-desc">${escapeHtml(s.blurb)}<br><em>${escapeHtml(s.system_label)}</em></div>
+    </button>
+  `).join('');
+  document.querySelectorAll('#setting-options .menu-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      SELECTED_SETTING = SETTINGS.find(s => s.key === btn.dataset.setting);
+      document.getElementById('mode-eyebrow').textContent = SELECTED_SETTING.label;
+      showScreen('screen-mode');
+    });
+  });
+}
+
+document.getElementById('mode-full').addEventListener('click', async () => {
+  document.getElementById('character-eyebrow').textContent = `${SELECTED_SETTING.label} — Full System`;
+  await loadCharacterScreen();
+  showScreen('screen-character');
+});
+
+// ==================== screen 4: character select ====================
+async function loadCharacterScreen() {
+  const res = await fetch(`/api/characters/${SELECTED_SETTING.key}`);
+  const data = await res.json();
+  const existing = data.characters;
+  const premade = existing.find(c => c.is_premade);
+  const customs = existing.filter(c => !c.is_premade);
+
+  let html = '';
+  if (premade) {
+    html += `<button class="menu-option" data-resume="${premade.id}">
+      <div class="opt-title">Continue as ${escapeHtml(premade.name)}</div>
+      <div class="opt-desc char-list-item"><span>The setting's signature character</span></div>
+    </button>`;
+  } else {
+    html += `<button class="menu-option" data-premade="1">
+      <div class="opt-title">Play as ${escapeHtml(data.premade_name)}</div>
+      <div class="opt-desc">The setting's signature character, ready to go.</div>
+    </button>`;
+  }
+  customs.forEach(c => {
+    html += `<button class="menu-option" data-resume="${c.id}">
+      <div class="opt-title">Continue as ${escapeHtml(c.name)}</div>
+      <div class="opt-desc">${escapeHtml(c.role || 'Custom character')}</div>
+    </button>`;
+  });
+  html += `<button class="menu-option" id="create-custom-btn">
+    <div class="opt-title">+ Create Custom Character</div>
+    <div class="opt-desc">Build a new character from scratch on this setting's system.</div>
+  </button>`;
+  document.getElementById('character-options').innerHTML = html;
+
+  document.querySelectorAll('#character-options [data-resume]').forEach(btn => {
+    btn.addEventListener('click', () => launchGame(parseInt(btn.dataset.resume, 10)));
+  });
+  const premadeBtn = document.querySelector('#character-options [data-premade]');
+  if (premadeBtn) premadeBtn.addEventListener('click', createPremadeAndLaunch);
+  document.getElementById('create-custom-btn').addEventListener('click', openCreationForm);
+}
+
+async function createPremadeAndLaunch() {
+  const res = await fetch('/api/characters', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'premade', setting_key: SELECTED_SETTING.key }),
+  });
+  const data = await res.json();
+  launchGame(data.character_id, true);
+}
+
+// ==================== screen 5: custom character creation ====================
+async function openCreationForm() {
+  const res = await fetch(`/api/character_creation_schema/${SELECTED_SETTING.system}`);
+  CREATION_SCHEMA = await res.json();
+  CREATION_SKILL_TIERS = {};
+  const s = CREATION_SCHEMA;
+
+  const attrSelects = s.attributes.map(attr => `
+    <div class="field-row"><label>${attr}</label>
+      <select data-attr="${attr}">${s.standard_array.map(v => `<option value="${v}">${v}</option>`).join('')}</select>
+    </div>
+  `).join('');
+
+  const skillGroups = Object.entries(s.skills).map(([attr, skills]) => `
+    <div class="skill-group-creation">
+      <div class="sg-title">${attr}</div>
+      ${skills.map(sk => `
+        <div class="field-row">
+          <span>${sk.replace(/_/g, ' ')}</span>
+          <div class="skill-tier-btns" data-skill="${sk}">
+            <button type="button" data-tier="0" class="active">Untrained</button>
+            <button type="button" data-tier="1">Proficiency</button>
+            <button type="button" data-tier="2">Expertise</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+
+  const feats = Object.entries(s.starting_feats).map(([id, f]) => `
+    <label class="radio-card">
+      <input type="radio" name="feat" value="${id}" style="margin-top:3px;">
+      <div><div class="rc-title">${escapeHtml(f.name)}</div><div class="rc-desc">${escapeHtml(f.description)}</div></div>
+    </label>
+  `).join('');
+
+  const liabilities = Object.entries(s.liabilities).map(([id, l]) => `
+    <label class="check-card">
+      <input type="checkbox" name="liability" value="${id}" style="margin-top:3px;">
+      <div><div class="cc-title">${escapeHtml(l.name)}</div><div class="cc-desc">${escapeHtml(l.description)}</div></div>
+    </label>
+  `).join('');
+
+  document.getElementById('creation-form').innerHTML = `
+    <div class="creation-section">
+      <h3>Identity</h3>
+      <div class="field-row"><label>Name</label><input type="text" id="cc-name" placeholder="Character name"></div>
+      <div class="field-row"><label>Role</label><input type="text" id="cc-role" placeholder="e.g. Wandering merchant"></div>
+    </div>
+    <div class="creation-section">
+      <h3>Attributes — assign the standard array ${JSON.stringify(s.standard_array)} once each</h3>
+      ${attrSelects}
+    </div>
+    <div class="creation-section">
+      <h3>Skills — ${s.skill_point_budget}-point budget (Proficiency = 1pt, Expertise = 2pts, max ${s.max_starting_expertise_skills} at Expertise)</h3>
+      <div class="budget-line" id="cc-budget">0 / ${s.skill_point_budget} points spent</div>
+      ${skillGroups}
+    </div>
+    <div class="creation-section">
+      <h3>Starting Feat — choose one</h3>
+      ${feats}
+    </div>
+    <div class="creation-section">
+      <h3>Starting Liabilities — optional, up to 2</h3>
+      ${liabilities}
+    </div>
+    <div class="creation-error" id="cc-error"></div>
+    <button class="submit-btn" id="cc-submit">Create Character</button>
+  `;
+
+  document.querySelectorAll('.skill-tier-btns').forEach(group => {
+    const skill = group.dataset.skill;
+    group.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        CREATION_SKILL_TIERS[skill] = parseInt(btn.dataset.tier, 10);
+        updateBudgetLine();
+      });
+    });
+  });
+  document.getElementById('cc-submit').addEventListener('click', submitCreation);
+  updateBudgetLine();
+  showScreen('screen-create-custom');
+}
+
+function updateBudgetLine() {
+  const spent = Object.values(CREATION_SKILL_TIERS).reduce((a, b) => a + b, 0);
+  const el = document.getElementById('cc-budget');
+  el.textContent = `${spent} / ${CREATION_SCHEMA.skill_point_budget} points spent`;
+  el.className = spent > CREATION_SCHEMA.skill_point_budget ? 'budget-line over' : 'budget-line';
+}
+
+async function submitCreation() {
+  const name = document.getElementById('cc-name').value.trim();
+  const role = document.getElementById('cc-role').value.trim();
+  const attribute_assignment = {};
+  document.querySelectorAll('#creation-form [data-attr]').forEach(sel => {
+    attribute_assignment[sel.dataset.attr] = parseInt(sel.value, 10);
+  });
+  const feat_id = (document.querySelector('input[name=feat]:checked') || {}).value;
+  const liability_ids = Array.from(document.querySelectorAll('input[name=liability]:checked')).map(el => el.value);
+
+  const errEl = document.getElementById('cc-error');
+  errEl.textContent = '';
+  if (!name) { errEl.textContent = 'A character name is required.'; return; }
+  if (!feat_id) { errEl.textContent = 'Choose a starting feat.'; return; }
+
+  const res = await fetch('/api/characters', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'custom', setting_key: SELECTED_SETTING.key, name, role,
+      attribute_assignment, skill_tiers: CREATION_SKILL_TIERS, feat_id, liability_ids,
+    }),
+  });
+  const data = await res.json();
+  if (data.error) {
+    errEl.textContent = data.error + (data.details ? '\n' + data.details.join('\n') : '');
+    return;
+  }
+  launchGame(data.character_id, true);
+}
+
+// ==================== screen 6: the game ====================
+function launchGame(characterId, isNew) {
+  CURRENT_CHARACTER_ID = characterId;
+  document.querySelectorAll('.menu-screen').forEach(el => el.classList.remove('active'));
+  document.getElementById('app').classList.add('active');
+  document.getElementById('game-header').textContent =
+    SELECTED_SETTING ? `Butterfly — ${SELECTED_SETTING.label}` : 'Butterfly';
+  logEl.innerHTML = '';
+  loadModels();
+  loadCharacterState(isNew);
+}
+
+document.getElementById('menu-btn').addEventListener('click', () => {
+  document.getElementById('app').classList.remove('active');
+  CURRENT_CHARACTER_ID = null;
+  showScreen('screen-start');
+});
+
+// ---------------- game logic ----------------
+const logEl = document.getElementById('log');
+const sidebarEl = document.getElementById('sidebar');
+const modelSelect = document.getElementById('model-select');
+const inputBox = document.getElementById('inputbox');
+const sendBtn = document.getElementById('send-btn');
+const statusEl = document.getElementById('status');
+
+function setStatus(text) { statusEl.textContent = text; }
+function attrMod(score) { return Math.floor((score - 10) / 2); }
+function fmtMod(m) { return m >= 0 ? `+${m}` : `${m}`; }
+const TIER_LABELS = ['untrained', 'proficiency', 'expertise'];
+
+function renderSidebar(state) {
+  const c = state.character;
+  const pb = c.proficiency_bonus;
+
+  const xpNeeded = 100 + (c.level - 1) * 50;
+  const xpPct = Math.max(0, Math.min(100, Math.round(100 * c.xp / xpNeeded)));
+  const levelUpBanner = c.level_up_pending
+    ? `<div class="level-up-banner">Level-up available — choose skill / feat / attribute</div>` : '';
+
+  const attrRows = Object.entries(c.attributes)
+    .map(([k, v]) => `<div class="attr-row"><span>${k}</span><span>${v} (${fmtMod(attrMod(v))})</span></div>`)
+    .join('');
+
+  const skillsByAttr = {};
+  Object.entries(c.skills || {}).forEach(([name, s]) => {
+    (skillsByAttr[s.attribute] = skillsByAttr[s.attribute] || []).push([name, s]);
+  });
+  const skillGroups = Object.entries(c.attributes).map(([attr]) => {
+    const skills = skillsByAttr[attr] || [];
+    if (skills.length === 0) return '';
+    const rows = skills.map(([name, s]) => {
+      const total = attrMod(c.attributes[attr]) + (s.tier === 0 ? 0 : s.tier === 1 ? pb : pb * 2);
+      return `<div class="skill-row"><span>${name.replace(/_/g, ' ')}</span><span class="tier-${TIER_LABELS[s.tier]}">${fmtMod(total)} <em>(${TIER_LABELS[s.tier]})</em></span></div>`;
+    }).join('');
+    return `<div class="skill-group"><div class="skill-group-title">${attr}</div>${rows}</div>`;
+  }).join('');
+
+  const featCards = (c.feats || []).map(p =>
+    `<div class="card"><div class="card-title">${p.name}</div><div class="card-desc">${p.description || ''}</div></div>`
+  ).join('') || '<div class="card-desc">None yet.</div>';
+
+  const liabilityCards = (c.liabilities || []).map(l =>
+    `<div class="card liability"><div class="card-title">${l.name}</div><div class="card-desc">${l.description || ''}</div></div>`
+  ).join('') || '<div class="card-desc">None.</div>';
+
+  const relRows = Object.entries(state.relationships || {})
+    .map(([k, r]) => `<div class="rel-row"><span>${k.replace(/_/g, ' ')}</span><span>${r.trust > 0 ? '+' : ''}${r.trust}</span></div>`)
+    .join('');
+
+  const enmityRows = Object.entries(state.enmity || {})
+    .map(([k, e]) => `<div class="enmity-row pips-${e.pips}"><span>${k.replace(/_/g, ' ')}</span><span class="pips">${'●'.repeat(e.pips)}${'○'.repeat(3 - e.pips)}</span></div>`)
+    .join('') || '<div class="card-desc">No tracked rivals yet.</div>';
+
+  const resRows = Object.entries(state.resources || {})
+    .map(([k, v]) => `<div class="res-row"><span>${k.replace(/_/g, ' ')}</span><span>${pcLabel(v)} (${Math.round(v)})</span></div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div>`)
+    .join('');
+
+  const commitmentCards = Object.entries(state.commitments || {}).map(([id, cm]) =>
+    `<div class="card"><div class="card-title">${(cm.description || id)}</div><div class="commitment-status ${cm.status}">${cm.status}</div></div>`
+  ).join('') || '<div class="card-desc">None yet.</div>';
+
+  const canonRows = Object.entries(state.canon_events || {})
+    .map(([k, e]) => `<div class="canon-event ${e.status}"><span>${k.replace(/_/g, ' ')}</span><span>${e.status}</span></div>`)
+    .join('');
+
+  const divergenceEntries = (state.divergence_log || []).map(d =>
+    `<div class="divergence-entry">Turn ${d.turn}: ${d.note}</div>`
+  ).join('') || '<div class="card-desc">No divergence from history yet.</div>';
+
+  sidebarEl.innerHTML = `
+    <h2>Turn ${state.turn_number} &mdash; ${state.date}</h2>
+    <div class="level-line">${escapeHtml(c.name)} &middot; Level ${c.level} &middot; Proficiency ${fmtMod(pb)}</div>
+    <div class="xp-bar-wrap"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
+    <div class="card-desc">${c.xp} / ${xpNeeded} XP</div>
+    ${levelUpBanner}
+    <h2>Attributes</h2>${attrRows}
+    <h2>Skills</h2>${skillGroups}
+    <h2>Feats</h2><div class="card-list">${featCards}</div>
+    <h2>Liabilities</h2><div class="card-list">${liabilityCards}</div>
+    <h2>Relationships</h2>${relRows}
+    <h2>Enmity</h2>${enmityRows}
+    <h2>Resources</h2>${resRows}
+    <h2>Commitments</h2><div class="card-list">${commitmentCards}</div>
+    <h2>Canon Events</h2>${canonRows}
+    <h2>Divergence Log</h2>${divergenceEntries}
+  `;
+}
+
+function pcLabel(v) {
+  if (v >= 85) return 'Dominant';
+  if (v >= 70) return 'High';
+  if (v >= 55) return 'Rising/New';
+  if (v >= 35) return 'Moderate';
+  if (v >= 18) return 'Low';
+  return 'Suspect/Negative';
+}
+
+function degreeClass(degree) { return degree.replace(/_/g, '-'); }
+
+function renderMechanics(debugEvents) {
+  if (!debugEvents || debugEvents.length === 0) return '';
+  const lines = debugEvents.map(ev => {
+    if (ev.type === 'check') {
+      const skillPart = ev.skill ? ` / ${ev.skill} (${ev.tier})` : '';
+      return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}<br><span style="color:var(--muted)">${ev.description || ''}</span></div>`;
+    }
+    if (ev.type === 'state_update' || ev.type === 'level_up') {
+      const changeLines = (ev.changes || []).map(c => {
+        if (c.kind === 'resource') {
+          const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
+          return `${c.key}: ${c.before} (${c.before_label}) → ${c.after} (${c.after_label}) [requested ${c.requested_delta > 0 ? '+' : ''}${c.requested_delta}]${clampNote}`;
+        }
+        if (c.kind === 'relationship') {
+          const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
+          return `${c.key} trust: ${c.before} → ${c.after}${clampNote}`;
+        }
+        if (c.kind === 'enmity' || c.kind === 'enmity_auto') {
+          const cause = c.cause ? ` (${c.cause})` : '';
+          return `${c.key} enmity: ${c.before} → ${c.after} pips${cause}`;
+        }
+        if (c.kind === 'flag') return `flag ${c.key} = ${c.value}`;
+        if (c.kind === 'commitment') return `commitment "${c.key}" set: ${c.value.status}`;
+        if (c.kind === 'feat_gained') return `feat gained: ${c.name}`;
+        if (c.kind === 'feat_rejected') return `feat rejected (${c.id}): ${c.reason}`;
+        if (c.kind === 'liability_gained') return `liability gained: ${c.name}`;
+        if (c.kind === 'liability_removed') return `liability removed: ${c.id}`;
+        if (c.kind === 'liability_rejected') return `liability rejected (${c.id}): ${c.reason}`;
+        if (c.kind === 'xp') return `+${c.applied} XP${c.applied !== c.requested ? ` (requested ${c.requested}, clamped)` : ''}`;
+        if (c.kind === 'level_up') return `LEVEL UP → ${c.new_level}`;
+        if (c.kind === 'skill_upgrade') return `${c.skill}: ${c.before} → ${c.after}`;
+        if (c.kind === 'skill_upgrade_rejected') return `skill upgrade rejected (${c.skill}): ${c.reason}`;
+        if (c.kind === 'attribute_improvement') return `${c.attribute}: ${c.before} → ${c.after}`;
+        if (c.kind === 'reinforcement_bonus') return `reinforcement bonus: next level ${Math.round(c.discount * 100)}% cheaper`;
+        if (c.kind === 'level_up_rejected') return `level-up rejected: ${c.reason}`;
+        if (c.kind === 'canon_event') return `canon event fired: ${c.key}`;
+        if (c.kind === 'divergence') return `divergence logged: ${c.note}`;
+        if (c.kind === 'ignored_unknown_category') return `ignored unknown category: ${c.key}`;
+        return JSON.stringify(c);
+      }).join('<br>');
+      return `<div class="line">${ev.type === 'level_up' ? 'LEVEL-UP CHOICE' : 'STATE UPDATE'} — ${ev.reasoning || ''}<br>${changeLines}</div>`;
+    }
+    return '';
+  }).join('');
+  return `<details class="mechanics"><summary>Mechanics (${debugEvents.length})</summary>${lines}</details>`;
+}
+
+function appendTurn(userText, narration, debugEvents) {
+  const div = document.createElement('div');
+  div.className = 'turn';
+  div.innerHTML = (userText ? `<div class="user">&gt; ${escapeHtml(userText)}</div>` : '') +
+    `<div class="narration">${escapeHtml(narration)}</div>${renderMechanics(debugEvents)}`;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.innerText = s == null ? '' : s;
+  return d.innerHTML;
+}
+
+async function loadModels() {
+  const res = await fetch('/api/models');
+  const data = await res.json();
+  modelSelect.innerHTML = data.models.map(m =>
+    `<option value="${m.key}" ${!m.available ? 'disabled' : ''} ${m.key === data.default ? 'selected' : ''}>
+      ${m.label}${!m.available ? ' — missing API key' : ''}
+    </option>`
+  ).join('');
+}
+
+async function loadCharacterState(isNew) {
+  const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/state`);
+  const data = await res.json();
+  renderSidebar(data.state);
+  if (isNew) {
+    const openingRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/opening_scene`);
+    const openingData = await openingRes.json();
+    appendTurn(null, openingData.text, []);
+    setStatus('New campaign. Type your first action below.');
+  } else {
+    setStatus(`Resumed at turn ${data.state.turn_number}, ${data.state.date}.`);
+  }
+}
+
+async function sendTurn() {
+  const text = inputBox.value.trim();
+  if (!text || !CURRENT_CHARACTER_ID) return;
+  inputBox.value = '';
+  sendBtn.disabled = true;
+  setStatus('Thinking…');
+  try {
+    const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/turn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: text, model_key: modelSelect.value }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      appendTurn(text, `[Error: ${data.error}]`, []);
+      setStatus('Error — see message above.');
+    } else {
+      appendTurn(text, data.narration, data.debug_events);
+      renderSidebar(data.state);
+      setStatus('');
+    }
+  } catch (e) {
+    appendTurn(text, `[Request failed: ${e}]`, []);
+    setStatus('Request failed.');
+  }
+  sendBtn.disabled = false;
+  inputBox.focus();
+}
+
+sendBtn.addEventListener('click', sendTurn);
+inputBox.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTurn(); }
+});
+
+// ==================== boot ====================
+loadMe();
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('auth_error')) {
+  console.warn('Discord auth error:', urlParams.get('auth_error'));
+}
+</script>
+</body>
+</html>

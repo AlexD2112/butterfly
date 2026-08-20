@@ -1,0 +1,30 @@
+{
+  "_note": "Reference/documentation copy of the character portion of new_campaign_state.json (the file engine.py actually loads for a fresh game). Keep these in sync if you tune starting values.",
+  "name": "Lev Davidovich Trotsky (Leon Trotsky)",
+  "role": "Bolshevik Central Committee member; Chairman, Petrograd Soviet",
+  "system": "red_admiral",
+  "level": 1,
+  "attributes": {
+    "oration": 16,
+    "intellect": 20,
+    "resolve": 14,
+    "presence": 13,
+    "cunning": 10,
+    "physique": 12
+  },
+  "attribute_notes": {
+    "oration": "Already a renowned public speaker and polemicist well before 1917 - strong from the start.",
+    "intellect": "His clearest strength - a serious Marxist theorist and prolific writer.",
+    "resolve": "Solid but not yet tested by the scale of crisis 1917-1918 will bring.",
+    "presence": "Commands rooms more than he wins hearts one-on-one - see the low cultivating_allies skill tier.",
+    "cunning": "His weakest attribute by design - Trotsky operated mostly in the open, not through factional intrigue, which is exactly what makes the Arrogance liability and low Cunning skills bite in play.",
+    "physique": "Unremarkable but not a liability."
+  },
+  "starting_skill_highlights": {
+    "expertise": ["debate_and_public_argument", "revolutionary_theory", "written_propaganda"],
+    "untrained_of_note": ["military_strategic_planning (he has zero military background at campaign start - a deliberate growth arc if the player leans into founding the Red Army later, mirroring Command in the earlier, simpler system this one replaced)", "cultivating_allies", "all Cunning skills"]
+  },
+  "starting_liabilities": ["Arrogance", "Visible Target"],
+  "starting_feats": [],
+  "note_on_growth": "The Level 7 example sheet this system was drafted from (Oration 18, Intellect 22, Resolve 16, Presence 14, Cunning 12, Physique 12, five perks, Expertise in four Oration/Intellect skills) is a plausible late-campaign state reachable from these Level 1 numbers via a handful of Option C (attribute) and Option A (skill) level-up choices over roughly six level-ups - it is NOT the fresh-game starting point. See new_campaign_state.json for what an actual new game loads."
+}
