@@ -73,8 +73,13 @@ automatically.
 ## 6. Feats and liabilities
 
 Feats are permanent passive traits, one at a time, from the fixed `FEAT_CATALOG` only - no
-freeform invention. Liabilities are the negative mirror, from `LIABILITY_CATALOG`, typically taken
-at character creation or granted mid-campaign via `propose_state_update`'s `liabilities_gained` (by
+freeform invention. Most feats are GM-narrated only, but a select few (the ones whose effect maps
+cleanly onto a single check type) carry a **check bonus** enforced by the application in
+`roll_check` - e.g. Master of the Forum: +2 on Oration checks, applied automatically whenever the
+feat is on the character's sheet, not left to the GM to remember. Liabilities are the negative
+mirror, from `LIABILITY_CATALOG`, typically taken at character creation (each one taken also grants
++2 bonus starting skill points - see section 13 - so a liability is a real tradeoff, not a free
+downside) or granted mid-campaign via `propose_state_update`'s `liabilities_gained` (by
 `liability_id`, validated) and removable via `liabilities_removed`. A liability may carry an
 **automatic trigger** enforced by the application - e.g. Overweening Ambition: any failed
 Cunning/Presence check against a named rival adds +1 enmity pip, without the GM needing to remember

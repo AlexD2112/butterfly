@@ -33,11 +33,13 @@ SKILLS = {
 FEAT_CATALOG = {
     "silver_tongue": {
         "name": "Silver Tongue", "min_level": 1,
-        "description": "Words come easily and land hard. In debate or public address, the GM should let a clever turn of phrase win over an audience that a flatter delivery wouldn't have.",
+        "description": "Words come easily and land hard. In debate or public address, the GM should let a clever turn of phrase win over an audience that a flatter delivery wouldn't have. Mechanically: +2 on Oration checks.",
+        "check_bonus": {"on_attributes": ["oration"], "bonus": 2},
     },
     "iron_constitution": {
         "name": "Iron Constitution", "min_level": 1,
-        "description": "Exhaustion, illness, and privation take unusually long to catch up. Extended crisis or travel should cost this character less than it costs others.",
+        "description": "Exhaustion, illness, and privation take unusually long to catch up. Extended crisis or travel should cost this character less than it costs others. Mechanically: +2 on Physique checks.",
+        "check_bonus": {"on_attributes": ["physique"], "bonus": 2},
     },
     "man_of_the_people": {
         "name": "Man/Woman of the People", "min_level": 1,
@@ -125,7 +127,7 @@ TOOL_SPECS = core.build_tool_specs(FEAT_CATALOG)
 
 
 def roll_check(character, attribute, skill, dc, target_npc=None):
-    return core.roll_check(character, attribute, skill, dc, target_npc)
+    return core.roll_check(character, attribute, skill, dc, target_npc, FEAT_CATALOG)
 
 
 def apply_auto_liability_effects(state, check_result):

@@ -671,7 +671,8 @@ function renderMechanics(debugEvents) {
   const lines = debugEvents.map(ev => {
     if (ev.type === 'check') {
       const skillPart = ev.skill ? ` / ${ev.skill} (${ev.tier})` : '';
-      return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}<br><span style="color:var(--muted)">${ev.description || ''}</span></div>`;
+      const featPart = ev.feat_bonus ? ` [+${ev.feat_bonus} from ${escapeHtml(ev.feat_bonus_source || 'a feat')}]` : '';
+      return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}${featPart}<br><span style="color:var(--muted)">${ev.description || ''}</span></div>`;
     }
     if (ev.type === 'state_update' || ev.type === 'level_up') {
       const changeLines = (ev.changes || []).map(c => {

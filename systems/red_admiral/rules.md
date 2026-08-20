@@ -135,9 +135,17 @@ checks since the last level-up to determine this automatically - the GM doesn't 
 at character creation (a level-1-eligible feat only). Every feat in play comes from the fixed
 `FEAT_CATALOG` - there is no freeform "invent a perk" path anymore; this exists specifically so the
 system stays balanced as more characters and settings are built on it, rather than accumulating an
-ever-growing, unaudited pile of one-off abilities.
+ever-growing, unaudited pile of one-off abilities. Most feats are GM-narrated only ("the GM should
+let..."), but a select few - the ones whose effect maps cleanly onto a single check type, with no
+untracked context needed to know when it applies - carry a **check bonus** enforced directly by
+`roll_check`: e.g. Silver Tongue grants +2 on Oration checks, applied automatically whenever the
+feat is on the character's sheet. This mirrors liabilities' automatic-trigger mechanism below; most
+feats stay pure narrative on purpose (a "once or twice per major arc, call in a favor" feat isn't
+something a per-check bonus can represent honestly).
 
-**Liabilities** are the negative mirror, drawn from an equally fixed `LIABILITY_CATALOG`. Some are
+**Liabilities** are the negative mirror, drawn from an equally fixed `LIABILITY_CATALOG`. Taking a
+starting liability grants +2 bonus starting skill points (up to +4 for the maximum of 2 - see
+section 13), so it's a genuine tradeoff rather than a free narrative downside. Some liabilities are
 typically taken at character creation (an inherent character trait, not something "earned");
 others can be granted mid-campaign via `propose_state_update`'s `liabilities_gained` - but only by
 a known `liability_id`, validated the same way. Liabilities can also be *removed* by later

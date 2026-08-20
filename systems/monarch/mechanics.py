@@ -34,11 +34,13 @@ FEAT_CATALOG = {
     },
     "silver_tongued_courtier": {
         "name": "Silver-Tongued Courtier", "min_level": 1,
-        "description": "A gift for saying the right thing at court. The GM should let a well-turned compliment or veiled threat land harder than the words alone would justify.",
+        "description": "A gift for saying the right thing at court. The GM should let a well-turned compliment or veiled threat land harder than the words alone would justify. Mechanically: +2 on Oration checks.",
+        "check_bonus": {"on_attributes": ["oration"], "bonus": 2},
     },
     "unyielding_faith": {
         "name": "Unyielding Faith", "min_level": 1,
-        "description": "A deep, unshakeable faith (or ideology) that steadies this character under pressure others would break under.",
+        "description": "A deep, unshakeable faith (or ideology) that steadies this character under pressure others would break under. Mechanically: +2 on Resolve checks.",
+        "check_bonus": {"on_attributes": ["resolve"], "bonus": 2},
     },
     "master_strategist": {
         "name": "Master Strategist", "min_level": 5,
@@ -119,7 +121,7 @@ TOOL_SPECS = core.build_tool_specs(FEAT_CATALOG)
 
 
 def roll_check(character, attribute, skill, dc, target_npc=None):
-    return core.roll_check(character, attribute, skill, dc, target_npc)
+    return core.roll_check(character, attribute, skill, dc, target_npc, FEAT_CATALOG)
 
 
 def apply_auto_liability_effects(state, check_result):

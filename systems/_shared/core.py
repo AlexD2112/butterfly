@@ -211,7 +211,7 @@ def build_tool_specs(feat_catalog):
     ]
 
 
-def roll_check(character, attribute, skill, dc, target_npc=None):
+def roll_check(character, attribute, skill, dc, target_npc=None, feat_catalog=None):
     score = character["attributes"][attribute]
     mod = attribute_modifier(score)
     proficiency_bonus = proficiency_bonus_for_level(character["level"])
@@ -223,7 +223,26 @@ def roll_check(character, attribute, skill, dc, target_npc=None):
         tier_index = skill_entry["tier"]
         tier_name = TIER_NAMES[tier_index]
 
-    modifier = mod + tier_bonus(tier_index, proficiency_bonus)
+    # A feat's catalog entry may carry a "check_bonus": {"on_attributes": [...], "bonus": N} - a
+    # small, code-enforced circumstance bonus applied whenever the check's attribute matches. Only
+    # given to feats whose narrative already reads as "checks of this flavor go better" with a clean,
+    # unambiguous trigger (see FEAT_CATALOG comments) - most feats are deliberately left as pure GM
+    # narrative because their trigger isn't something roll_check's inputs can detect (a specific NPC's
+    # social class, "unfamiliar terrain", once-per-arc favors). This mirrors liabilities'
+    # auto_trigger mechanism (apply_auto_liability_effects) - feats needed the same kind of
+    # code-enforced weight, since "the app owns mechanical outcomes, not the model" is the whole
+    # premise of this engine, and a feat with zero verifiable effect doesn't hold up that premise.
+    feat_bonus = 0
+    feat_bonus_source = None
+    if feat_catalog:
+        for f in character.get("feats", []):
+            entry = feat_catalog.get(f.get("id"))
+            trigger = (entry or {}).get("check_bonus")
+            if trigger and attribute in trigger.get("on_attributes", []):
+                feat_bonus += trigger.get("bonus", 0)
+                feat_bonus_source = f.get("name")  # last match wins if more than one applies; fine at this scale
+
+    modifier = mod + tier_bonus(tier_index, proficiency_bonus) + feat_bonus
     roll = random.randint(1, 20)
     total = roll + modifier
 
@@ -251,6 +270,8 @@ def roll_check(character, attribute, skill, dc, target_npc=None):
         "attribute_score": score,
         "attribute_modifier": mod,
         "proficiency_bonus": proficiency_bonus,
+        "feat_bonus": feat_bonus,
+        "feat_bonus_source": feat_bonus_source,
         "modifier": modifier,
         "roll": roll,
         "total": total,

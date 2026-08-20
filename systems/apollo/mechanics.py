@@ -34,11 +34,13 @@ FEAT_CATALOG = {
     },
     "master_of_the_forum": {
         "name": "Master of the Forum", "min_level": 1,
-        "description": "A gift for the set-piece speech. The GM should let a well-built forensic or contio argument sway a crowd or jury that a flatter delivery wouldn't have moved.",
+        "description": "A gift for the set-piece speech. The GM should let a well-built forensic or contio argument sway a crowd or jury that a flatter delivery wouldn't have moved. Mechanically: +2 on Oration checks.",
+        "check_bonus": {"on_attributes": ["oration"], "bonus": 2},
     },
     "stoic_composure": {
         "name": "Stoic Composure", "min_level": 1,
-        "description": "Trained (or naturally gifted) at appearing unshaken. Should steady this character in crisis scenes that would visibly rattle most others.",
+        "description": "Trained (or naturally gifted) at appearing unshaken. Should steady this character in crisis scenes that would visibly rattle most others. Mechanically: +2 on Resolve checks.",
+        "check_bonus": {"on_attributes": ["resolve"], "bonus": 2},
     },
     "patron_of_many": {
         "name": "Patron of Many", "min_level": 5,
@@ -115,7 +117,7 @@ TOOL_SPECS = core.build_tool_specs(FEAT_CATALOG)
 
 
 def roll_check(character, attribute, skill, dc, target_npc=None):
-    return core.roll_check(character, attribute, skill, dc, target_npc)
+    return core.roll_check(character, attribute, skill, dc, target_npc, FEAT_CATALOG)
 
 
 def apply_auto_liability_effects(state, check_result):
