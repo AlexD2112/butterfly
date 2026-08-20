@@ -278,6 +278,24 @@ def api_character_opening_scene(character_id):
     return jsonify({"text": engine.load_text(row["setting_key"], "opening_scene.md")})
 
 
+@app.route("/api/character/<int:character_id>/council_mode", methods=["POST"])
+def api_character_council_mode(character_id):
+    # Council Mode is a per-character/per-campaign setting (stored in state, no schema migration
+    # needed) rather than per-account, since it changes cost/quality tradeoffs for one specific
+    # campaign, not the account as a whole - see NOTES.md for why per-campaign was chosen over
+    # per-account.
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    body = request.get_json(force=True)
+    enabled = bool(body.get("enabled"))
+    state = row["state"]
+    state["council_mode"] = enabled
+    db.save_character_state(character_id, user["id"], state)
+    return jsonify({"council_mode": enabled})
+
+
 @app.route("/api/character/<int:character_id>/turn", methods=["POST"])
 def api_character_turn(character_id):
     user = current_user()
@@ -347,6 +365,7 @@ def api_character_turn(character_id):
             narration, debug_events = engine.run_turn(
                 provider, model, state, row["setting_key"], row["system_key"], conversation, user_input,
                 usage_sink=usage_sink, budget_ok=budget_ok,
+                council_mode=bool(state.get("council_mode")), model_key=model_key,
             )
         except Exception as e:  # surface API/model errors to the frontend instead of a bare 500
             return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
