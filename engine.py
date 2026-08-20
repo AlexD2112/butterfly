@@ -247,14 +247,14 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     narration = "\n".join(text_parts).strip()
 
     if council_mode and model_key:
-        convened, reasons = council.should_convene_council(debug_events)
-        if convened:
-            narration, council_log = council.run_council(
-                provider, model, model_key, system_prompt, user_input, debug_events, narration,
-                usage_sink=usage_sink, budget_ok=budget_ok,
-            )
-            council_log["reasons"] = reasons
-            debug_events.append(council_log)
+        # Runs on every turn as of 2026-08-20 - no gate here anymore, the router inside run_council
+        # decides panel SIZE (>= council.MIN_JUDGES), not whether to run at all. See council.py's
+        # module docstring for the history and NOTES.md for the cost tradeoff this implies.
+        narration, council_log = council.run_council(
+            provider, model, model_key, system_prompt, user_input, state, debug_events, narration,
+            usage_sink=usage_sink, budget_ok=budget_ok,
+        )
+        debug_events.append(council_log)
 
     state["campaign_log_summary"].append({"turn": state["turn_number"], "summary": narration[:400]})
     state["turn_number"] += 1

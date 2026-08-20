@@ -18,7 +18,7 @@ class FakeProvider:
     def append_user_message(self, conversation, text):
         conversation.append(("user", text))
 
-    def call(self, model, system_prompt, tool_specs, conversation):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
         return providers.TurnResult(text_parts=["You act."], tool_calls=[], usage=self._usage)
 
     def append_assistant_turn(self, conversation, turn_result):
@@ -63,8 +63,12 @@ class TestTurnRouteBudget(unittest.TestCase):
         return res.get_json()["character_id"]
 
     def test_turn_deducts_real_cost_and_returns_remaining_budget(self):
+        # Council Mode runs on every turn now (see NOTES.md), so a single "turn" can trigger many
+        # provider.call()s (main generation, router, extra candidate, several judges, chairman,
+        # voice editor) - this counts actual calls made rather than assuming a fixed number, so it
+        # doesn't silently go stale if council's internal call count changes later.
         character_id = self._create_premade_character()
-        usage = {
+        per_call_usage = {
             "provider": "openai",
             "model": "gpt-5.6-luna",
             "input_tokens": 1000,
@@ -72,14 +76,24 @@ class TestTurnRouteBudget(unittest.TestCase):
             "cache_read_tokens": 0,
             "cache_creation_tokens": 0,
         }
-        with patch.object(providers, "get_provider", return_value=(FakeProvider(usage), "gpt-5.6-luna")):
+        per_call_cost = (1000 / 1_000_000) * 0.20 + (500 / 1_000_000) * 1.20
+
+        call_count = {"n": 0}
+
+        class CountingFakeProvider(FakeProvider):
+            def call(self, *a, **kw):
+                call_count["n"] += 1
+                return super().call(*a, **kw)
+
+        with patch.object(providers, "get_provider", return_value=(CountingFakeProvider(per_call_usage), "gpt-5.6-luna")):
             res = self.client.post(
                 f"/api/character/{character_id}/turn",
                 json={"input": "I look around.", "model_key": "luna"},
             )
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
-        expected_cost = (1000 / 1_000_000) * 0.20 + (500 / 1_000_000) * 1.20
+        self.assertGreater(call_count["n"], 1, "Council Mode should make more than just the main generation call")
+        expected_cost = per_call_cost * call_count["n"]
         self.assertAlmostEqual(data["budget"]["spent_usd"], expected_cost)
         self.assertAlmostEqual(data["budget"]["remaining_usd"], db.DEFAULT_BUDGET_USD - expected_cost)
 

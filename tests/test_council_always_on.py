@@ -29,7 +29,12 @@ class FakeProvider:
         conversation.append(("tool_results", results))
 
 
-class TestCouncilModeToggle(unittest.TestCase):
+class TestCouncilAlwaysOn(unittest.TestCase):
+    """Council Mode was a per-campaign opt-in toggle through 2026-08-20 early that night, then
+    became mandatory on every turn per a direction change later the same night (see NOTES.md) -
+    the old POST /api/character/<id>/council_mode route and its state["council_mode"] flag are gone.
+    These confirm the new unconditional behavior."""
+
     def setUp(self):
         self._tmpdir = TemporaryDirectory()
         self._orig_db_file = db.DB_FILE
@@ -42,45 +47,20 @@ class TestCouncilModeToggle(unittest.TestCase):
         db.DB_FILE = self._orig_db_file
         self._tmpdir.cleanup()
 
-    def _login_as_discord_user(self):
+    def _create_character(self):
         user = db.get_or_create_discord_user("1", "Someone", None)
         with self.client.session_transaction() as sess:
             sess["user_id"] = user["id"]
-
-    def _create_character(self):
-        self._login_as_discord_user()
         res = self.client.post("/api/characters", json={"type": "premade", "setting_key": "petrograd_1917"})
         return res.get_json()["character_id"]
 
-    def test_toggle_defaults_off_and_can_be_flipped_on(self):
+    def test_toggle_route_no_longer_exists(self):
         character_id = self._create_character()
-        # Freshly created state has no council_mode key at all - the turn route treats that as off
-        # via state.get("council_mode") defaulting to None/falsy, not a stored default value.
-        state_res = self.client.get(f"/api/character/{character_id}/state")
-        self.assertFalse(state_res.get_json()["state"].get("council_mode"))
-
-        res = self.client.post(f"/api/character/{character_id}/council_mode", json={"enabled": True})
-        self.assertEqual(res.status_code, 200)
-        self.assertTrue(res.get_json()["council_mode"])
-
-        state_res = self.client.get(f"/api/character/{character_id}/state")
-        self.assertTrue(state_res.get_json()["state"]["council_mode"])
-
-        res_off = self.client.post(f"/api/character/{character_id}/council_mode", json={"enabled": False})
-        self.assertFalse(res_off.get_json()["council_mode"])
-
-    def test_toggle_requires_ownership(self):
-        character_id = self._create_character()
-        # A different Discord user shouldn't be able to toggle someone else's character.
-        other = db.get_or_create_discord_user("2", "Someone Else", None)
-        with self.client.session_transaction() as sess:
-            sess["user_id"] = other["id"]
         res = self.client.post(f"/api/character/{character_id}/council_mode", json={"enabled": True})
         self.assertEqual(res.status_code, 404)
 
-    def test_turn_route_passes_council_mode_through_to_engine(self):
+    def test_turn_route_always_passes_council_mode_true_to_engine(self):
         character_id = self._create_character()
-        self.client.post(f"/api/character/{character_id}/council_mode", json={"enabled": True})
 
         captured = {}
         real_run_turn = engine.run_turn
@@ -98,6 +78,18 @@ class TestCouncilModeToggle(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(captured.get("council_mode"))
         self.assertEqual(captured.get("model_key"), "luna")
+
+    def test_a_council_debug_event_is_always_appended(self):
+        character_id = self._create_character()
+        with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
+            res = self.client.post(
+                f"/api/character/{character_id}/turn",
+                json={"input": "I look around.", "model_key": "luna"},
+            )
+        self.assertEqual(res.status_code, 200)
+        debug_events = res.get_json()["debug_events"]
+        council_events = [e for e in debug_events if e.get("type") == "council"]
+        self.assertEqual(len(council_events), 1)
 
 
 if __name__ == "__main__":

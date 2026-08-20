@@ -1,27 +1,28 @@
 """
-Council Mode: an opt-in, stakes-gated narration-quality pass layered on top of the normal turn
-loop. This module never touches mechanics - dice, state updates, and canon events are always
-decided exactly once, by the normal engine.run_turn tool-calling loop, before anything here runs.
-Council Mode only ever rewrites the PROSE describing an already-decided outcome; it cannot change
-what happened, only how it's told.
+Council Mode: an always-on narration-quality pass layered on top of the normal turn loop. This
+module never touches mechanics - dice, state updates, and canon events are always decided exactly
+once, by the normal engine.run_turn tool-calling loop, before anything here runs. Council Mode only
+ever rewrites the PROSE describing an already-decided outcome; it cannot change what happened, only
+how it's told.
 
-Three independent pieces, usable separately:
+Runs on EVERY turn (as of 2026-08-20 - previously an opt-in, stakes-gated feature; see NOTES.md for
+that history and the cost tradeoff this change implies). The only thing that varies per turn is the
+SIZE of the judge panel:
 
-1. VOICE_GUIDANCE (always on, regardless of Council Mode) - a banned-word list and anti-purple-prose
-   instruction folded into every turn's base system prompt (see engine.build_system_prompt). Free,
-   no extra LLM calls, applies to every turn whether or not Council Mode is enabled.
+1. VOICE_GUIDANCE (always on) - a banned-word list and anti-purple-prose instruction folded into
+   every turn's base system prompt (see engine.build_system_prompt). Free, no extra LLM calls.
 
-2. should_convene_council(debug_events) - a free, rule-based gate (no LLM call) that inspects a
-   turn's already-resolved debug_events and decides whether this turn's stakes justify the extra
-   cost of the full council pipeline below. Gating on already-resolved outcomes (not on the request
-   up front) is deliberate - you don't know a turn crossed a resource threshold or fired a canon
-   event until the normal tool-calling loop has actually applied those changes.
+2. build_context_summary(state, debug_events) - a free, rule-based (no LLM call) one-line summary
+   of where the campaign is and what just happened, cheap input for the router below. "Dynamically
+   generated" doesn't have to mean another paid call - this is built directly from state already in
+   memory, at zero extra cost.
 
-3. run_council(...) - the actual pipeline, only invoked when should_convene_council() said yes and
-   the caller has Council Mode enabled and budget available:
-     independent candidate generation (baseline narration + one fresh alternative)
-       -> 6 judges, each scoring every candidate against one specific rubric (structured tool output,
-          cheap model - narrow checklist evaluation doesn't need a strong model)
+3. run_council(...) - always invoked, every turn:
+     a cheap router call picks which judges review THIS turn (MIN_JUDGES=3 floor, up to all 6 for
+     more consequential turns - see _route_judges/_select_judge_roles)
+       -> independent candidate generation (baseline narration + one fresh alternative)
+       -> the routed judges, each scoring every candidate against one specific rubric (structured
+          tool output, cheap model - narrow checklist evaluation doesn't need a strong model)
        -> a chairman that SYNTHESIZES a final narration from all candidates + all judge output
           (not just picks the top score), and is asked to surface disagreement rather than hide it
        -> a cheap-model voice-editor pass: word choice/rhythm only, explicitly forbidden from
@@ -30,7 +31,12 @@ Three independent pieces, usable separately:
    accounting as the normal turn loop (see engine.run_turn), so council spend is captured by the
    existing per-account budget ledger automatically, and a mid-pipeline budget exhaustion just
    aborts back to the baseline narration rather than failing the whole turn - the player always
-   gets a narration, worst case it's the ungated single-pass one.
+   gets a narration, worst case it's the single-pass one with no council review.
+
+   As of 2026-08-20, every call in this module is locked to providers.LOCKED_MODEL_KEY (currently
+   Luna) regardless of what model the player picked for their turn - see that constant's docstring.
+   There is no "escalate to a stronger model for high-stakes turns" path right now; the router's
+   only job is choosing HOW MANY/WHICH judges review a turn, not which model tier runs them.
 
 Design rationale (why this maps to real technique, not just "have some models argue"):
   - The overall independent-generation -> blind cross-ranking -> chairman-synthesis shape follows
@@ -46,6 +52,8 @@ Design rationale (why this maps to real technique, not just "have some models ar
   - Judges each get a genuinely different rubric/lens (not just "disagree with the other judge"),
     since debate/multi-agent literature suggests the benefit comes from genuinely different framing
     per agent, not from mere disagreement between agents given the same framing.
+  - The router itself is the standard cheap-triage pattern: one small call decides scope before any
+    expensive work happens, rather than always paying for the maximum possible panel.
 """
 
 import json
@@ -74,13 +82,15 @@ person in a specific place and moment, not like narration describing a generic h
 """
 
 
-def should_convene_council(debug_events):
-    """Free, rule-based gate - no LLM call. Returns (should_convene: bool, reasons: list[str]).
+def detect_stakes_signals(debug_events):
+    """Free, rule-based (no LLM call) - inspects a turn's already-resolved debug_events for concrete
+    stakes signals (resource label-band crossings, canon events, liabilities gained, critical rolls).
 
-    Deliberately conservative/cheap to evaluate: only looks at signals engine.py already produces
-    in debug_events from the turn that just resolved (resource label-band crossings, canon events,
-    liabilities gained, critical rolls) - never a new LLM call just to decide whether to spend more
-    on LLM calls.
+    Previously this was should_convene_council(), a yes/no gate deciding whether the council ran at
+    all - as of 2026-08-20 the council runs on every turn regardless, so there's no gate left to be.
+    Renamed and repurposed as a signal DETECTOR: its output now feeds build_context_summary() below,
+    giving the judge-count router genuinely useful "why might this turn matter" context instead of
+    deciding anything itself.
     """
     reasons = []
     for ev in debug_events:
@@ -101,7 +111,27 @@ def should_convene_council(debug_events):
                             reasons.append(f"{c['key']} shifted from {before_label} to {after_label}")
                 elif c.get("kind") == "liability_gained":
                     reasons.append(f"liability gained: {c.get('name')}")
-    return (len(reasons) > 0, reasons)
+    return reasons
+
+
+def build_context_summary(state, debug_events):
+    """Free, rule-based (no LLM call) - a short line of context for the judge-count router, cheaper
+    than handing it the full system prompt/state digest. Built entirely from state and this turn's
+    own debug_events, already in memory - "dynamically generated" here means "assembled from what we
+    already know," not "worth paying for another LLM call to produce.\""""
+    parts = [f"Turn {state.get('turn_number')}, {state.get('date', '')}"]
+    log = state.get("campaign_log_summary") or []
+    if log:
+        parts.append(f"Last turn: {log[-1].get('summary', '')[:200]}")
+    signals = detect_stakes_signals(debug_events)
+    if signals:
+        parts.append("This turn's mechanical signals: " + "; ".join(signals))
+    else:
+        parts.append("This turn's mechanical signals: none notable (routine turn)")
+    return " | ".join(parts)
+
+
+MIN_JUDGES = 3  # every turn's floor, regardless of how routine it looks - see run_council
 
 
 # Each judge gets ONE specific rubric and nothing else - the point of a panel is genuinely different
@@ -173,14 +203,100 @@ def _ok(budget_ok):
 
 
 def _cheap_model_key_for(model_key):
-    """Judges/voice-editor use a cheaper model than the current turn's candidates/chairman - narrow
-    checklist evaluation doesn't need a strong model. Prefers haiku when the current model is on
-    Anthropic; falls back to reusing the same model when it's Luna, since MODEL_REGISTRY doesn't
-    currently register a cheaper OpenAI tier than Luna (Luna is already the cheap default)."""
+    """Judges/router/voice-editor use a cheaper model than the current turn's candidates/chairman -
+    narrow checklist evaluation doesn't need a strong model. While providers.LOCKED_MODEL_KEY is set
+    (as of 2026-08-20, standing until reversed - see that constant's docstring), it wins outright:
+    every call in this module uses the same single locked model, full stop. Once unlocked, this
+    falls back to preferring haiku when the current model is on Anthropic, or reusing the current
+    model when it's Luna (MODEL_REGISTRY doesn't register anything cheaper than Luna for OpenAI)."""
+    if providers.LOCKED_MODEL_KEY:
+        return providers.LOCKED_MODEL_KEY
     entry = providers.MODEL_REGISTRY.get(model_key, {})
     if entry.get("provider") == "anthropic":
         return "haiku"
     return model_key
+
+
+def _route_judges(user_input, context_summary, provider, model, usage_sink, budget_ok):
+    """One cheap call: given the judge roster and a short context summary, decide which judges
+    review THIS turn. Returns the raw {"judge_keys": [...], "reasoning": ...} dict, or None if the
+    call couldn't be made/didn't return structured output - _select_judge_roles handles turning
+    that into a valid, floor-respecting judge list either way."""
+    if not _ok(budget_ok):
+        return None
+    roster_text = "\n".join(f"- {r['key']}: {r['rubric']}" for r in JUDGE_ROLES)
+    system_prompt = f"""You are a fast triage router for a narration review council on a historical
+RPG. Every turn gets reviewed by at least {MIN_JUDGES} judges - your job is to pick WHICH ones are
+most relevant to this specific turn, and to pick MORE than {MIN_JUDGES} (up to all {len(JUDGE_ROLES)})
+when this turn is unusually consequential (a critical roll, a major state shift, a canon event, a
+pivotal NPC interaction) rather than routine. Most turns should just get the {MIN_JUDGES} most
+relevant judges - don't pad with irrelevant ones for their own sake.
+
+# AVAILABLE JUDGES
+{roster_text}
+
+# PLAYER'S MESSAGE THIS TURN
+{user_input}
+
+# CONTEXT
+{context_summary}
+
+Submit your selection via select_judges.
+"""
+    tool_specs = [
+        {
+            "name": "select_judges",
+            "description": "Select which judges review this turn's narration.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "judge_keys": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": [r["key"] for r in JUDGE_ROLES]},
+                        "description": f"At least {MIN_JUDGES} judge keys; more for higher-stakes turns.",
+                    },
+                    "reasoning": {"type": "string", "description": "1 sentence on why this set."},
+                },
+                "required": ["judge_keys", "reasoning"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Select the judge panel for this turn.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="select_judges")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return None
+    return result.tool_calls[0]["input"]
+
+
+def _select_judge_roles(user_input, context_summary, provider, model, usage_sink, budget_ok):
+    """Turns the router's (possibly missing/malformed) output into a valid judge role list: at
+    least MIN_JUDGES, no duplicates, no unknown keys, order preserved from the router's own
+    preference where given. Deterministically pads from JUDGE_ROLES' fixed order when the router
+    under-delivers or fails outright - the floor is enforced here in code, not trusted to the model.
+    Returns (roles: list[dict], router_reasoning: str|None).
+    """
+    routed = _route_judges(user_input, context_summary, provider, model, usage_sink, budget_ok)
+    valid_keys_in_order = [r["key"] for r in JUDGE_ROLES]
+    keys = []
+    reasoning = None
+    if routed:
+        seen = set()
+        for k in routed.get("judge_keys") or []:
+            if k in valid_keys_in_order and k not in seen:
+                keys.append(k)
+                seen.add(k)
+        reasoning = routed.get("reasoning")
+    if len(keys) < MIN_JUDGES:
+        for k in valid_keys_in_order:
+            if len(keys) >= MIN_JUDGES:
+                break
+            if k not in keys:
+                keys.append(k)
+    roles_by_key = {r["key"]: r for r in JUDGE_ROLES}
+    return [roles_by_key[k] for k in keys], reasoning
 
 
 def _format_change(c):
@@ -393,10 +509,9 @@ The goal is purely to make it sound less AI-generic.
     return edited or narration
 
 
-def run_council(provider, model, model_key, system_prompt, user_input, debug_events, baseline_narration, usage_sink=None, budget_ok=None):
-    """Only call this once should_convene_council() has already said yes - this function doesn't
-    re-check that gate itself, to keep "should we bother" and "actually do it" as separate,
-    independently testable concerns.
+def run_council(provider, model, model_key, system_prompt, user_input, state, debug_events, baseline_narration, usage_sink=None, budget_ok=None):
+    """Called on EVERY turn as of 2026-08-20 (see module docstring) - there is no gate to check
+    before calling this; it always attempts the full pipeline, sized dynamically by the router.
 
     Returns (final_narration, council_log). council_log is always a dict (never None) suitable for
     appending directly to debug_events, so the frontend's existing Mechanics panel can show what the
@@ -409,6 +524,8 @@ def run_council(provider, model, model_key, system_prompt, user_input, debug_eve
     """
     log = {
         "type": "council",
+        "router_reasoning": None,
+        "judges_selected": [],
         "candidate_count": 1,
         "judge_results": [],
         "chairman_reasoning": None,
@@ -416,16 +533,25 @@ def run_council(provider, model, model_key, system_prompt, user_input, debug_eve
         "aborted_reason": None,
     }
 
+    if not _ok(budget_ok):
+        log["aborted_reason"] = "budget exhausted before the council could start - used baseline narration"
+        return baseline_narration, log
+
     mechanical_facts = _format_mechanical_facts(debug_events)
+    context_summary = build_context_summary(state, debug_events)
     candidates = [baseline_narration]
 
     judge_model_key = _cheap_model_key_for(model_key)
     try:
         judge_provider, judge_model = providers.get_provider(judge_model_key)
     except providers.ProviderError:
-        # judge model's provider isn't configured (missing API key) - fall back to the same
+        # judge/router model's provider isn't configured (missing API key) - fall back to the same
         # provider/model already in use for this turn rather than failing the whole council.
         judge_provider, judge_model = provider, model
+
+    selected_roles, router_reasoning = _select_judge_roles(user_input, context_summary, judge_provider, judge_model, usage_sink, budget_ok)
+    log["router_reasoning"] = router_reasoning
+    log["judges_selected"] = [r["key"] for r in selected_roles]
 
     alt = _generate_alternative_candidate(provider, model, system_prompt, user_input, mechanical_facts, usage_sink, budget_ok)
     if alt:
@@ -437,9 +563,9 @@ def run_council(provider, model, model_key, system_prompt, user_input, debug_eve
         return baseline_narration, log
 
     judge_results = []
-    for role in JUDGE_ROLES:
+    for role in selected_roles:
         if not _ok(budget_ok):
-            log["aborted_reason"] = f"budget exhausted mid-judging (after {len(judge_results)}/{len(JUDGE_ROLES)} judges) - used baseline narration"
+            log["aborted_reason"] = f"budget exhausted mid-judging (after {len(judge_results)}/{len(selected_roles)} judges) - used baseline narration"
             log["judge_results"] = judge_results
             return baseline_narration, log
         jr = _run_judge(role, candidates, mechanical_facts, judge_provider, judge_model, usage_sink, budget_ok)
