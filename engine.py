@@ -17,6 +17,8 @@ import importlib
 import json
 from pathlib import Path
 
+import council
+
 ROOT = Path(__file__).parent
 SETTINGS_ROOT = ROOT / "settings"
 SAVE_FILE = ROOT / "save.json"  # legacy single-save path, used only by loop.py's simple CLI mode
@@ -160,7 +162,7 @@ Narrate in second person, present tense, evocative but not overwrought. Keep res
 paragraphs. Never resolve an uncertain action without calling request_check first. If the current
 state shows level_up_pending: true, remind the player at a natural pause and offer them the three
 level-up options from the system rules before proceeding.
-"""
+{council.VOICE_GUIDANCE}"""
 
 
 def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None):
