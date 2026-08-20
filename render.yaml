@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: butterfly
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      # Optional - leave blank in the blueprint prompt to skip Discord login;
+      # local per-browser profiles work without them.
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_REDIRECT_URI
+        sync: false
