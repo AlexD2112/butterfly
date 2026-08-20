@@ -40,6 +40,15 @@
     font-family: sans-serif; font-size: 12.5px; cursor: pointer; margin-top: 10px; }
   .discord-btn:hover { opacity: 0.9; }
 
+  /* ---------- landing screen ---------- */
+  .landing-title { font-size: 34px; }
+  .landing-pitch { font-family: sans-serif; font-size: 13.5px; color: var(--text); max-width: 480px;
+    line-height: 1.6; margin: 0 0 22px; }
+  .landing-begin { max-width: 480px; text-align: center; margin-top: 16px; }
+  .budget-chip { font-family: sans-serif; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .budget-chip.low { color: var(--accent-2); }
+  .budget-chip.exhausted { color: var(--bad); }
+
   /* ---------- character creation ---------- */
   .creation-wrap { width: 100%; max-width: 640px; text-align: left; font-family: sans-serif; }
   .creation-section { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
@@ -76,6 +85,10 @@
     padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
   header h1 { font-size: 16px; margin: 0; font-weight: normal; letter-spacing: 0.5px; color: var(--accent-2); }
   header .controls { display: flex; gap: 10px; align-items: center; font-family: sans-serif; font-size: 13px; }
+  #header-budget { font-size: 11.5px; color: var(--muted); }
+  #header-budget.low { color: var(--accent-2); }
+  #header-budget.exhausted { color: var(--bad); font-weight: bold; }
+  #inputbar.exhausted #inputbox, #inputbar.exhausted #send-btn { opacity: 0.5; pointer-events: none; }
   select, button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
     border-radius: 4px; padding: 6px 10px; font-family: sans-serif; font-size: 13px; }
   button { cursor: pointer; }
@@ -135,12 +148,26 @@
 </head>
 <body>
 
+<!-- Screen 0: Landing -->
+<div class="menu-screen active" id="screen-landing">
+  <div class="eyebrow">Butterfly</div>
+  <h1 class="landing-title">Change history.</h1>
+  <div class="subtitle">An AI-narrated historical RPG — the model narrates and voices everyone you meet; the app rolls every die and owns every outcome.</div>
+  <p class="landing-pitch">Step into Trotsky's Petrograd, Alfred's Britannia, Caesar's Rome, or Bohemond's First Crusade. Play the setting's signature character or build your own, then push events somewhere history never went — every departure from the record gets logged as it happens.</p>
+  <div id="user-status" class="user-chip"></div>
+  <div id="landing-budget" class="budget-chip"></div>
+  <button class="menu-option landing-begin" id="opt-begin">
+    <div class="opt-title">Begin</div>
+    <div class="opt-desc">Choose a setting and a character.</div>
+  </button>
+</div>
+
 <!-- Screen 1: Start Menu -->
-<div class="menu-screen active" id="screen-start">
+<div class="menu-screen" id="screen-start">
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-landing">&larr; Back</button></div>
   <div class="eyebrow">Butterfly</div>
   <h1>AI-Narrated Historical RPGs</h1>
   <div class="subtitle">Choose how you want to begin.</div>
-  <div id="user-status" class="user-chip"></div>
   <div class="menu-options" style="margin-top:18px;">
     <button class="menu-option" id="opt-preset">
       <div class="opt-title">Preset</div>
@@ -206,6 +233,7 @@
   <header>
     <h1 id="game-header">Butterfly</h1>
     <div class="controls">
+      <span id="header-budget"></span>
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
@@ -238,7 +266,32 @@ document.querySelectorAll('.menu-back').forEach(btn => {
   btn.addEventListener('click', () => showScreen(btn.dataset.back));
 });
 
-// ==================== screen 1: start / login ====================
+// ==================== screen 0/1: landing / start / login ====================
+function budgetStatusClass(budget) {
+  if (!budget) return '';
+  if (budget.remaining_usd <= 0) return 'exhausted';
+  if (budget.remaining_usd < budget.budget_usd * 0.2) return 'low';
+  return '';
+}
+
+function formatBudget(budget) {
+  if (!budget) return '';
+  if (budget.remaining_usd <= 0) return `Out of usage budget ($${budget.budget_usd.toFixed(2)} used) — this account can't take further AI turns.`;
+  return `$${budget.remaining_usd.toFixed(3)} of $${budget.budget_usd.toFixed(2)} usage budget remaining`;
+}
+
+function renderBudget(budget) {
+  if (!budget) return;
+  const cls = budgetStatusClass(budget);
+  const text = formatBudget(budget);
+  const landingEl = document.getElementById('landing-budget');
+  if (landingEl) { landingEl.textContent = text; landingEl.className = 'budget-chip' + (cls ? ' ' + cls : ''); }
+  const headerEl = document.getElementById('header-budget');
+  if (headerEl) { headerEl.textContent = text; headerEl.className = cls; }
+  const inputbar = document.getElementById('inputbar');
+  if (inputbar) inputbar.classList.toggle('exhausted', budget.remaining_usd <= 0);
+}
+
 async function loadMe() {
   const res = await fetch('/api/me');
   CURRENT_USER = await res.json();
@@ -254,6 +307,7 @@ async function loadMe() {
     el.innerHTML = `${avatar}<span>Logged in as ${escapeHtml(CURRENT_USER.username)}</span>
       <button id="logout-btn" style="margin-left:8px;">Log out</button>`;
   }
+  renderBudget(CURRENT_USER.budget);
   const loginBtn = document.getElementById('discord-login-btn');
   if (loginBtn) loginBtn.addEventListener('click', () => { window.location.href = '/auth/discord/login'; });
   const logoutBtn = document.getElementById('logout-btn');
@@ -262,6 +316,10 @@ async function loadMe() {
     loadMe();
   });
 }
+
+document.getElementById('opt-begin').addEventListener('click', () => {
+  showScreen('screen-start');
+});
 
 document.getElementById('opt-preset').addEventListener('click', async () => {
   if (SETTINGS.length === 0) await loadSettings();
@@ -475,6 +533,7 @@ function launchGame(characterId, isNew) {
   logEl.innerHTML = '';
   loadModels();
   loadCharacterState(isNew);
+  renderBudget(CURRENT_USER && CURRENT_USER.budget);
 }
 
 document.getElementById('menu-btn').addEventListener('click', () => {
@@ -685,12 +744,17 @@ async function sendTurn() {
       body: JSON.stringify({ input: text, model_key: modelSelect.value }),
     });
     const data = await res.json();
-    if (data.error) {
+    if (res.status === 402) {
+      appendTurn(text, `[Out of usage budget — this account can't take further AI turns.]`, []);
+      setStatus('Out of budget.');
+      renderBudget(data.budget);
+    } else if (data.error) {
       appendTurn(text, `[Error: ${data.error}]`, []);
       setStatus('Error — see message above.');
     } else {
       appendTurn(text, data.narration, data.debug_events);
       renderSidebar(data.state);
+      renderBudget(data.budget);
       setStatus('');
     }
   } catch (e) {
