@@ -165,7 +165,7 @@ level-up options from the system rules before proceeding.
 {council.VOICE_GUIDANCE}"""
 
 
-def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None):
+def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None, council_mode=False, model_key=None):
     """Returns (narration, debug_events).
 
     usage_sink, if given, is a list that each API call's TurnResult.usage dict gets appended to -
@@ -178,6 +178,13 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     tool-calling loop keep making calls past budget. A single user turn can trigger several API
     calls (each request_check/propose_state_update round-trip is its own call), so checking only
     once before the turn starts wouldn't catch a runaway multi-call turn.
+
+    council_mode + model_key: if council_mode is true and the turn's outcome trips
+    council.should_convene_council's stakes gate, the baseline narration below gets replaced by
+    council.run_council's synthesized version before this returns (see council.py). model_key (the
+    MODEL_REGISTRY key, e.g. "sonnet" - distinct from `model`, the raw model id string) is needed to
+    pick a cheaper same-provider model for the council's judges; without it (the loop.py CLI path
+    never passes it) council_mode is silently a no-op regardless of its value.
     """
     system = get_system(system_key)
     resource_schema = load_json(setting_key, "resource_schema.json")
@@ -238,6 +245,17 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
         provider.append_tool_results(conversation, turn_result, results)
 
     narration = "\n".join(text_parts).strip()
+
+    if council_mode and model_key:
+        convened, reasons = council.should_convene_council(debug_events)
+        if convened:
+            narration, council_log = council.run_council(
+                provider, model, model_key, system_prompt, user_input, debug_events, narration,
+                usage_sink=usage_sink, budget_ok=budget_ok,
+            )
+            council_log["reasons"] = reasons
+            debug_events.append(council_log)
+
     state["campaign_log_summary"].append({"turn": state["turn_number"], "summary": narration[:400]})
     state["turn_number"] += 1
     return narration, debug_events
