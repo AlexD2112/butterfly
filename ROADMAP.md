@@ -19,7 +19,10 @@ hasn't been exercised against the live API yet; the free hosting tier's storage 
   small integration bugs (a parameter name, a response shape) rather than design problems.
 - **Durable storage.** Swap SQLite for a small hosted Postgres (Render's own free-for-90-days
   option, or Supabase's free tier) so accounts/characters survive redeploys. `db.py` is a thin
-  wrapper specifically so this is a contained change.
+  wrapper specifically so this is a contained change. Direction confirmed 2026-08-20: locally-hosted
+  (running the app on the user's own machine, where SQLite's file just persists normally) is an
+  equally acceptable answer to this, not just a Render/Postgres upgrade - not yet acted on either
+  way, still SQLite + Render's ephemeral disk today.
 - **Conversation length management.** Long campaigns will eventually hit context limits or get
   expensive. Add a summarization pass (compress older turns into `campaign_log_summary` entries,
   which already exist, and stop sending the full raw transcript past some turn count).
@@ -64,13 +67,20 @@ hasn't been exercised against the live API yet; the free hosting tier's storage 
 
 ## Phase 4 — Platform maturity (as it grows)
 
-- **Account linking.** Local-profile and Discord-linked characters (and now, budgets) aren't merged
-  today - confirmed still deliberately deferred as of 2026-08-20. Fix once people are actually
-  hitting this friction, not before.
-- **Usage controls.** Basic version done (see Phase 1, 2026-08-20): a fixed $0.10 per-account
-  budget. Still open if this gets real traffic: raising/customizing the per-account amount, a
-  "bring your own API key" option, or a per-IP/per-session limit to backstop the
-  cookie-clearing gap noted in `NOTES.md`.
+- **Account linking.** Local-profile and Discord-linked *characters* still aren't merged - a
+  character created while playing locally stays under the shared local profile even after that
+  browser later logs into Discord. Still deliberately deferred as of 2026-08-20. *Budget* is a
+  separate story now (below) - as of 2026-08-20 late night, budget was pulled fully onto the Discord
+  identity rather than waiting for a general account-linking system, once it turned out
+  `get_or_create_local_user()` returns one single shared row for every anonymous visitor
+  deployment-wide (not a per-browser identity as earlier notes assumed) - see `NOTES.md` for why a
+  per-account budget can't mean anything against an identity everyone shares.
+- **Usage controls.** Basic version done (see Phase 1, 2026-08-20), revised same night: a fixed
+  $0.10 budget per Discord-linked account, tracked per-call against real usage. Local/anonymous play
+  still works for browsing and character creation, but sending an AI turn (the only thing that
+  actually costs money) now requires being logged in with Discord - see `NOTES.md`. Still open if
+  this gets real traffic: raising/customizing the per-account amount, a "bring your own API key"
+  option, or a per-IP/per-session rate limit as a second layer.
 - **Content moderation.** These are settings involving war, political violence, and real historical
   atrocity - worth a deliberate pass on what the GM should and shouldn't narrate in graphic detail,
   independent of Anthropic's/OpenAI's own model-level guardrails, once this is more than a handful

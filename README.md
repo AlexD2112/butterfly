@@ -25,11 +25,11 @@ reference, no longer active.
 
 Playable two ways, sharing all the same underlying logic:
 - **`server.py`** — the webapp (browser UI): a landing page ("Butterfly — Change history") → start
-  menu (Preset → setting → gameplay mode → character select/creation) → game. Accounts are automatic
-  (a local profile per browser via a session cookie) with optional "Login with Discord", both shown
-  on the landing page. Every account starts with a small ($0.10) LLM usage budget, tracked per-call
-  against real provider pricing and enforced before/during each turn - see "Usage budget" below.
-  This is the primary way to play.
+  menu (Preset → setting → gameplay mode → character select/creation) → game. Every visitor gets an
+  automatic local profile (no login needed) that can browse settings and create characters, with
+  optional "Login with Discord" shown on the landing page. Sending an actual AI turn requires being
+  logged in with Discord, since that's what the $0.10 LLM usage budget is tied to - see "Usage
+  budget" below. This is the primary way to play.
 - **`loop.py`** — a terminal CLI for scripting/quick testing, always playing a chosen setting's
   premade character to a single legacy save file (no accounts/multiple characters/budget tracking).
 
@@ -60,14 +60,19 @@ settings/
 
 ## Usage budget
 
-Every account (local or Discord - independently, see "Local vs. Discord accounts" below) starts
-with a $0.10 LLM usage budget. Each turn's actual token usage is read from the real Anthropic/OpenAI
-response and costed against `pricing.py`'s rate table, recorded in the `usage_events` table, and
-enforced by `server.py`'s turn route: a turn is refused (HTTP 402) once an account's remaining
-budget hits zero, and a single turn that makes several API calls (the request_check/
-propose_state_update tool loop) gets cut off mid-turn rather than allowed to run arbitrarily past
-budget. See `NOTES.md` for caveats and things worth a deliberate look before relying on this for
-real cost control.
+Usage budget is tied to a real Discord account, not the local/anonymous profile - every visitor
+without Discord shares a single local profile deployment-wide (see `db.py`'s module docstring), so
+a per-account budget only means something once there's an identity that's actually unique per
+person. Local/anonymous play still works for browsing settings and creating characters; sending an
+AI turn requires logging in with Discord first (HTTP 403, `discord_login_required: true`, if not).
+
+Once logged in with Discord, each account starts with a $0.10 LLM usage budget. Each turn's actual
+token usage is read from the real Anthropic/OpenAI response and costed against `pricing.py`'s rate
+table, recorded in the `usage_events` table, and enforced by `server.py`'s turn route: a turn is
+refused (HTTP 402) once an account's remaining budget hits zero, and a single turn that makes
+several API calls (the request_check/propose_state_update tool loop) gets cut off mid-turn rather
+than allowed to run arbitrarily past budget. See `NOTES.md` for caveats and things worth a
+deliberate look before relying on this for real cost control.
 
 ## Setup
 

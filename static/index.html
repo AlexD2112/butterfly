@@ -281,14 +281,26 @@ function formatBudget(budget) {
 }
 
 function renderBudget(budget) {
+  const landingEl = document.getElementById('landing-budget');
+  const headerEl = document.getElementById('header-budget');
+  const inputbar = document.getElementById('inputbar');
+
+  // Budget is tied to a real Discord identity (local/anonymous profiles share one account
+  // deployment-wide, so a per-account budget can't mean anything for them) - show a clear call to
+  // action instead of a dollar figure, and lock the input bar the same way exhausted budget does.
+  if (CURRENT_USER && CURRENT_USER.is_local) {
+    const text = 'Log in with Discord to unlock AI turns.';
+    if (landingEl) { landingEl.textContent = text; landingEl.className = 'budget-chip low'; }
+    if (headerEl) { headerEl.textContent = text; headerEl.className = 'low'; }
+    if (inputbar) inputbar.classList.add('exhausted');
+    return;
+  }
+
   if (!budget) return;
   const cls = budgetStatusClass(budget);
   const text = formatBudget(budget);
-  const landingEl = document.getElementById('landing-budget');
   if (landingEl) { landingEl.textContent = text; landingEl.className = 'budget-chip' + (cls ? ' ' + cls : ''); }
-  const headerEl = document.getElementById('header-budget');
   if (headerEl) { headerEl.textContent = text; headerEl.className = cls; }
-  const inputbar = document.getElementById('inputbar');
   if (inputbar) inputbar.classList.toggle('exhausted', budget.remaining_usd <= 0);
 }
 
@@ -744,7 +756,11 @@ async function sendTurn() {
       body: JSON.stringify({ input: text, model_key: modelSelect.value }),
     });
     const data = await res.json();
-    if (res.status === 402) {
+    if (res.status === 403 && data.discord_login_required) {
+      appendTurn(text, `[Log in with Discord to send AI turns — see the start menu or landing page.]`, []);
+      setStatus('Discord login required.');
+      renderBudget(null);
+    } else if (res.status === 402) {
       appendTurn(text, `[Out of usage budget — this account can't take further AI turns.]`, []);
       setStatus('Out of budget.');
       renderBudget(data.budget);

@@ -1,3 +1,67 @@
+# Budget tied to Discord account (2026-08-20, direction change from you)
+
+You reopened decision A: budget should be fully tied to the Discord account, not the local
+session-cookie profile, and mentioned local hosting is an acceptable persistence option alongside
+Render's Postgres.
+
+**Correction to my own earlier notes first:** investigating this, I found my prior claim in this
+file ("local-profile budgets are resettable via cookie-clearing") was wrong, and the real situation
+is more significant than that. `db.get_or_create_local_user()` returns **one single shared row for
+every anonymous visitor across the whole deployment** - `discord_id` is `UNIQUE` and the local
+sentinel value never varies, so there's no per-browser local identity at all, just one global one
+everybody without a Discord login shares. Clearing cookies doesn't get you a fresh budget; every
+anonymous visitor was always sharing the same one. This was already true in the original code
+before last night's work (its own docstring says "a single stable 'local' account," which I read
+too quickly and mis-described as per-browser). This makes the direction you gave the actually-
+correct fix, not just a preference - a per-account budget genuinely cannot mean anything against an
+identity that everyone shares.
+
+**What I built - the smallest change that's actually correct, not a full identity merge:**
+Local/anonymous profiles keep working exactly as before for browsing settings and creating
+characters (harmless, no cost). Only `POST /api/character/<id>/turn` - the one action that spends
+real money - now requires a Discord-linked session; a local user hitting Send gets a clear 403
+(`discord_login_required: true`) instead of ever reaching the provider API. `/api/me` reports a
+zeroed, non-actionable budget for local users rather than the shared row's now-meaningless numbers.
+The frontend shows "Log in with Discord to unlock AI turns" in place of a dollar figure on both the
+landing page and in-game header, and locks the input bar the same way an exhausted budget already
+did. No schema change was needed - `users.budget_usd` / `usage_events` already work correctly
+per-user-row; Discord accounts already get their own row via `get_or_create_discord_user()`, so
+"budget per Discord account" was already what the ledger did, once local accounts are excluded from
+ever writing to it.
+
+**Your question on migration - did I need to move accumulated local spend onto a Discord account
+once someone links?** No, and here's the actual reasoning rather than a guess: since local profiles
+can now never spend anything (the turn route rejects them before any provider call happens), there
+is no *ongoing* local spend that could ever need migrating - a local session's `usage_events` history
+will always be empty from this point forward. A full identity-merge system (transferring existing
+characters/spend from a local session onto a Discord account at login time) was NOT needed to
+achieve "budget tied to Discord" correctly - it would have been solving a broader problem (character
+ownership continuity) than what you asked for, so I didn't build it.
+
+**What I genuinely can't verify and am flagging rather than guessing:** whether the shared local
+account already has *some* historical spend recorded in `usage_events` from earlier tonight's
+testing or from your own click-through on the live Render deployment. I don't have access to the
+live deployment's actual database to check. If it does, that spend is now orphaned/irrelevant (the
+shared local account can't spend going forward, so its historical `budget_usd`/`spent_usd` numbers
+don't gate anything anymore) - harmless dead data, not something I'd recommend spending effort
+cleaning up, but flagging so you're not surprised if you go looking at that row directly.
+
+**On Postgres vs. local hosting:** noted your direction in `ROADMAP.md` (both are now listed as
+acceptable answers to the "durable storage" problem) but did not act on either tonight - that's a
+real infrastructure change (a hosted Postgres migration, or documenting/supporting a local-hosting
+deployment path) that felt like new scope beyond "the smallest correct change for the budget
+direction," not something to fold into this same commit. Happy to pick it up as its own piece of
+work if you want it prioritized.
+
+Verified: updated the existing tests that assumed a local session could send turns (they now log in
+as a Discord user first, matching the new requirement) and added 3 new ones covering the local-user
+403 and the local/Discord split in `/api/me` - 26/26 passing. Also drove a full click-through
+against the running dev server confirming the landing page and in-game header both show the login
+prompt for a local session, and that an actual turn attempt from a local session gets rejected with
+the clear 403 before any provider call.
+
+---
+
 # Security/correctness self-review (2026-08-20, after live deploy confirmed working)
 
 You asked for a review of budget-bypass vectors, concurrent-turn races, cookie forgery, and Discord

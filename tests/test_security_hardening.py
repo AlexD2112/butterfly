@@ -25,9 +25,13 @@ class TestConcurrentTurnLock(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_second_concurrent_request_for_same_account_is_rejected(self):
-        self.client.get("/api/me")
-        res = self.client.get("/api/me")
-        user_id = res.get_json()["id"]
+        # Must be a Discord-linked session - budget (and therefore this lock) is gated to Discord
+        # identities only, see api_character_turn. A local session would short-circuit with 403
+        # before ever reaching the lock, which isn't what this test is checking.
+        user = db.get_or_create_discord_user("999", "Someone", None)
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = user["id"]
+        user_id = user["id"]
         res = self.client.post(
             "/api/characters", json={"type": "premade", "setting_key": "petrograd_1917"}
         )

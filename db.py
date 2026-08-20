@@ -9,6 +9,13 @@ account used for offline/anonymous play, so character creation and saving work t
 requiring login. Once a person logs in with Discord, their characters live under their Discord-
 linked account instead - see get_or_create_discord_user().
 
+IMPORTANT: "single stable" means literally one shared row for every anonymous visitor across the
+whole deployment - discord_id is UNIQUE and the local sentinel never varies, so there is no
+per-browser local identity here at all, only one global one. This is why the usage budget
+(budget_usd/usage_events, see get_budget_status/record_usage below) is gated to Discord-linked
+users only in server.py's turn route - a per-account budget can't mean anything against an identity
+every anonymous visitor shares.
+
 No OAuth tokens are persisted here by design - server.py only uses Discord's identity response once
 at login time to find-or-create a user row, then never needs the token again.
 """

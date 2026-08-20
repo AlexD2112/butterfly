@@ -98,7 +98,13 @@ def index():
 @app.route("/api/me")
 def api_me():
     user = current_user()
-    budget = db.get_budget_status(user["id"])
+    # Budget is tied to a real Discord identity, not the shared local/anonymous profile (see
+    # api_character_turn) - report a zeroed, non-actionable budget for local users rather than the
+    # shared local row's real (and now practically meaningless) numbers.
+    if user["is_local"]:
+        budget = {"budget_usd": 0.0, "spent_usd": 0.0, "remaining_usd": 0.0, "discord_login_required": True}
+    else:
+        budget = db.get_budget_status(user["id"])
     return jsonify(
         {
             "id": user["id"],
@@ -277,6 +283,24 @@ def api_character_turn(character_id):
     row = db.get_character(character_id, user["id"])
     if row is None:
         return jsonify({"error": "Character not found."}), 404
+
+    # Budget is tied to a real Discord identity (per 2026-08-20 direction change - see NOTES.md).
+    # get_or_create_local_user() returns ONE single shared row for every anonymous visitor (a fixed
+    # sentinel discord_id under a UNIQUE constraint - there is no per-browser local identity at all),
+    # so a per-account budget can only mean anything against an identity that's actually unique per
+    # person, which today only Discord provides. Local/anonymous play still works for browsing
+    # settings and creating characters - only the actual paid action is gated.
+    if user["is_local"]:
+        return (
+            jsonify(
+                {
+                    "error": "Log in with Discord to send AI turns - local/anonymous profiles can browse "
+                    "and create characters, but can't spend AI usage.",
+                    "discord_login_required": True,
+                }
+            ),
+            403,
+        )
 
     # Non-blocking: a second concurrent request for the same account fails fast with 429 instead of
     # queueing behind a possibly-slow LLM call, or - the actual bug this prevents - both requests
