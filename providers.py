@@ -221,6 +221,16 @@ MODEL_REGISTRY = {
 }
 DEFAULT_MODEL_KEY = "luna"
 
+# TEMPORARY LOCK (2026-08-20, standing until the user says otherwise - see NOTES.md). Every LLM
+# call in the app - main turn generation, and every part of Council Mode (router/judges/chairman/
+# extra candidates) - is forced onto this single model regardless of what's requested, both because
+# Council Mode now runs on every single turn (so cost discipline matters a lot more than before) and
+# because the "escalate to a stronger model on high-stakes turns" idea is explicitly on hold until
+# there's real cost data. This is deliberately NOT a removal of the other registry entries below
+# (sonnet/haiku/opus stay fully defined and functional) - set this back to None to revert instantly,
+# no other code change needed; server.py and council.py both key off this single constant.
+LOCKED_MODEL_KEY = "luna"
+
 _PROVIDER_CLASSES = {"anthropic": AnthropicProvider, "openai": OpenAIProvider}
 _provider_instances = {}
 

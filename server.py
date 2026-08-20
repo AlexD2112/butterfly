@@ -170,7 +170,11 @@ def api_models():
         }
         for key, entry in providers.MODEL_REGISTRY.items()
     ]
-    return jsonify({"models": models, "default": providers.DEFAULT_MODEL_KEY})
+    # locked_model_key (non-null while providers.LOCKED_MODEL_KEY is set) tells the frontend to
+    # render a disabled, single-option selector instead of a real choice - see LOCKED_MODEL_KEY's
+    # comment. Reverting the lock server-side automatically un-hides the selector, no frontend
+    # change needed.
+    return jsonify({"models": models, "default": providers.DEFAULT_MODEL_KEY, "locked_model_key": providers.LOCKED_MODEL_KEY})
 
 
 @app.route("/api/settings")
@@ -336,7 +340,10 @@ def api_character_turn(character_id):
 
         body = request.get_json(force=True)
         user_input = (body.get("input") or "").strip()
-        model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
+        # LOCKED_MODEL_KEY, when set, overrides whatever the client requested - this is the actual
+        # enforcement point (the frontend hiding the selector is a UX nicety, not the real guard;
+        # a direct API call must not be able to bypass the lock).
+        model_key = providers.LOCKED_MODEL_KEY or body.get("model_key") or providers.DEFAULT_MODEL_KEY
         if model_key not in providers.MODEL_REGISTRY:
             return jsonify({"error": f"Unknown model key: {model_key}"}), 400
         if not user_input:

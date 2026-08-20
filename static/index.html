@@ -746,6 +746,18 @@ function escapeHtml(s) {
 async function loadModels() {
   const res = await fetch('/api/models');
   const data = await res.json();
+  if (data.locked_model_key) {
+    // Model choice is temporarily locked server-side (see providers.LOCKED_MODEL_KEY) - show a
+    // single disabled option rather than a real choice. Reverting the lock server-side alone is
+    // enough to bring the real selector back, no frontend change needed.
+    const locked = data.models.find(m => m.key === data.locked_model_key) || data.models[0];
+    modelSelect.innerHTML = `<option value="${locked.key}">${locked.label} (locked)</option>`;
+    modelSelect.disabled = true;
+    modelSelect.title = 'Model selection is temporarily locked.';
+    return;
+  }
+  modelSelect.disabled = false;
+  modelSelect.title = '';
   modelSelect.innerHTML = data.models.map(m =>
     `<option value="${m.key}" ${!m.available ? 'disabled' : ''} ${m.key === data.default ? 'selected' : ''}>
       ${m.label}${!m.available ? ' — missing API key' : ''}
