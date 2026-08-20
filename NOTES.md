@@ -1,3 +1,91 @@
+# Council Mode redesign: always-on + cost math (2026-08-20, later that night)
+
+Direction change from you: Council Mode is no longer opt-in - it runs on every turn, with a router
+deciding panel size (>= 3 judges floor, up to all 6). You explicitly asked me to do the real cost
+math rather than silently absorb it, since "every message, minimum 3 judges" is a materially bigger
+default cost than the stakes-gated version. Here it is, worked from actual file sizes in this repo,
+not guessed - and it's a bigger number than I expected going in, which is exactly why you were right
+to ask for it before this became the default.
+
+## The math
+
+I measured the actual system prompt content for Petrograd 1917/Red Admiral (rules.md + npcs.md +
+factions.md + canon_timeline.md + resource_schema.json + the character state digest) at **36,887
+characters** - at the standard ~4 chars/token estimate for English text, that's **~9,500 tokens**
+just for the base prompt every GM call sends, before tools or conversation history. `TOOL_SPECS`
+(request_check/propose_state_update/propose_level_up) adds another ~1,140 tokens on top for calls
+that offer tools. These are real measurements (`wc -c` on the actual files), not estimates - the
+per-call token counts below (conversation history, output length) are estimates built on top of
+that real base number.
+
+Per-call cost estimates at Luna pricing ($0.20/$1.20 per 1M input/output tokens):
+
+| Call | Input (est. tokens) | Output (est.) | Cost |
+|---|---|---|---|
+| Baseline turn generation (existing, not new) | ~11,000-11,500 (full prompt + tools + history) | ~200-300 | ~$0.0025-0.0027 |
+| Router (judge selection) | ~1,080 (roster + context summary) | ~80 | ~$0.0003 |
+| Extra candidate | ~9,950 (full prompt, no tools) | ~300 | ~$0.0024 |
+| Each judge | ~1,000 (rubric + facts + 2 candidates) | ~90 | ~$0.0003 |
+| Chairman | ~1,500 (candidates + judge notes) | ~380 | ~$0.0008 |
+| Voice editor | ~580 | ~300 | ~$0.0005 |
+
+Turns typically make ~1.5 baseline generation calls (some resolve in one call, some need a second
+after a tool result) - call it **~$0.004/turn for the baseline generation that already existed**
+before tonight.
+
+**Council's incremental cost per turn**: router + candidate + judges + chairman + voice editor.
+- At the MIN_JUDGES=3 floor: 0.0003 + 0.0024 + (3 × 0.0003) + 0.0008 + 0.0005 ≈ **$0.0048/turn**
+- At the max of 6 judges: 0.0003 + 0.0024 + (6 × 0.0003) + 0.0008 + 0.0005 ≈ **$0.0057/turn**
+
+**Total cost per turn with Council Mode**: roughly **$0.009-0.010**, call it ~$0.0092 as a
+representative middle estimate (baseline ~$0.004 + council ~$0.0048-0.0057).
+
+**Turns per $0.10 account**: 0.10 / 0.0092 ≈ **~11 turns**. Without Council Mode's incremental cost,
+the same budget would last roughly 0.10 / 0.004 ≈ **~25 turns**. Council Mode roughly **cuts the
+number of turns a $0.10 budget affords by more than half**.
+
+## What this means for the $0.10 default
+
+~11 turns is genuinely limiting for anything resembling a real campaign - even a fairly short
+narrative arc (the game's canon timelines span multiple in-fiction months with several tracked
+canon events each) will run out of budget well before reaching a meaningful stopping point. I did
+NOT change `DEFAULT_BUDGET_USD` myself - you asked me to surface this so you can decide, not to
+silently pick a new number. Options as I see them, not mutually exclusive:
+- **Raise the default budget.** Something like $0.50-$1.00 would buy roughly 55-110 turns at this
+  rate - enough to actually experience a campaign arc. Simplest lever, direct dollar cost.
+- **Prompt caching** (not currently implemented anywhere in `providers.py` - no `cache_control` is
+  set on any call today) would be the highest-leverage fix rather than a budget increase: the
+  ~9,500-token base system prompt is IDENTICAL across the baseline call, the extra candidate, and
+  turn-to-turn except for the small "current state" digest at the end. Anthropic/OpenAI both discount
+  cached-prefix tokens roughly 90% (see `pricing.py`'s cache multipliers from an earlier commit
+  tonight). If the stable prefix (rules/NPCs/factions/canon/resources - everything except the state
+  digest) were cached, the baseline turn and the extra candidate could both drop from ~9,500-11,500
+  priced input tokens to a small uncached tail plus a ~10%-priced cached prefix - a large fraction of
+  the real cost here. This is a genuinely separate, real piece of work (restructuring
+  `build_system_prompt` to put volatile content last, adding `cache_control` breakpoints, verifying
+  cache hits) - flagging as the most promising next lever, not implementing it tonight.
+- **Fewer judges as the floor**, or a narrower judge roster, would reduce cost roughly linearly but
+  goes directly against what you asked for (a 3-judge floor, 6-judge roster) - noting it as a lever
+  that exists, not recommending it.
+
+## Other things worth knowing about this redesign
+
+**Judge/router/candidate token counts above are estimates, not measurements** - I could measure the
+real system prompt size exactly (I did), but conversation history length, actual narration length,
+and judge output verbosity all vary turn to turn and campaign to campaign. Treat the per-turn total
+as a reasonable planning estimate, not a guarantee - the only way to get real numbers is running
+actual turns against the live APIs, which (as before) I still can't do from here.
+
+**Model lock**: separately, you also directed every call (generation, router, judges, chairman -
+everything) locked to GPT-5.6 Luna only, disabling the "escalate to Sonnet for high-stakes turns"
+idea and the README's mid-game model-switching feature, until you say otherwise. This is
+`providers.LOCKED_MODEL_KEY = "luna"` - explicitly a temporary standing default (not a removal;
+`MODEL_REGISTRY` still has all four entries), reverted by setting that one constant back to `None`.
+Enforced server-side (a direct API request can't bypass it even if the frontend selector is hidden)
+and the router has no model-tier-escalation logic at all right now - its only job is judge-panel
+size, never which model runs anything. The cost math above already assumes Luna-only throughout,
+since that's the actual locked behavior.
+
 # Council Mode (2026-08-20, overnight)
 
 Implemented the full design you'd already approved (LLM council pattern - independent generation,
