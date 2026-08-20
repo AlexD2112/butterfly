@@ -7,9 +7,13 @@ want to take it. Nothing here is committed - it's a menu, not a schedule.
 
 Three systems (Red Admiral, Monarch, Apollo) sharing one validated engine core; four playable
 settings (Petrograd 1917, Britannia 876, Rome 59 BCE, Crusades 1097); custom character creation;
-local SQLite accounts with optional Discord login; deployed to a free public URL. See `README.md`
-for the honest status checklist - a few real gaps are called out there (OpenAI's Responses API path
-hasn't been exercised against the live API yet; the free hosting tier's storage isn't durable).
+local SQLite accounts with optional Discord login; deployed to a free public URL; an opt-in
+per-campaign Council Mode for higher-effort, multi-judge-reviewed narration on high-stakes turns
+(2026-08-20 - see `council.py` and `NOTES.md`, not yet playtested against live APIs). See
+`README.md` for the honest status checklist - a few real gaps are called out there (OpenAI's
+Responses API path hasn't been exercised against the live API yet; the free hosting tier's storage
+isn't durable; Council Mode specifically needs a real-cost playtest before it's recommended to
+anyone).
 
 ## Phase 1 — Make tonight's deploy actually solid (days, not weeks)
 

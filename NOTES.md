@@ -1,3 +1,63 @@
+# Council Mode (2026-08-20, overnight)
+
+Implemented the full design you'd already approved (LLM council pattern - independent generation,
+blind cross-ranking by specialist judges, chairman synthesis - plus the advocate/premortem judge
+pair and a voice-editor pass). Mapped it onto the actual codebase across 5 commits: always-on voice
+guidance + rule-based gate, `force_tool_name` support in `providers.py` (needed for structured judge/
+chairman output), the full `run_council` orchestration, server-side wiring, then the frontend
+toggle. Since the high-level design was already decided, this section covers the judgment calls in
+mapping it onto this specific codebase, not a re-litigation of the design itself.
+
+**Per-campaign, not per-account.** You left this open ("per-campaign or per-account setting"). Went
+per-campaign: stored in the character's existing `state` JSON (`state["council_mode"]`), no schema
+migration, no new DB column. Reasoning: Council Mode changes a cost/quality tradeoff for one
+specific campaign's narration, not a property of the account as a whole - a player might want it on
+for a high-stakes Trotsky campaign and off for a casual one on the same account. If you'd rather it
+default per-account (e.g. so a new campaign inherits whatever the player last chose), that's a
+different, slightly bigger change - flagging rather than assuming.
+
+**2 total candidates, not 3+.** The normal turn's narration is free candidate #1; only one more gets
+generated when the council actually convenes. This is a deliberate cost-conservative starting point,
+not a finding from testing (I couldn't playtest real costs - see below) - easy to bump up once you
+have real numbers on what a convened turn actually costs.
+
+**Judge model selection**: prefers Haiku when the turn's on Anthropic, falls back to reusing the
+same model when it's Luna (OpenAI), since `MODEL_REGISTRY` doesn't currently register anything
+cheaper than Luna for OpenAI. This means on the Luna default, judges/candidates/chairman are ALL
+the same model tier - the cost savings from "judges use a cheap model" only actually materializes
+today when a player has picked Sonnet/Opus for their turn. Worth knowing if judge cost looks higher
+than expected on the default path.
+
+**Canon-event gating is broader than literally "locked" events.** The design brief said gate on "a
+canon-locked event"; I gate on ANY canon event firing, locked or contingent (see `should_convene_
+council`). Reasoning: a contingent event firing represents genuine player-driven divergence, which
+if anything is MORE narratively significant than a locked event playing out as scripted - gating
+only on locked events felt like it would miss the more interesting case. Flagging the interpretation
+since it's a deviation from the literal brief, not obviously "the smallest correct reading."
+
+**What I could NOT verify - the most important gap.** I did not run a real council-convened turn
+against live Anthropic/OpenAI APIs. No API keys are configured in this repo (deliberately excluded
+when it was split out, see earlier NOTES), and Council Mode additionally now requires Discord login
+(per tonight's earlier budget change), which I have no way to complete locally either. Everything
+is verified against mocked providers (56+ tests) and real UI click-throughs of the toggle/display
+plumbing - but the actual thing the opt-in design was FOR (seeing real cost-per-convened-turn and
+real narration quality before ever defaulting this on) hasn't happened yet. This is the literal
+next step before this feature is actually validated, not just "implemented." Given a ~$0.10 total
+budget and roughly 9 extra LLM calls on a convened turn (1 candidate + 6 judges + chairman + voice
+editor, on top of the normal turn's own call), I'd genuinely recommend checking real cost on one
+convened turn before recommending anyone turn this on with the current $0.10 default - it's
+plausible a single convened turn could eat a double-digit percentage of an entire account's budget,
+though I don't have real numbers to confirm or rule that out.
+
+**Minor code smell noticed while testing, not fixed**: `run_council`'s judging loop checks
+`budget_ok()` both in the outer loop and again inside `_run_judge` - redundant in production (a real
+`budget_ok` is monotonic - once exhausted it stays exhausted, so the double-check never actually
+matters), but it made a call-counting mock in testing behave less intuitively than expected until I
+switched the test to count real API calls instead. Not worth a change on its own, just documenting
+in case it's confusing to a future reader.
+
+---
+
 # Game rules balance pass (2026-08-20, late night)
 
 You asked for a real balance pass on the game rules themselves - dice math, XP/leveling, and all

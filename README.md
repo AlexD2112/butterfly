@@ -74,6 +74,23 @@ several API calls (the request_check/propose_state_update tool loop) gets cut of
 than allowed to run arbitrarily past budget. See `NOTES.md` for caveats and things worth a
 deliberate look before relying on this for real cost control.
 
+## Council Mode (opt-in)
+
+A per-campaign toggle (in the game header) for higher-effort narration on high-stakes turns.
+Mechanics are never affected - dice/state updates always happen exactly once, on the normal trusted
+path. When a turn's outcome trips a rule-based stakes gate (`council.should_convene_council` - a
+critical roll, a canon event firing, a resource crossing a label-band boundary, a liability gained),
+the narration gets regenerated: an independent second candidate is drafted, 6 specialist judges score
+both against their own rubric (rules/mechanics, canon/continuity, characterization, groundedness,
+and a "what should go right" / "what should go wrong" pair), a chairman synthesizes a final version
+from all of it, and a cheap-model voice-editor pass polishes word choice. See `council.py`'s module
+docstring for the full design and `NOTES.md` for what's been verified versus what still needs a real
+playtest - this has NOT yet been run against live APIs, only against mocked providers.
+
+Regardless of Council Mode, every turn's base narration prompt already includes a banned-word list
+and anti-purple-prose/anti-hand-waving guidance (`council.VOICE_GUIDANCE`) - that part is always on
+and free, no gating needed.
+
 ## Setup
 
 ```
