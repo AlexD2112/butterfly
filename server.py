@@ -3,7 +3,7 @@ Butterfly webapp entry point.
 
 Run: python server.py   (then open http://127.0.0.1:5000)
 
-API keys and secrets can come from real environment variables, or from an ai_rpg/.env file (see
+API keys and secrets can come from real environment variables, or from a .env file (see
 .env.example) - load_dotenv() below picks up .env automatically if present, without overriding any
 real env var that's already set. Never put actual secrets in a .py file - .env (and butterfly.db)
 are gitignored specifically so they can live on disk without ever being committed.
@@ -16,7 +16,9 @@ identities are NOT merged automatically; characters stay with whichever account 
 
 import os
 import secrets
+import threading
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory, session, redirect
@@ -37,6 +39,17 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 # sessions (and therefore "who am I") reset on every restart/redeploy. Fine for local dev; set a
 # real FLASK_SECRET_KEY in production (e.g. Render's environment variables) so logins persist.
 
+# SameSite=Lax blocks the session cookie from being attached to cross-site POSTs (a malicious page
+# elsewhere can't ride a victim's session into /api/character/<id>/turn or similar) - this matters
+# more than usual here because api_character_turn's request.get_json(force=True) parses the body as
+# JSON regardless of Content-Type, which otherwise removes a common implicit CSRF speed bump (a
+# cross-site <form> can't normally set Content-Type: application/json without a CORS preflight this
+# app doesn't allow, but force=True means it doesn't need to - a text/plain "simple request" works).
+# HttpOnly is Flask's default already; set explicitly so it can't be silently lost by a future config
+# change. SECURE (cookie only sent over HTTPS) is deliberately NOT set here - see NOTES.md.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
 # Per-character, per-provider conversation threads - see providers.py's docstring for why these
 # aren't translated between providers. Keyed by (character_id, provider_key); character ownership
 # is re-checked on every request via db.get_character(), so this cache can't leak across users.
@@ -48,6 +61,22 @@ def _conversation_for(character_id, provider_key, provider):
     if key not in _conversations:
         _conversations[key] = provider.new_conversation()
     return _conversations[key]
+
+
+# Serializes turns per-account so two concurrent requests for the same user (a double-click, two
+# open tabs, two devices on one Discord account) can't both pass the budget check before either has
+# recorded its spend and jointly overshoot it - see NOTES.md for what this does and doesn't cover.
+# Grows by one Lock per distinct user_id ever seen and is never pruned; negligible at this app's
+# scale (each Lock is a few dozen bytes and account counts are small), not worth a cleanup pass now.
+_turn_locks = {}
+_turn_locks_guard = threading.Lock()
+
+
+def _turn_lock_for(user_id):
+    with _turn_locks_guard:
+        if user_id not in _turn_locks:
+            _turn_locks[user_id] = threading.Lock()
+        return _turn_locks[user_id]
 
 
 def current_user():
@@ -97,9 +126,13 @@ def auth_discord_login():
 def auth_discord_callback():
     error = request.args.get("error")
     if error:
-        return redirect(f"/?auth_error={error}")
+        return redirect(f"/?auth_error={quote(error)}")
     state = request.args.get("state")
-    if not state or state != session.get("oauth_state"):
+    session_state = session.get("oauth_state")
+    # secrets.compare_digest over plain != - the state token itself isn't secret (it's a one-time
+    # CSRF nonce, not a credential), so a timing side-channel here isn't a realistic attack path, but
+    # constant-time comparison is the correct default for any token check and costs nothing.
+    if not state or not session_state or not secrets.compare_digest(state, session_state):
         return redirect("/?auth_error=state_mismatch")
     code = request.args.get("code")
     if not code:
@@ -108,7 +141,7 @@ def auth_discord_callback():
         token = discord_oauth.exchange_code(code)
         identity = discord_oauth.fetch_identity(token)
     except discord_oauth.DiscordOAuthError as e:
-        return redirect(f"/?auth_error={e}")
+        return redirect(f"/?auth_error={quote(str(e))}")
     user = db.get_or_create_discord_user(identity["id"], identity["username"], identity["avatar_url"])
     session["user_id"] = user["id"]
     session.pop("oauth_state", None)
@@ -245,64 +278,75 @@ def api_character_turn(character_id):
     if row is None:
         return jsonify({"error": "Character not found."}), 404
 
-    budget_before = db.get_budget_status(user["id"])
-    if budget_before["remaining_usd"] <= 0:
-        return jsonify({"error": "Out of usage budget for this account.", "budget": budget_before}), 402
-
-    body = request.get_json(force=True)
-    user_input = (body.get("input") or "").strip()
-    model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
-    if model_key not in providers.MODEL_REGISTRY:
-        return jsonify({"error": f"Unknown model key: {model_key}"}), 400
-    if not user_input:
-        return jsonify({"error": "Empty input."}), 400
+    # Non-blocking: a second concurrent request for the same account fails fast with 429 instead of
+    # queueing behind a possibly-slow LLM call, or - the actual bug this prevents - both requests
+    # reading the same "budget not yet exhausted" snapshot and jointly overspending it. This only
+    # serializes within one process; see NOTES.md for the multi-worker-process caveat.
+    lock = _turn_lock_for(user["id"])
+    if not lock.acquire(blocking=False):
+        return jsonify({"error": "Another turn is already in progress for this account."}), 429
 
     try:
-        provider, model = providers.get_provider(model_key)
-    except providers.ProviderError as e:
-        return jsonify({"error": str(e)}), 400
+        budget_before = db.get_budget_status(user["id"])
+        if budget_before["remaining_usd"] <= 0:
+            return jsonify({"error": "Out of usage budget for this account.", "budget": budget_before}), 402
 
-    state = row["state"]
-    provider_key = providers.MODEL_REGISTRY[model_key]["provider"]
-    conversation = _conversation_for(character_id, provider_key, provider)
+        body = request.get_json(force=True)
+        user_input = (body.get("input") or "").strip()
+        model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
+        if model_key not in providers.MODEL_REGISTRY:
+            return jsonify({"error": f"Unknown model key: {model_key}"}), 400
+        if not user_input:
+            return jsonify({"error": "Empty input."}), 400
 
-    # usage_sink accumulates one entry per API call made during this turn (a single turn can make
-    # several, via the request_check/propose_state_update tool loop). budget_ok recomputes spend
-    # from that in-progress list plus the balance already committed to the DB, so a runaway
-    # multi-call turn gets cut off as soon as it would exceed budget - not just on the next turn.
-    usage_sink = []
+        try:
+            provider, model = providers.get_provider(model_key)
+        except providers.ProviderError as e:
+            return jsonify({"error": str(e)}), 400
 
-    def budget_ok():
-        spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
-        return (budget_before["remaining_usd"] - spent_this_turn) > 0
+        state = row["state"]
+        provider_key = providers.MODEL_REGISTRY[model_key]["provider"]
+        conversation = _conversation_for(character_id, provider_key, provider)
 
-    try:
-        narration, debug_events = engine.run_turn(
-            provider, model, state, row["setting_key"], row["system_key"], conversation, user_input,
-            usage_sink=usage_sink, budget_ok=budget_ok,
-        )
-    except Exception as e:  # surface API/model errors to the frontend instead of a bare 500
-        return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
-    finally:
-        # record whatever calls actually completed even if something above raised, so spend is
-        # never lost/undercounted relative to what the provider actually billed.
-        for usage in usage_sink:
-            cost = pricing.estimate_cost_usd(usage)
-            db.record_usage(
-                user["id"], character_id, usage["provider"], usage["model"],
-                usage["input_tokens"], usage["output_tokens"],
-                usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
+        # usage_sink accumulates one entry per API call made during this turn (a single turn can make
+        # several, via the request_check/propose_state_update tool loop). budget_ok recomputes spend
+        # from that in-progress list plus the balance already committed to the DB, so a runaway
+        # multi-call turn gets cut off as soon as it would exceed budget - not just on the next turn.
+        usage_sink = []
+
+        def budget_ok():
+            spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
+            return (budget_before["remaining_usd"] - spent_this_turn) > 0
+
+        try:
+            narration, debug_events = engine.run_turn(
+                provider, model, state, row["setting_key"], row["system_key"], conversation, user_input,
+                usage_sink=usage_sink, budget_ok=budget_ok,
             )
+        except Exception as e:  # surface API/model errors to the frontend instead of a bare 500
+            return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
+        finally:
+            # record whatever calls actually completed even if something above raised, so spend is
+            # never lost/undercounted relative to what the provider actually billed.
+            for usage in usage_sink:
+                cost = pricing.estimate_cost_usd(usage)
+                db.record_usage(
+                    user["id"], character_id, usage["provider"], usage["model"],
+                    usage["input_tokens"], usage["output_tokens"],
+                    usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
+                )
 
-    db.save_character_state(character_id, user["id"], state)
-    return jsonify(
-        {
-            "narration": narration,
-            "debug_events": debug_events,
-            "state": engine.build_state_digest(state),
-            "budget": db.get_budget_status(user["id"]),
-        }
-    )
+        db.save_character_state(character_id, user["id"], state)
+        return jsonify(
+            {
+                "narration": narration,
+                "debug_events": debug_events,
+                "state": engine.build_state_digest(state),
+                "budget": db.get_budget_status(user["id"]),
+            }
+        )
+    finally:
+        lock.release()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,86 @@
+# Security/correctness self-review (2026-08-20, after live deploy confirmed working)
+
+You asked for a review of budget-bypass vectors, concurrent-turn races, cookie forgery, and Discord
+OAuth CSRF on everything from the overnight session. Findings and fixes, most important first:
+
+**Real bug, fixed: concurrent requests could jointly overspend an account's budget.** The turn
+route read `remaining_usd` once, then spent real money across a multi-second LLM call before
+writing the result back. Two requests for the same account arriving close together (a double-click,
+two open tabs, two devices on one Discord login) could both read "budget OK" before either commits
+its spend, and jointly overshoot it - a real TOCTOU race, trivially triggerable by just clicking
+Send twice fast. Fixed with a per-user `threading.Lock` in `server.py`
+(`_turn_lock_for`/`_turn_locks`) that makes a second concurrent request for the same account fail
+fast with 429 instead of racing the first. **Caveat I'm not certain about and didn't want to
+guess on:** this lock only serializes within one Python process. Nothing in this repo
+(`Procfile`, `render.yaml`, `requirements.txt`) sets an explicit gunicorn worker count, and
+gunicorn's own documented default with no `--workers`/`-w` flag is 1 worker - so as configured in
+this repo, everything should already run single-process, and the lock is the full fix. What I can't
+see or verify from here is whether Render's dashboard has any override on top of that (a manually
+set worker/instance count, autoscaling, etc.) - if it does, the race reopens across processes and
+would need a database-level fix instead (e.g. an atomic reserve-then-true-up against SQLite, which
+is a real design change, not tonight's scope). Worth a five-minute check of the Render service
+settings to confirm nothing overrides the single-worker default.
+
+**Real gap, fixed: session cookie had no explicit SameSite, and the turn route's `force=True`
+JSON parsing removes an implicit CSRF speed bump.** `request.get_json(force=True)` in
+`api_character_turn` parses the body as JSON regardless of `Content-Type`, which means a plain
+cross-site HTML form (no CORS preflight needed) could have posted a working request using a
+victim's cookies - forcing an arbitrary game turn (spending their budget, corrupting their game
+state) with no consent, if they had an active session and visited a malicious page. Fixed by
+setting `SESSION_COOKIE_SAMESITE = "Lax"` explicitly (also set `HTTPONLY` explicitly, though that
+was already Flask's default) - this blocks the cookie from being attached to cross-site POSTs.
+Verified locally: the local profile session still persists correctly across page reloads and fresh
+navigations with this set (SameSite=Lax explicitly still allows normal top-level navigation, which
+is what actually mattered to check).
+
+**Deliberately not changed - flagging instead of guessing: `SESSION_COOKIE_SECURE` is still
+unset.** This should be `True` in production (stops the cookie ever being sent over a non-HTTPS
+connection) but `True` locally would silently break `python server.py` for anyone following the
+README's plain `pip install && python server.py` instructions over `http://127.0.0.1:5000` - the
+browser simply wouldn't send the cookie back, so every request would look like a brand-new visitor.
+Flipping this correctly needs a reliable "are we in production" signal, and I don't have one I trust
+without guessing: `FLASK_DEBUG` isn't currently documented as something to set on Render either way,
+and I can't see the live service's actual environment variables from here to confirm what it's
+currently set to. Given the site is already confirmed live and working, I didn't want to gamble on
+guessing that wrong and breaking login on the deployed instance. If you want this closed: either
+confirm `FLASK_DEBUG` is unset/`"0"` on Render and I can safely gate `SESSION_COOKIE_SECURE` on it,
+or just set it manually - `app.config["SESSION_COOKIE_SECURE"] = True` in `server.py`, since Render
+serves the public URL over HTTPS only anyway.
+
+**Discord OAuth CSRF state validation: checked, was already correct, hardened anyway.** Re-traced
+the full flow: `/auth/discord/login` generates a fresh random `state`, stores it server-side in the
+session, and only `/auth/discord/callback` requests where the returned `state` matches that stored
+value proceed to exchange the code and log someone in - this is the standard, correct defense
+against an attacker forcing their own Discord login onto a victim's session. No bypass found. Two
+small hardening changes made anyway: swapped the plain `!=` state comparison for
+`secrets.compare_digest` (constant-time; the state token isn't a secret being checked against
+itself so this wasn't exploitable, but it's the correct default for any token comparison and costs
+nothing), and URL-encoded the `auth_error` values before putting them in a redirect Location header
+(previously an error message containing `&` or similar could have malformed the redirect query
+string - low severity today since the frontend only `console.warn`s this value rather than
+rendering it as HTML, but cheap to close properly).
+
+**Budget-bypass via manipulating cost calculation: checked, found nothing.** Traced every value
+that reaches `pricing.estimate_cost_usd` and `db.record_usage` back to its source: token counts and
+the `model` string come from `TurnResult.usage`, which is populated inside `providers.py` directly
+from the real Anthropic/OpenAI SDK response objects - never from anything in the request body.
+`model_key` is client-supplied but is checked against `providers.MODEL_REGISTRY` (a fixed dict, not
+client-extensible) before it's used for anything, so a client can pick which registered model to
+use but can't smuggle in a fake model id to hit the "unknown model, cost defaults to $0" fail-open
+path (already documented below) - that path is only reachable if `pricing.py` and
+`providers.MODEL_REGISTRY` fall out of sync with each other, not from client input. `user_id` for
+both the budget check and the `usage_events` insert always comes from the signed session, never
+from the request body. No manipulation vector found here.
+
+Verified via the existing test suite plus 6 new tests (`tests/test_security_hardening.py`: the lock
+rejects a genuinely-concurrent second request, different accounts aren't cross-serialized, the
+Discord callback rejects a missing/wrong/empty state, and the `auth_error` redirect is properly
+encoded) - 24/24 passing - and a real click-through against the running dev server confirming the
+session cookie still survives page reloads/fresh navigations under the new SameSite setting, and
+that a forged Discord callback state is correctly rejected in an actual browser.
+
+---
+
 # Notes from the overnight session (2026-08-19 → 2026-08-20)
 
 Implemented items 1-3 from the landing-page/login/usage-budget feature request while you were
