@@ -32,6 +32,8 @@ class TurnResult:
     text_parts: list
     tool_calls: list  # [{"id": ..., "name": ..., "input": {...}}]
     raw: object = None
+    usage: dict = None  # {"provider", "model", "input_tokens", "output_tokens",
+    #  "cache_read_tokens", "cache_creation_tokens"} - see pricing.py for how this is costed
 
 
 class ProviderError(RuntimeError):
@@ -75,7 +77,15 @@ class AnthropicProvider:
                 text_parts.append(block.text)
             elif block.type == "tool_use":
                 tool_calls.append({"id": block.id, "name": block.name, "input": block.input})
-        return TurnResult(text_parts=text_parts, tool_calls=tool_calls, raw=response)
+        usage = {
+            "provider": "anthropic",
+            "model": model,
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+            "cache_read_tokens": getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+            "cache_creation_tokens": getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
+        }
+        return TurnResult(text_parts=text_parts, tool_calls=tool_calls, raw=response, usage=usage)
 
     def append_assistant_turn(self, conversation, turn_result):
         conversation.append({"role": "assistant", "content": turn_result.raw.content})
@@ -151,7 +161,17 @@ class OpenAIProvider:
                         "input": json.loads(item.arguments) if item.arguments else {},
                     }
                 )
-        return TurnResult(text_parts=text_parts, tool_calls=tool_calls, raw=response)
+        input_details = getattr(response.usage, "input_tokens_details", None)
+        usage = {
+            "provider": "openai",
+            "model": model,
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+            # cached_tokens is a SUBSET of input_tokens for OpenAI, not additive - see pricing.py
+            "cache_read_tokens": getattr(input_details, "cached_tokens", 0) or 0 if input_details else 0,
+            "cache_creation_tokens": 0,  # not exposed by the Responses API usage object
+        }
+        return TurnResult(text_parts=text_parts, tool_calls=tool_calls, raw=response, usage=usage)
 
     def append_assistant_turn(self, conversation, turn_result):
         conversation.extend(turn_result.raw.output)
