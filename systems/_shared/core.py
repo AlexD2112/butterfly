@@ -139,7 +139,21 @@ def build_tool_specs(feat_catalog):
                         "description": "Liability IDs from the system's liability catalog, if the fiction earns the character a new one.",
                     },
                     "liabilities_removed": {"type": "array", "items": {"type": "string"}, "description": "Liability IDs to remove."},
-                    "xp_award": {"type": "integer", "description": f"0-{XP_AWARD_CAP}."},
+                    "xp_award": {
+                        "type": "integer",
+                        "description": (
+                            f"0-{XP_AWARD_CAP}. This is the main lever controlling how fast the character "
+                            "levels, so anchor it to actual stakes rather than picking a number that feels "
+                            "generous in the moment - most single turns should land in the middle of this "
+                            "range, not the top. Guideline: 0 for pure narration/conversation with no real "
+                            "stakes; 5-10 for a routine check or a minor beat; 15-25 for a meaningful check "
+                            "succeeding, a real complication overcome, or a notable failure handled well; "
+                            "30-45 for a hard/very-hard check succeeding or a genuinely significant turning "
+                            "point; 50-60 reserved for a rare campaign-defining moment (a major historical "
+                            "beat, a canon event firing). A character who's only having routine scenes "
+                            "should level slowly; don't inflate awards just to keep leveling feeling brisk."
+                        ),
+                    },
                     "canon_event_triggered": {"type": ["string", "null"]},
                     "divergence_note": {
                         "type": ["string", "null"],
