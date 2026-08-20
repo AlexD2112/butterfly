@@ -26,6 +26,7 @@ load_dotenv(Path(__file__).parent / ".env")
 import db
 import discord_oauth
 import engine
+import pricing
 import providers
 
 db.init_db()
@@ -68,6 +69,7 @@ def index():
 @app.route("/api/me")
 def api_me():
     user = current_user()
+    budget = db.get_budget_status(user["id"])
     return jsonify(
         {
             "id": user["id"],
@@ -75,6 +77,7 @@ def api_me():
             "avatar_url": user["avatar_url"],
             "is_local": bool(user["is_local"]),
             "discord_login_available": discord_oauth.is_configured(),
+            "budget": budget,
         }
     )
 
@@ -242,6 +245,10 @@ def api_character_turn(character_id):
     if row is None:
         return jsonify({"error": "Character not found."}), 404
 
+    budget_before = db.get_budget_status(user["id"])
+    if budget_before["remaining_usd"] <= 0:
+        return jsonify({"error": "Out of usage budget for this account.", "budget": budget_before}), 402
+
     body = request.get_json(force=True)
     user_input = (body.get("input") or "").strip()
     model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
@@ -259,12 +266,33 @@ def api_character_turn(character_id):
     provider_key = providers.MODEL_REGISTRY[model_key]["provider"]
     conversation = _conversation_for(character_id, provider_key, provider)
 
+    # usage_sink accumulates one entry per API call made during this turn (a single turn can make
+    # several, via the request_check/propose_state_update tool loop). budget_ok recomputes spend
+    # from that in-progress list plus the balance already committed to the DB, so a runaway
+    # multi-call turn gets cut off as soon as it would exceed budget - not just on the next turn.
+    usage_sink = []
+
+    def budget_ok():
+        spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
+        return (budget_before["remaining_usd"] - spent_this_turn) > 0
+
     try:
         narration, debug_events = engine.run_turn(
-            provider, model, state, row["setting_key"], row["system_key"], conversation, user_input
+            provider, model, state, row["setting_key"], row["system_key"], conversation, user_input,
+            usage_sink=usage_sink, budget_ok=budget_ok,
         )
     except Exception as e:  # surface API/model errors to the frontend instead of a bare 500
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
+    finally:
+        # record whatever calls actually completed even if something above raised, so spend is
+        # never lost/undercounted relative to what the provider actually billed.
+        for usage in usage_sink:
+            cost = pricing.estimate_cost_usd(usage)
+            db.record_usage(
+                user["id"], character_id, usage["provider"], usage["model"],
+                usage["input_tokens"], usage["output_tokens"],
+                usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
+            )
 
     db.save_character_state(character_id, user["id"], state)
     return jsonify(
@@ -272,6 +300,7 @@ def api_character_turn(character_id):
             "narration": narration,
             "debug_events": debug_events,
             "state": engine.build_state_digest(state),
+            "budget": db.get_budget_status(user["id"]),
         }
     )
 

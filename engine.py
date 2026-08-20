@@ -163,8 +163,20 @@ level-up options from the system rules before proceeding.
 """
 
 
-def run_turn(provider, model, state, setting_key, system_key, conversation, user_input):
-    """Returns (narration, debug_events)."""
+def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None):
+    """Returns (narration, debug_events).
+
+    usage_sink, if given, is a list that each API call's TurnResult.usage dict gets appended to -
+    callers that care about cost (server.py) can read it after this returns, or inspect it live via
+    budget_ok. This keeps engine.py agnostic of accounts/billing (per this module's docstring, it
+    doesn't own storage) while still letting a caller meter spend.
+
+    budget_ok, if given, is a zero-arg callable checked after each API call (i.e. after usage_sink
+    has the latest entry) - returning False ends the turn early rather than letting the model's
+    tool-calling loop keep making calls past budget. A single user turn can trigger several API
+    calls (each request_check/propose_state_update round-trip is its own call), so checking only
+    once before the turn starts wouldn't catch a runaway multi-call turn.
+    """
     system = get_system(system_key)
     resource_schema = load_json(setting_key, "resource_schema.json")
     provider.append_user_message(conversation, user_input)
@@ -176,6 +188,18 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
         turn_result = provider.call(model, system_prompt, system.TOOL_SPECS, conversation)
         provider.append_assistant_turn(conversation, turn_result)
         text_parts.extend(turn_result.text_parts)
+
+        if usage_sink is not None and turn_result.usage is not None:
+            usage_sink.append(turn_result.usage)
+
+        if budget_ok is not None and not budget_ok():
+            debug_events.append(
+                {
+                    "type": "budget_exhausted",
+                    "description": "Turn ended early: usage budget ran out mid-turn.",
+                }
+            )
+            break
 
         if not turn_result.tool_calls:
             break
