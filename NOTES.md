@@ -1,3 +1,103 @@
+# Game rules balance pass (2026-08-20, late night)
+
+You asked for a real balance pass on the game rules themselves - dice math, XP/leveling, and all
+three systems' feats/liabilities/DCs, grounded in the actual numbers rather than vibes, taking
+inspiration from D&D 5e/comparable tabletop design (bounded accuracy, a real level-1-through-5
+curve, feats that are situationally strong not strictly-better, liabilities as real tradeoffs).
+Read `systems/_shared/core.py` (the shared dice/XP/leveling/creation math) and all three systems'
+`mechanics.py`/`rules.md` in full before touching anything. Four changes shipped, in four commits;
+here's the reasoning behind each, plus what I found but deliberately left alone.
+
+**1. XP awards had no rubric - the single most underspecified number in the system.** The
+`xp_award` tool parameter was documented as just "0-60," with the actual amount entirely up to the
+GM model's in-the-moment judgment. Since XP is the only thing driving leveling pace, this meant
+pacing was effectively random across sessions/models rather than designed - exactly the "dead
+levels or runaway snowballing" risk you named, just from the award side rather than the DC side.
+Fixed with a concrete guideline table in the tool description (0 pure narration, 5-10 routine,
+15-25 meaningful, 30-45 hard/pivotal, 50-60 rare campaign-defining moments), with an explicit steer
+against inflating awards just to keep leveling feeling brisk. Lowest-risk change of the four - pure
+prompt/tool-description text, no code path changed.
+
+**2. Liabilities had zero creation-time upside - not a tradeoff, an unrewarded roleplay flag.**
+Taking a starting liability cost something narratively but gave nothing back mechanically, so the
+optimal-play choice was always to take none. This is close to the opposite of what you asked for
+("real tradeoffs not free stat sticks") - it was actually backwards, a free downside with no stick
+to trade. Fixed: each starting liability now grants +2 bonus skill points
+(`LIABILITY_BONUS_SKILL_POINTS`), up to +4 for the max of 2.
+
+**3. Level-1 characters could already be broadly competent across roughly half the skill list.**
+At the old flat 14-point budget, 3 Expertise skills (6pts, the max allowed) plus 8 more at
+Proficiency was affordable - out of each system's ~20-24 total skills, that's real competence in
+close to half of them before a single check has been rolled. That leaves little room for a
+level-1-through-5 *growth* arc, since a fresh character already reads as broadly accomplished
+rather than someone who grows into competence. Trimmed the base `SKILL_POINT_BUDGET` from 14 to 10;
+combined with #2 above, a character built "clean" now starts leaner, while one willing to take on
+both starting liabilities can still reach the old 14-point ceiling - same absolute maximum, now
+earned rather than default. **Judgment call, not a bug fix**: 10 and +2-per-liability are numbers I
+picked to feel meaningfully tighter without gutting character concepts that need some starting
+breadth (e.g. Rome's Cicero-type "man of many talents" builds) - reasonable people could land on
+9-12 instead. I deliberately did NOT also cut `MAX_STARTING_EXPERTISE_SKILLS` (still 3) - the budget
+cut alone does the tightening; stacking two simultaneous nerfs felt like overcorrecting without
+seeing the first one in play.
+
+**4. Feats had literally zero code-enforced effect anywhere - the biggest finding.** Every feat in
+every system was pure GM narrative ("the GM should let a clever turn of phrase win over an
+audience..."), with no numeric backing at all. This is a real inconsistency against the engine's
+own stated premise (the app owns mechanical outcomes, not the model) - feats were the one entire
+progression category that broke that rule completely, and it's structurally the same failure mode
+you were worried about elsewhere: a feat's actual strength would vary entirely with how generous a
+given session's GM model felt like being, not with deliberate design. Gave `roll_check` an optional
+`feat_catalog` param and a small code-enforced `check_bonus` mechanism (mirrors liabilities'
+existing `auto_trigger` pattern) - mechanized exactly one clean Oration-flavored feat per system
+(+2) plus a second clean match per system (Physique for Red Admiral's Iron Constitution, since its
+framing is genuinely physical not willpower; Resolve for Monarch/Apollo's Unyielding
+Faith/Stoic Composure, since "steadies under pressure" is clean willpower).
+
+**Judgment call on where I drew the mechanization line**: I deliberately left every *other* feat
+as pure narrative - most (a once-per-arc favor, "sense a plot before it breaks," NPC-social-class-
+dependent warmth, "unfamiliar terrain" ease) don't have a trigger that `roll_check`'s actual inputs
+(attribute, skill, DC, target NPC) can honestly detect without tracking more state than the engine
+does today (NPC social class, "is this terrain unfamiliar to this specific character," rolling
+counters for once-per-arc effects). I could have forced a numeric mapping onto those anyway, but it
+would have been a dishonest approximation of what the feat's fiction actually describes, not a
+clarifying one - and half-mechanizing everything risked a much bigger, riskier change than tonight's
+scope. If you want more feats to carry real numeric weight, the `check_bonus`
+mechanism is now there and it's a small addition per feat - but the ones I left narrative genuinely
+don't fit that shape without new state-tracking (e.g. a per-arc-favor counter) that's a bigger
+design decision than "which feats get +2."
+
+**+2 as the bonus magnitude**: proportionate to the existing DC spacing (DCs run 8/12/15/18/22,
+~3-4 apart), so it's a real, felt bonus - roughly half a difficulty tier - without trivializing the
+checks it applies to. This is also a taste call; I didn't find a principled reason it couldn't be
++1 or +3 instead.
+
+**What I found but did NOT fix - flagging for you rather than expanding scope further:** at the top
+of the level range (17-20), an optimized specialist's modifier gets large enough that even DC 22
+("extraordinary") starts trending toward a comfortable success rate (back-of-envelope: max attribute
+mod +5, Expertise at proficiency+6 = +12, plus a matching feat's +2 = +19 modifier, needing only a
+roll of 3+ against DC 22). This is a real bounded-accuracy erosion at the high end, structurally
+similar to what 5e itself experiences with heavily-optimized high-level specialists - but you
+specifically asked about the level-1-through-5 curve, and re-architecting the top end (e.g. scaling
+DCs with level, capping Expertise's multiplier, adding a higher "legendary" DC tier) is a
+materially bigger change than tonight's four fixes. Noted here rather than acted on. On the
+positive side: I checked the level-1 DC/modifier spread specifically (the thing you most explicitly
+asked about) against a fresh custom character's best- and worst-case builds, and it already looks
+well-tuned as-is - a specialist gets real, uncertain odds on "hard" checks (~65%) and "extraordinary"
+stays genuinely hard (~30%), while an unpracticed attempt at the same DCs correctly struggles
+(10-25%). I didn't touch the DC table itself; it didn't need it.
+
+Verified throughout: ran the full test suite after each of the four changes (37/37 passing by the
+end - added 16 new tests across three new files: `test_character_creation_balance.py`,
+`test_feat_check_bonus.py`, plus the XP-rubric change needed no new test since it's pure text) and
+did a live click-through in the running dev server for the two changes with visible UI surface
+(confirmed the creation form's budget line updates 10 -> 12 -> 14 as liability checkboxes toggle;
+confirmed a freshly-created premade character with a mechanized feat shows the updated description
+in the actual sidebar). Did not touch resource mechanics (`MAX_RESOURCE_DELTA_PER_CHECK`,
+`RESOURCE_LABELS`) - they weren't part of what you asked about (dice/XP/leveling/feats/liabilities/
+DCs) and looked reasonably scoped as-is on inspection.
+
+---
+
 # Budget tied to Discord account (2026-08-20, direction change from you)
 
 You reopened decision A: budget should be fully tied to the Discord account, not the local
