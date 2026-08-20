@@ -43,7 +43,20 @@ MAX_RESOURCE_DELTA_PER_CHECK = 10  # default; a setting's resource_schema.json m
 # cost table. Premade legendary figures (e.g. Trotsky's Intellect 20) are allowed to exceed this,
 # which is intentional: a hand-built historical figure should feel a cut above a fresh custom one.
 STANDARD_ATTRIBUTE_ARRAY = [16, 14, 13, 12, 10, 8]
-SKILL_POINT_BUDGET = 14  # 1 point per tier-step (untrained->proficiency=1, proficiency->expertise=+1 more)
+# 1 point per tier-step (untrained->proficiency=1, proficiency->expertise=+1 more). 10 base points
+# was 14 through 2026-08-20 - trimmed during a balance pass: at 14, a level-1 character could afford
+# 3 Expertise skills (6pts) plus 8 more at Proficiency, i.e. meaningful competence in roughly half a
+# system's ~23-skill list before a single check has been rolled, undercutting the level-1-through-5
+# growth arc. 10 base + LIABILITY_BONUS_SKILL_POINTS (below) restores the same 14-point ceiling for a
+# character who takes on real narrative baggage to earn it, while a "clean" character starts leaner.
+SKILL_POINT_BUDGET = 10
+# Each starting liability (see validate_and_build_character) grants this many bonus skill points, on
+# top of SKILL_POINT_BUDGET, up to the 2-liability cap. Added 2026-08-20: previously a liability was
+# a pure narrative downside with zero character-creation upside, meaning the mechanically optimal
+# choice was always to take none - not a real tradeoff, just an unrewarded roleplay flag. Taking both
+# allowed liabilities now funds real extra competence (10 + 2*2 = 14, matching the old flat budget)
+# in exchange for the narrative constraint, which is what makes it a tradeoff rather than a freebie.
+LIABILITY_BONUS_SKILL_POINTS = 2
 MAX_STARTING_EXPERTISE_SKILLS = 3
 
 
@@ -408,6 +421,22 @@ def validate_and_build_character(
     if set(attribute_assignment.keys()) != set(ATTRIBUTES) or sorted(attribute_assignment.values()) != sorted(STANDARD_ATTRIBUTE_ARRAY):
         errors.append(f"Attributes must be the standard array {STANDARD_ATTRIBUTE_ARRAY}, assigned one-to-one across all six attributes.")
 
+    if liability_ids and len(liability_ids) > 2:
+        errors.append("At most 2 starting liabilities may be chosen.")
+    liability_entries = []
+    for lid in (liability_ids or []):
+        entry = liability_catalog.get(lid)
+        if not entry:
+            errors.append(f"Unknown liability: {lid}")
+        else:
+            liability_entries.append({"id": lid, "name": entry["name"], "description": entry["description"]})
+
+    # Each valid starting liability funds extra skill points - see LIABILITY_BONUS_SKILL_POINTS'
+    # docstring for why (a liability with no creation-time upside is a freebie downside, not a
+    # tradeoff). Only counts liabilities that actually validated, so an unknown liability_id can't be
+    # used to inflate the budget.
+    effective_skill_budget = SKILL_POINT_BUDGET + LIABILITY_BONUS_SKILL_POINTS * len(liability_entries)
+
     all_valid_skills = {s for skills in system_skills.values() for s in skills}
     spent = 0
     expertise_count = 0
@@ -421,8 +450,8 @@ def validate_and_build_character(
         spent += tier
         if tier == 2:
             expertise_count += 1
-    if spent > SKILL_POINT_BUDGET:
-        errors.append(f"Skill points over budget: {spent}/{SKILL_POINT_BUDGET}")
+    if spent > effective_skill_budget:
+        errors.append(f"Skill points over budget: {spent}/{effective_skill_budget}")
     if expertise_count > MAX_STARTING_EXPERTISE_SKILLS:
         errors.append(f"At most {MAX_STARTING_EXPERTISE_SKILLS} skills may start at Expertise tier.")
 
@@ -431,16 +460,6 @@ def validate_and_build_character(
         errors.append(f"Unknown starting feat: {feat_id}")
     elif feat_entry.get("min_level", 1) > 1:
         errors.append(f"Feat '{feat_entry['name']}' is not available at level 1.")
-
-    if liability_ids and len(liability_ids) > 2:
-        errors.append("At most 2 starting liabilities may be chosen.")
-    liability_entries = []
-    for lid in (liability_ids or []):
-        entry = liability_catalog.get(lid)
-        if not entry:
-            errors.append(f"Unknown liability: {lid}")
-        else:
-            liability_entries.append({"id": lid, "name": entry["name"], "description": entry["description"]})
 
     if errors:
         return None, errors

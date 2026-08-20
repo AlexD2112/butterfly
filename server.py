@@ -202,6 +202,7 @@ def api_character_creation_schema(system_key):
             "attributes": system.ATTRIBUTES,
             "standard_array": core.STANDARD_ATTRIBUTE_ARRAY,
             "skill_point_budget": core.SKILL_POINT_BUDGET,
+            "liability_bonus_skill_points": core.LIABILITY_BONUS_SKILL_POINTS,
             "max_starting_expertise_skills": core.MAX_STARTING_EXPERTISE_SKILLS,
             "skills": system.SKILLS,
             "starting_feats": starting_feats,

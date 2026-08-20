@@ -122,6 +122,7 @@ believable DC or narrating a contested scene.
 ## 13. Character creation
 
 Custom characters use `systems/_shared/core.validate_and_build_character`: standard array
-`[16, 14, 13, 12, 10, 8]` across attributes, a 14-point skill budget (max 3 starting Expertise
-skills), one level-1 starting feat, up to 2 starting liabilities. A setting's premade signature
-character may exceed this budget by hand.
+`[16, 14, 13, 12, 10, 8]` across attributes, a 10-point base skill budget (max 3 starting Expertise
+skills), one level-1 starting feat, up to 2 starting liabilities - each taken grants +2 bonus skill
+points (up to +4 for both), so liabilities buy real starting competence rather than being a free
+downside. A setting's premade signature character may exceed this budget by hand.

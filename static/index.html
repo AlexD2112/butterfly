@@ -466,7 +466,7 @@ async function openCreationForm() {
       ${attrSelects}
     </div>
     <div class="creation-section">
-      <h3>Skills — ${s.skill_point_budget}-point budget (Proficiency = 1pt, Expertise = 2pts, max ${s.max_starting_expertise_skills} at Expertise)</h3>
+      <h3>Skills — ${s.skill_point_budget}-point base budget (Proficiency = 1pt, Expertise = 2pts, max ${s.max_starting_expertise_skills} at Expertise). Each starting liability below adds ${s.liability_bonus_skill_points} bonus points.</h3>
       <div class="budget-line" id="cc-budget">0 / ${s.skill_point_budget} points spent</div>
       ${skillGroups}
     </div>
@@ -475,7 +475,7 @@ async function openCreationForm() {
       ${feats}
     </div>
     <div class="creation-section">
-      <h3>Starting Liabilities — optional, up to 2</h3>
+      <h3>Starting Liabilities — optional, up to 2. Each one taken grants ${s.liability_bonus_skill_points} extra skill points above, in exchange for a real narrative constraint.</h3>
       ${liabilities}
     </div>
     <div class="creation-error" id="cc-error"></div>
@@ -493,16 +493,25 @@ async function openCreationForm() {
       });
     });
   });
+  document.querySelectorAll('input[name=liability]').forEach(cb => {
+    cb.addEventListener('change', updateBudgetLine);
+  });
   document.getElementById('cc-submit').addEventListener('click', submitCreation);
   updateBudgetLine();
   showScreen('screen-create-custom');
 }
 
+function effectiveSkillBudget() {
+  const liabilitiesChecked = document.querySelectorAll('input[name=liability]:checked').length;
+  return CREATION_SCHEMA.skill_point_budget + CREATION_SCHEMA.liability_bonus_skill_points * liabilitiesChecked;
+}
+
 function updateBudgetLine() {
   const spent = Object.values(CREATION_SKILL_TIERS).reduce((a, b) => a + b, 0);
+  const budget = effectiveSkillBudget();
   const el = document.getElementById('cc-budget');
-  el.textContent = `${spent} / ${CREATION_SCHEMA.skill_point_budget} points spent`;
-  el.className = spent > CREATION_SCHEMA.skill_point_budget ? 'budget-line over' : 'budget-line';
+  el.textContent = `${spent} / ${budget} points spent`;
+  el.className = spent > budget ? 'budget-line over' : 'budget-line';
 }
 
 async function submitCreation() {

@@ -234,8 +234,11 @@ Three tools, defined in `mechanics.py`:
 A custom character (as opposed to a setting's premade signature character) is built with:
 `systems/_shared/core.validate_and_build_character` - the same validated path the web character
 creator uses. In short: attributes are the standard array `[16, 14, 13, 12, 10, 8]` assigned
-one-to-one across the six attributes (no point-buy math to get wrong); skills draw from a 14-point
-budget (1 point per tier-step, so Proficiency costs 1 and Expertise costs 2 total), capped at 3
-skills starting at Expertise; one level-1-eligible starting feat; up to 2 starting liabilities. A
-setting's premade signature character is hand-authored outside this budget and may exceed it (a
-famous historical figure should feel a cut above a freshly-created one).
+one-to-one across the six attributes (no point-buy math to get wrong); skills draw from a 10-point
+base budget (1 point per tier-step, so Proficiency costs 1 and Expertise costs 2 total), capped at 3
+skills starting at Expertise; one level-1-eligible starting feat; up to 2 starting liabilities. Each
+starting liability taken grants +2 bonus skill points (up to +4 for both), so a character built
+"clean" starts leaner while one with real narrative baggage can afford more starting competence -
+liabilities are a tradeoff for something, not a free downside. A setting's premade signature
+character is hand-authored outside this budget and may exceed it (a famous historical figure should
+feel a cut above a freshly-created one).
