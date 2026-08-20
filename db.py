@@ -1,8 +1,8 @@
 """
-Local SQLite persistence for users and characters. This is deliberately a thin, dependency-free
-layer (stdlib sqlite3 only, no ORM) - the data model is small (two tables) and the goal is to make
-a later swap to a hosted Postgres straightforward (see README's hosting notes) rather than to build
-out a general-purpose data layer now.
+Local SQLite persistence for users, characters, and LLM usage. This is deliberately a thin,
+dependency-free layer (stdlib sqlite3 only, no ORM) - the data model is small (three tables) and the
+goal is to make a later swap to a hosted Postgres straightforward (see README's hosting notes)
+rather than to build out a general-purpose data layer now.
 
 Two users can exist without Discord: `get_or_create_local_user()` returns a single stable "local"
 account used for offline/anonymous play, so character creation and saving work today without
@@ -21,6 +21,8 @@ from pathlib import Path
 DB_FILE = Path(__file__).parent / "butterfly.db"
 
 _LOCAL_USER_DISCORD_ID = "__local__"  # sentinel, never a real Discord snowflake
+
+DEFAULT_BUDGET_USD = 0.10  # starting LLM usage budget granted to every new account
 
 
 def get_db():
@@ -56,6 +58,31 @@ def init_db():
             state_json TEXT NOT NULL,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL
+        )
+        """
+    )
+    # budget_usd is deliberately not in the CREATE TABLE above, so both a brand-new DB and one
+    # created before this feature existed go through the same ALTER TABLE path below. SQLite has no
+    # "ADD COLUMN IF NOT EXISTS", so the OperationalError on a rerun (column already exists) is
+    # expected and swallowed.
+    try:
+        conn.execute(f"ALTER TABLE users ADD COLUMN budget_usd REAL NOT NULL DEFAULT {DEFAULT_BUDGET_USD}")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS usage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            character_id INTEGER REFERENCES characters(id),
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+            cost_usd REAL NOT NULL,
+            created_at REAL NOT NULL
         )
         """
     )
@@ -153,3 +180,40 @@ def save_character_state(character_id, user_id, state):
     updated = cur.rowcount > 0
     conn.close()
     return updated
+
+
+def get_budget_status(user_id):
+    """Returns {"budget_usd", "spent_usd", "remaining_usd"} for a user. spent_usd is a live SUM
+    over usage_events rather than a separately-maintained running counter, so there's exactly one
+    source of truth for spend - no risk of the two drifting out of sync."""
+    conn = get_db()
+    user_row = conn.execute("SELECT budget_usd FROM users WHERE id = ?", (user_id,)).fetchone()
+    spent_row = conn.execute(
+        "SELECT COALESCE(SUM(cost_usd), 0) AS spent FROM usage_events WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    budget = user_row["budget_usd"] if user_row else DEFAULT_BUDGET_USD
+    spent = spent_row["spent"]
+    return {"budget_usd": budget, "spent_usd": spent, "remaining_usd": max(0.0, budget - spent)}
+
+
+def record_usage(user_id, character_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO usage_events (user_id, character_id, provider, model, input_tokens, output_tokens, "
+        "cache_read_tokens, cache_creation_tokens, cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            character_id,
+            provider,
+            model,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+            cost_usd,
+            time.time(),
+        ),
+    )
+    conn.commit()
+    conn.close()
