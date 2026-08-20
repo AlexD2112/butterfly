@@ -10,10 +10,16 @@ Each provider exposes the same four-method interface so engine.py's run_turn loo
 know which one it's talking to:
   - new_conversation()                                    -> provider-native empty conversation
   - append_user_message(conversation, text)                -> mutates conversation in place
-  - call(model, system_prompt, tool_specs, conversation)    -> TurnResult
+  - call(model, system_prompt, tool_specs, conversation,
+          force_tool_name=None)                             -> TurnResult
   - append_assistant_turn(conversation, turn_result)        -> mutates conversation in place
   - append_tool_results(conversation, turn_result, results) -> mutates conversation in place,
                                                                  results = [{"id":..., "content":...}]
+
+force_tool_name (optional): when set, the model MUST call that specific tool rather than being free
+to just respond with text (the default "auto" behavior every normal game turn uses). council.py's
+judges/chairman rely on this - a judge that responds with prose instead of its scoring tool would be
+unusable structured data, so their calls force the tool rather than hoping for compliance.
 
 Conversations are NOT translated between providers - each provider tracks its own native thread.
 If you switch models mid-session, the new provider starts its own fresh native conversation; the
@@ -62,13 +68,17 @@ class AnthropicProvider:
             for s in tool_specs
         ]
 
-    def call(self, model, system_prompt, tool_specs, conversation):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+        kwargs = {}
+        if force_tool_name:
+            kwargs["tool_choice"] = {"type": "tool", "name": force_tool_name}
         response = self._client.messages.create(
             model=model,
             max_tokens=1500,
             system=system_prompt,
             tools=self._tools_payload(tool_specs),
             messages=conversation,
+            **kwargs,
         )
         text_parts = []
         tool_calls = []
@@ -143,12 +153,16 @@ class OpenAIProvider:
             for s in tool_specs
         ]
 
-    def call(self, model, system_prompt, tool_specs, conversation):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+        kwargs = {}
+        if force_tool_name:
+            kwargs["tool_choice"] = {"type": "function", "name": force_tool_name}
         response = self._client.responses.create(
             model=model,
             instructions=system_prompt,
             tools=self._tools_payload(tool_specs),
             input=conversation,
+            **kwargs,
         )
         text_parts = [response.output_text] if getattr(response, "output_text", "") else []
         tool_calls = []
