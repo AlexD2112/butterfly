@@ -237,6 +237,9 @@
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
+      <label for="council-mode-toggle" title="Regenerates narration for high-stakes turns via a multi-judge review pass. Uses noticeably more of your usage budget per convened turn.">
+        <input type="checkbox" id="council-mode-toggle"> Council Mode
+      </label>
     </div>
   </header>
   <div id="log"></div>
@@ -709,6 +712,17 @@ function renderMechanics(debugEvents) {
       }).join('<br>');
       return `<div class="line">${ev.type === 'level_up' ? 'LEVEL-UP CHOICE' : 'STATE UPDATE'} — ${ev.reasoning || ''}<br>${changeLines}</div>`;
     }
+    if (ev.type === 'council') {
+      const reasons = (ev.reasons || []).join('; ');
+      const judgeLines = (ev.judge_results || []).map(jr =>
+        `${escapeHtml(jr.role)}: ${JSON.stringify(jr.scores)} — ${escapeHtml(jr.notes || '')}`
+      ).join('<br>');
+      const disagreement = ev.disagreement_notes
+        ? `<br><strong>Judge disagreement:</strong> ${escapeHtml(ev.disagreement_notes)}` : '';
+      const aborted = ev.aborted_reason
+        ? `<br><span class="clamped">Council did not complete: ${escapeHtml(ev.aborted_reason)}</span>` : '';
+      return `<div class="line">COUNCIL MODE convened (${escapeHtml(reasons)}) — ${ev.candidate_count} candidates, ${(ev.judge_results || []).length} judges<br>${judgeLines}${disagreement}${aborted}</div>`;
+    }
     return '';
   }).join('');
   return `<details class="mechanics"><summary>Mechanics (${debugEvents.length})</summary>${lines}</details>`;
@@ -743,6 +757,7 @@ async function loadCharacterState(isNew) {
   const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/state`);
   const data = await res.json();
   renderSidebar(data.state);
+  document.getElementById('council-mode-toggle').checked = !!data.state.council_mode;
   if (isNew) {
     const openingRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/opening_scene`);
     const openingData = await openingRes.json();
@@ -794,6 +809,17 @@ async function sendTurn() {
 sendBtn.addEventListener('click', sendTurn);
 inputBox.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTurn(); }
+});
+
+document.getElementById('council-mode-toggle').addEventListener('change', async (e) => {
+  if (!CURRENT_CHARACTER_ID) return;
+  const enabled = e.target.checked;
+  const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/council_mode`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  const data = await res.json();
+  e.target.checked = !!data.council_mode;
 });
 
 // ==================== boot ====================
