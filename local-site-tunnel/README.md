@@ -61,6 +61,19 @@ server-to-server.
    especially, so logins survive a restart of the app; Discord OAuth vars if you want Discord login;
    `OLLAMA_TUNNEL_URL`/`OLLAMA_TUNNEL_SECRET` if you want the free local model available too (see
    "Note on the local model" below).
+
+   **`DISCORD_REDIRECT_URI` specifically must be the PUBLIC address testers actually use**
+   (`https://butterfly-haa9.onrender.com/auth/discord/callback`), even though the real app now runs
+   locally - NOT `http://127.0.0.1:5000/auth/discord/callback` (that's what `.env.example` ships as
+   its default, meant for plain local dev before this tunnel setup existed - easy to leave unedited
+   by mistake now that "running locally" also means "serving the public site"). Discord OAuth is
+   configured entirely from THIS machine's `.env` now (`discord_oauth.py` reads it straight from the
+   environment) - Render's copy of these variables, if still present in its dashboard, is unused and
+   irrelevant. If the login button redirects to Discord but then fails (either Discord itself
+   rejects it as an unregistered redirect, or your browser can't reach `127.0.0.1` after you
+   approve), this is almost always why - fix the `.env` value, no code change needed, no Discord
+   dashboard change needed either as long as the public URL was already registered there from before
+   this tunnel setup existed (see `README.md`'s "Setting up Discord login" section).
 2. Run `start_local_site.ps1` in this folder (double-click it, or
    `powershell -File start_local_site.ps1`). This opens two windows: the app (via waitress), and a
    Cloudflare quick tunnel pointed at it.

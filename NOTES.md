@@ -1,3 +1,42 @@
+# Diagnosed: "login button broken" is almost certainly DISCORD_REDIRECT_URI (2026-08-21)
+
+You reported the Discord login button looked broken, without more detail yet. Traced the whole flow
+(`discord_oauth.py`, `server.py`'s `/auth/discord/login`/`/callback` routes) and reproduced the most
+likely cause directly rather than guessing: `discord_oauth.py` reads `DISCORD_CLIENT_ID`/`_SECRET`/
+`_REDIRECT_URI` from whichever process's environment it's running in - since the real app moved to
+this machine, that's now this machine's own `.env`, not Render's. `.env.example`'s default for
+`DISCORD_REDIRECT_URI` is `http://127.0.0.1:5000/auth/discord/callback` (the plain-local-dev value,
+predating this session's tunnel setup) - if that default was ever left in place (or the value simply
+doesn't match the public Render URL), the button still renders and is still clickable
+(`discord_login_available` only checks that all three vars are non-empty, not that they're correct),
+but either Discord itself rejects the redirect as unregistered, or - if it WAS registered from
+earlier local testing - Discord successfully sends the tester's own browser to `127.0.0.1`, which is
+unreachable for anyone but the host machine. Both failure modes read as "the button doesn't work."
+
+**Confirmed empirically, not just reasoned**: started a real local instance with
+`DISCORD_REDIRECT_URI=http://127.0.0.1:5000/auth/discord/callback` and hit `/auth/discord/login`
+directly - `/api/me` reported `discord_login_available: true` (button renders fine) and the actual
+302 redirect Discord-bound URL had `redirect_uri=http%3A%2F%2F127.0.0.1%3A5000%2F...` baked in
+verbatim - exactly the broken state described above, reproduced on demand.
+
+**The fix** (a config change on your machine, not a code change - nothing to commit for the fix
+itself): in this machine's `.env`, set `DISCORD_REDIRECT_URI=https://butterfly-haa9.onrender.com/auth/discord/callback`
+(the address testers actually use) - not a localhost or tunnel address. If that exact URL was
+already registered in the Discord Developer Portal app's OAuth2 Redirects list from before this
+session's changes (it should have been, since Discord login worked when Render hosted the real app
+directly), no Discord-side change is needed at all - just the local `.env` value. Documented this
+explicitly in `local-site-tunnel/README.md` (a real gap in tonight's original write-up - I mentioned
+"set the Discord OAuth vars" but didn't call out that `DISCORD_REDIRECT_URI` specifically needs the
+PUBLIC address even though the app runs locally now, which is the counterintuitive part).
+
+**What I still don't know**: whether this is actually what's happening on your machine, versus
+something else entirely (I can't see your actual `.env` or your browser's exact behavior when you
+click the button from here). Asked you for the specific symptom - a Discord-shown error page,
+silently doing nothing, or a browser connection error after approving on Discord - since that would
+confirm which failure mode (or rule this diagnosis out) rather than both of us assuming.
+
+---
+
 # Fix: start_local_site.ps1's waitress invocation didn't work on your machine (2026-08-21)
 
 Real-world failure, not caught during this session's own testing: running the script gave
