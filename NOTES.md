@@ -1,3 +1,33 @@
+# URGENT FIX: Council Mode skipped for local-ollama (2026-08-21, live-site incident)
+
+A real player turn against the local model on the live site appeared to hang past a minute. Checked
+immediately: not actually hung (GPU at 36% utilization, `ollama ps` showed fresh activity, proxy/
+tunnel both healthy and answering `/health`) - genuinely just this slow. Did the math from real
+measured data rather than the cloud-model-shaped estimate in the entry below: Qwen3 burns 1000+
+reasoning tokens even on short structured judge output (measured directly, unmocked), not just on
+narration. At ~9-29 tok/s, a full council turn (~8-11 calls: router, extra candidate, 3-6 judges,
+chairman, voice editor, on top of the baseline generation) realistically runs **6-24 minutes** -
+confirmed against the actual incident, not just projected. The worse end exceeds gunicorn's 900s
+timeout too, so the turn could fail anyway after all that wait.
+
+**Fixed, not just documented**: `council.SKIP_COUNCIL_FOR_MODEL_KEYS = {"local-ollama"}`, checked in
+`engine.run_turn` before ever calling `council.run_council`. This directly reverses the "council
+follows the player's model choice, including local-ollama" decision from the entry below - flagged
+there as something to revisit if the tradeoff felt wrong in practice, and it did, immediately, on
+first real use. Mechanics are unaffected either way (Council Mode never touches dice/state) - a
+local-model turn now makes exactly one provider call, same as if council weren't enabled at all.
+Considered capping output tokens instead of skipping outright; rejected because a reasoning model
+needs room to finish its `<think>` block AND produce its real answer - a cap tight enough to bound
+latency risks cutting generation off before it ever reaches the actual answer or tool call, which is
+worse than the panel simply not running that turn.
+
+**One thing worth knowing**: this fix only helps turns started AFTER Render redeploys with it. Any
+turn already in flight when this lands is running the old code and will still take however long it
+takes (or hit the timeout) - there's no way to retroactively speed up or cancel a request already
+running on Ollama from here.
+
+---
+
 # Free local model via home GPU + Cloudflare tunnel (2026-08-20/21, overnight into early morning)
 
 Implemented the full feature: a local Ollama instance (qwen3:30b, set up earlier tonight) exposed
