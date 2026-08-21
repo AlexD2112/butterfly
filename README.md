@@ -41,10 +41,14 @@ engine.py                        - SETTING_REGISTRY, SYSTEM_REGISTRY, prompt bui
                                     provider-agnostic turn loop - shared by loop.py and server.py
 providers.py                     - Anthropic + OpenAI adapters, MODEL_REGISTRY
 pricing.py                       - $/1M-token rates per model + cost estimation for the usage budget
-db.py                            - SQLite persistence: users, characters, usage_events (spend ledger)
+db.py                            - SQLite persistence: users, characters, usage_events (spend ledger),
+                                    turns (full per-turn transcripts, see "Viewing transcripts" below)
 discord_oauth.py                 - minimal Discord OAuth2 (login only, no token storage)
 server.py                        - Flask webapp (routes, sessions, gunicorn entry point)
+proxy_app.py                     - thin reverse proxy Render runs instead of server.py, forwarding
+                                    to wherever the real app is locally hosted (see "Hosting" below)
 loop.py                          - terminal CLI
+view_transcript.py               - local script to read back a character's full saved turn history
 static/index.html                - the webapp frontend (single file, no build step)
 requirements.txt, Procfile       - deployment (see "Deploying" below)
 tests/                           - unittest suite: pricing math, budget DB helpers, engine budget
@@ -73,6 +77,21 @@ refused (HTTP 402) once an account's remaining budget hits zero, and a single tu
 several API calls (the request_check/propose_state_update tool loop) gets cut off mid-turn rather
 than allowed to run arbitrarily past budget. See `NOTES.md` for caveats and things worth a
 deliberate look before relying on this for real cost control.
+
+## Viewing transcripts
+
+Every successful turn is saved in full (player input, complete narration, which model was used, and
+the mechanical facts - dice rolls, state changes, canon events, Council Mode's judge panel) to a
+`turns` table in `butterfly.db`. This is only recorded going forward from 2026-08-21 - earlier turns
+predate the feature and have nothing saved.
+
+There's no in-app admin page for this (the app has no admin concept at all - every route only ever
+shows a user their own data) - instead, run the local script directly, on whichever machine is
+actually hosting the database:
+```
+python view_transcript.py --list              # every character across every account, with turn counts
+python view_transcript.py <character_id>       # that character's full turn-by-turn transcript
+```
 
 ## Council Mode (always on)
 

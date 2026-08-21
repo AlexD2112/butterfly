@@ -386,6 +386,11 @@ def api_character_turn(character_id):
             spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
             return (budget_before["remaining_usd"] - spent_this_turn) > 0
 
+        # Captured before engine.run_turn mutates state (it increments state["turn_number"] itself,
+        # the same way campaign_log_summary's own entries do) - this is the turn number actually
+        # being played this call, for db.record_turn below.
+        turn_number_played = state.get("turn_number")
+
         try:
             # Council Mode runs on every turn as of 2026-08-20 - no longer a per-campaign opt-in
             # (see NOTES.md for the direction change and cost math). council_mode=True is
@@ -420,6 +425,9 @@ def api_character_turn(character_id):
                     usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
                 )
 
+        # Full transcript, saved alongside the state - see db.py's `turns` table comment for why
+        # this exists (previously narration/debug_events were discarded after this one response).
+        db.record_turn(character_id, turn_number_played, user_input, narration, model_key, debug_events)
         db.save_character_state(character_id, user["id"], state)
         return jsonify(
             {

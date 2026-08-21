@@ -93,6 +93,27 @@ def init_db():
         )
         """
     )
+    # Full per-turn transcript - deliberately separate from characters.state_json's own
+    # campaign_log_summary (which only ever kept a 400-character truncated snippet of narration,
+    # no player input, no mechanical detail). Before this table existed, none of that data survived
+    # past the single API response it was generated for - debug_events was only ever returned to the
+    # frontend for that one request, and the raw LLM conversation only lived in server.py's in-memory
+    # _conversations dict, wiped on every restart. This table is what finally makes a full game
+    # transcript reviewable after the fact - see view_transcript.py.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS turns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER NOT NULL REFERENCES characters(id),
+            turn_number INTEGER NOT NULL,
+            player_input TEXT NOT NULL,
+            narration TEXT NOT NULL,
+            model_key TEXT,
+            debug_events_json TEXT NOT NULL,
+            created_at REAL NOT NULL
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -224,3 +245,48 @@ def record_usage(user_id, character_id, provider, model, input_tokens, output_to
     )
     conn.commit()
     conn.close()
+
+
+def record_turn(character_id, turn_number, player_input, narration, model_key, debug_events):
+    """Saves one turn's full, untruncated record - see the `turns` table's comment in init_db() for
+    why this exists. debug_events is stored as JSON exactly as engine.run_turn produced it (dice
+    rolls, state changes, canon events, and the Council Mode log if it ran) - the same data the
+    frontend's per-turn Mechanics panel shows, just persisted instead of discarded after one
+    response. Called from server.py's turn route only on a successful turn, alongside
+    save_character_state - a failed/errored turn (caught earlier in that route) never reaches here,
+    matching how campaign_log_summary already only records completed turns."""
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO turns (character_id, turn_number, player_input, narration, model_key, "
+        "debug_events_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (character_id, turn_number, player_input, narration, model_key, json.dumps(debug_events), time.time()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_turns(character_id):
+    """Every recorded turn for one character, oldest first - used by view_transcript.py."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM turns WHERE character_id = ? ORDER BY turn_number ASC, id ASC", (character_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_characters_with_turn_counts():
+    """Every character across every account, with how many turns have been recorded for it - used by
+    view_transcript.py's --list mode to find a character_id worth looking at without needing to
+    inspect the database by hand first."""
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT c.id, c.name, c.setting_key, c.updated_at, u.username, u.is_local,
+               (SELECT COUNT(*) FROM turns t WHERE t.character_id = c.id) AS turn_count
+        FROM characters c JOIN users u ON u.id = c.user_id
+        ORDER BY c.updated_at DESC
+        """
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

@@ -1,3 +1,50 @@
+# Full turn transcripts, saved and viewable (2026-08-21)
+
+You asked whether there was any way to view a full playthrough - there wasn't, really (see the
+investigation I did first: `characters.state_json`'s `campaign_log_summary` only ever kept a
+400-character truncated snippet of narration, no player input, no mechanical detail; the raw
+LLM conversation only lived in `server.py`'s in-memory `_conversations` dict, wiped on every
+restart; `debug_events` - the actual dice rolls, state changes, Council Mode judge notes - was
+generated fresh every turn and only ever returned to that one API response, never saved anywhere).
+You asked me to fix that: save it properly, and give you a way to view it.
+
+**What shipped:**
+- A new `turns` table (`db.py`): `character_id`, `turn_number`, `player_input`, `narration` (full,
+  untruncated), `model_key`, `debug_events_json`, `created_at`. `db.record_turn(...)` writes one row;
+  `db.get_turns(character_id)` reads them back in order; `db.list_characters_with_turn_counts()`
+  supports the viewer's `--list` mode.
+- Wired into `server.py`'s turn route: right where `db.save_character_state` already runs (only on
+  a genuinely successful turn - a budget-exhausted or errored turn returns earlier in the route and
+  never reaches this line, so nothing incomplete gets recorded), using `narration`/`debug_events`
+  that were already sitting in memory and previously just discarded after the response was built.
+  `turn_number_played` is captured BEFORE `engine.run_turn` runs, since that function increments
+  `state["turn_number"]` internally (the same pre-increment convention `campaign_log_summary`
+  already used) - fresh campaigns start at turn 0, not 1, which a first draft of the test got wrong
+  before I checked an actual `new_campaign_state.json` file to confirm.
+- `view_transcript.py` - a local script, deliberately NOT a web route. The app has no admin concept
+  anywhere (every existing route only ever shows a user their own data); adding one just for this
+  would mean new auth code and new public attack surface for a feature that's only ever meant for
+  whoever already has filesystem access to `butterfly.db` - i.e. you, running the server. A script
+  needs none of that. `python view_transcript.py --list` shows every character across every account
+  with how many turns are recorded; `python view_transcript.py <character_id>` prints the full
+  turn-by-turn transcript (player input, full narration, model used, and a readable rendering of the
+  mechanical facts - checks, state changes, canon events, Council Mode's judge panel/disagreement
+  notes).
+
+**Verified for real, not just unit-tested**: seeded a real SQLite file with `db.record_turn` calls
+and ran the actual `view_transcript.py` functions against it (not mocked) - confirmed `--list` and
+the per-character transcript both render correctly, including the mechanics formatting for a check
+and a Council Mode event. 103/103 tests passing (7 new: a DB round-trip, ordering, empty-state, the
+list-with-counts helper, a real end-to-end turn through the Flask route landing in the `turns`
+table, and confirming a budget-blocked turn does NOT get recorded).
+
+**What's NOT retroactive**: only turns played after this shipped get recorded - any turns played
+earlier tonight (or by anyone, ever, before this commit) have no `turns` rows, since the data simply
+wasn't being saved before now. `view_transcript.py` says so explicitly if you point it at a character
+with zero recorded turns.
+
+---
+
 # Real bug found via a test failure: blank-but-present API keys weren't caught (2026-08-21)
 
 Found while re-running the test suite before committing the login-button diagnosis below (a genuine
