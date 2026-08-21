@@ -1,3 +1,90 @@
+# Local hosting + Render pass-through (2026-08-21, continuation session)
+
+Picking this up in a fresh session after the previous one started hitting persistent safety-
+classifier errors on every message - nothing about the repo state was lost, this is purely a
+conversation-continuity handoff. First real finding of this session: the previous session had
+**already started this exact change** before it went down - `proxy_app.py`, and diffs to
+`Procfile`/`render.yaml`/`server.py`/`requirements.txt`, were already sitting uncommitted in the
+working tree. I nearly clobbered `proxy_app.py` by writing my own competing version
+(`passthrough_app.py`) before noticing via `git status` - caught it before committing anything,
+deleted mine, and continued from the existing (well-reasoned, already-correct) implementation
+instead. Same thing happened with the tunnel starter script: the previous session had already
+written an untracked `start_local_site.ps1` at the repo root (auto-creates `.env` with a generated
+`FLASK_SECRET_KEY` on first run - a nice touch mine didn't have), while I'd independently written my
+own inside a `local-site-tunnel/` subfolder (matching `local-ollama-proxy/`'s existing folder
+pattern). Merged the better parts of both into the subfolder version and deleted the root-level
+duplicate, rather than keeping two competing scripts. Lesson for future sessions picking up a
+handoff: check `git status` for uncommitted work before creating anything, not just before
+destructive operations.
+
+**What was already done (by the previous session, verified and kept as-is):**
+- `proxy_app.py` - a transparent reverse-proxy Flask app: forwards every request (method, headers,
+  body, query string, cookies) to `LOCAL_TUNNEL_URL`, relays the response byte-for-byte, strips only
+  genuinely hop-by-hop headers. No auth layer of its own (unlike the Ollama proxy) - reasoned
+  correctly in its own docstring: it isn't protecting a raw unmetered resource, it's relaying to an
+  app that already has its own auth (Discord OAuth) and cost control (the budget ledger).
+- `Procfile`/`render.yaml` startCommand switched to `gunicorn proxy_app:app --timeout 900
+  --worker-class gthread --threads 4` - same flags as before, now on the proxy instead of the real
+  app, so a slow forwarded request (a Council Mode turn, or worst case a local-model turn) doesn't
+  block other players either.
+- `render.yaml`'s old envVars (API keys, Discord, Ollama tunnel settings) commented out rather than
+  deleted, replaced with a single `LOCAL_TUNNEL_URL` - a clean, reversible record of what Render used
+  to need, not a destructive edit.
+- `server.py`: `SESSION_COOKIE_SECURE` now defaults to `True` (`os.environ.get("SESSION_COOKIE_SECURE",
+  "1") == "1"`) - correctly closes the gap flagged in this file's own 2026-08-20 entry ("no reliable
+  production signal to gate this on"). The insight that unblocked it: every real deployment path now
+  terminates in HTTPS somewhere in front of the Flask process regardless of how server.py itself is
+  reached (Render's own HTTPS in front of the old direct-hosted setup, or a Cloudflare tunnel's HTTPS
+  edge in front of this machine now) - and browsers treat `127.0.0.1`/`localhost` as a secure context,
+  so `python server.py` local dev over plain `http://127.0.0.1` still works unmodified. Verified this
+  directly this session (see below) - a curl-based smoke test confirmed a Secure session cookie
+  survives across two requests to `127.0.0.1` with no HTTPS involved.
+
+**What I finished this session:**
+- `local-site-tunnel/start_local_site.ps1` + `README.md` - the local-machine half, mirroring
+  `local-ollama-proxy/`'s already-proven pattern exactly. Runs the real app via **waitress**, not
+  `python server.py`'s own dev server or gunicorn - gunicorn depends on `fcntl` and simply doesn't
+  run on Windows at all (this machine's actual OS), and Flask's own dev server defaults
+  `FLASK_DEBUG` on, which would expose Werkzeug's interactive debugger (arbitrary code execution on
+  any unhandled exception) to the public internet the moment the tunnel comes up - a real, serious
+  risk once this process is genuinely publicly reachable, not just a local dev nicety. `waitress` (a
+  pure-Python production WSGI server) was already added to `requirements.txt` by the previous
+  session before it went down; I added the explanatory comment.
+- Ran the full test suite (90/90 passing, no regressions from any of this).
+- **Real smoke test, not just structural**: started `server.py` via `waitress-serve` on one local
+  port and `proxy_app.py` via Flask's dev server on another, pointed `LOCAL_TUNNEL_URL` at the first.
+  Confirmed via curl: a GET through the proxy returns real data from the real app
+  (`/api/settings`); a session cookie set by the real app survives being relayed through the proxy
+  and is correctly sent back on a follow-up request through the proxy (same `user_id` both times);
+  the `Secure` flag is actually present on that cookie and curl still honored it over plain HTTP to
+  `127.0.0.1` (confirming the browser-secure-context reasoning above, not just assuming it); a POST
+  relays correctly too (real 404 from real character-lookup logic, not a proxy-level error); and with
+  `LOCAL_TUNNEL_URL` unset entirely, the proxy answers with a clean 503 rather than crashing or
+  hanging. **What's still NOT verified**: an actual Cloudflare quick tunnel round-trip (this
+  session's smoke test used two local ports directly, no real tunnel involved - `local-ollama-proxy`'s
+  tunnel pattern is already proven to work end-to-end, but that doesn't guarantee this specific
+  proxy behaves identically over a real tunnel hop), and the real Render deployment itself (I have no
+  access to the Render dashboard from here - the Start Command switch and `LOCAL_TUNNEL_URL` env var
+  are both manual steps only the user can do, documented in `local-site-tunnel/README.md`).
+- This write-up, plus `README.md`/`ROADMAP.md` updates.
+
+**Judgment call, not explicitly specified: old Render-hosted `butterfly.db` is now simply
+abandoned, not migrated.** Once Render runs `proxy_app.py` instead of `server.py`, nothing on Render
+reads that old database file anymore - any accounts/characters that happened to survive there (per
+the known wipe-on-redeploy bug, unlikely to be much) become permanently unreachable through the live
+URL. I did not attempt to fetch/migrate it (no access to Render's filesystem from here, and given
+the wipe bug, there's a real chance there's nothing worth migrating anyway) - flagging rather than
+silently accepting data loss.
+
+**Left alone, flagged as a small future win, not done:** `OllamaTunnelProvider` still calls Ollama
+via the public `OLLAMA_TUNNEL_URL`, even though the real app and Ollama now run on the same
+machine - a same-machine call now takes an unnecessary round trip out through Cloudflare and back.
+Still fully correct as-is, just not maximally efficient; pointing it at the local proxy's own
+`127.0.0.1:11435` directly once `server.py` itself is local is a small, easy change for later. See
+`local-site-tunnel/README.md`.
+
+---
+
 # URGENT FIX: Council Mode skipped for local-ollama (2026-08-21, live-site incident)
 
 A real player turn against the local model on the live site appeared to hang past a minute. Checked

@@ -46,9 +46,17 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 # cross-site <form> can't normally set Content-Type: application/json without a CORS preflight this
 # app doesn't allow, but force=True means it doesn't need to - a text/plain "simple request" works).
 # HttpOnly is Flask's default already; set explicitly so it can't be silently lost by a future config
-# change. SECURE (cookie only sent over HTTPS) is deliberately NOT set here - see NOTES.md.
+# change. SECURE (cookie only sent over HTTPS) now defaults to True as of the 2026-08-21 hosting move
+# - previously left unset because there was no reliable "are we in production" signal available (see
+# NOTES.md's earlier entry on this), but every real deployment path now terminates in HTTPS regardless
+# of how this process itself is reached (Render's own HTTPS, or a Cloudflare tunnel's HTTPS edge in
+# front of this machine - see start_local_site.ps1), so it's safe to default on. Plain `python
+# server.py` local dev over http://127.0.0.1 still works: Chrome/Firefox both treat 127.0.0.1 as a
+# secure context and send Secure cookies over plain HTTP to it specifically. Override with
+# SESSION_COOKIE_SECURE=0 if you ever need to test against a non-localhost plain-HTTP address.
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "1") == "1"
 
 # Per-character, per-provider conversation threads - see providers.py's docstring for why these
 # aren't translated between providers. Keyed by (character_id, provider_key); character ownership

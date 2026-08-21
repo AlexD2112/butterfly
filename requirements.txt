@@ -1,5 +1,9 @@
 flask
 gunicorn
+# Pure-Python production WSGI server - used to run the real app locally on Windows, since gunicorn
+# (used by Render, above) depends on fcntl and doesn't run on Windows at all. See
+# local-site-tunnel/README.md.
+waitress
 python-dotenv
 requests
 anthropic

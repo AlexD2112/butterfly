@@ -4,37 +4,43 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    # --timeout 900: a local-model turn (via OllamaTunnelProvider) can legitimately take many
-    # minutes - qwen3's reasoning overhead measured 1000+ output tokens for even a short structured
-    # judge response during testing, and Council Mode chains ~9 sequential calls per turn (see
-    # NOTES.md). --worker-class gthread --threads 4: without this, gunicorn's default single sync
-    # worker would let ONE slow local-model turn block every other player on the site for the
-    # duration - threads let other players' requests proceed concurrently. Safe with the existing
-    # per-account turn lock (server.py's _turn_locks), which already uses threading.Lock
-    # specifically (correctly serializes across threads in one process; its own docs already called
-    # out multi-PROCESS as the thing it doesn't cover, not multi-thread).
-    startCommand: gunicorn server:app --timeout 900 --worker-class gthread --threads 4
+    # As of 2026-08-21, Render no longer runs the real app (server:app) - it runs proxy_app:app, a
+    # thin reverse proxy that forwards every request to LOCAL_TUNNEL_URL below, where the real app
+    # is now hosted (this machine, via a Cloudflare tunnel - see start_local_site.ps1 and NOTES.md).
+    # This keeps the existing public URL (butterfly-haa9.onrender.com) working for anyone who already
+    # has that link, without them needing a new address. --timeout 900 / --worker-class gthread
+    # --threads 4: same reasoning as before (see git history) - a forwarded local-model turn can
+    # legitimately take minutes, and threads keep one slow forwarded request from blocking every
+    # other player's request while it waits.
+    startCommand: gunicorn proxy_app:app --timeout 900 --worker-class gthread --threads 4
     envVars:
-      - key: ANTHROPIC_API_KEY
+      # The ONLY env var this service actually needs now - the current Cloudflare tunnel URL pointed
+      # at the real app running locally. Changes every time the local tunnel restarts (see
+      # start_local_site.ps1's output) and must be updated here + redeployed each time, same
+      # operational reality as OLLAMA_TUNNEL_URL below always was. Leave blank and this service
+      # answers every request with a clear "host machine not configured" message instead of erroring.
+      - key: LOCAL_TUNNEL_URL
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: FLASK_SECRET_KEY
-        generateValue: true
-      # Optional - leave blank in the blueprint prompt to skip Discord login;
-      # local per-browser profiles work without them.
-      - key: DISCORD_CLIENT_ID
-        sync: false
-      - key: DISCORD_CLIENT_SECRET
-        sync: false
-      - key: DISCORD_REDIRECT_URI
-        sync: false
-      # Required for the free local-model option (OllamaTunnelProvider) to work at all - see
-      # local-ollama-proxy/README.md. OLLAMA_TUNNEL_URL changes every time the local quick tunnel
-      # restarts and needs updating here manually each time; OLLAMA_TUNNEL_SECRET must exactly
-      # match that proxy's PROXY_SHARED_SECRET. Leave both blank to simply not offer this option -
-      # it degrades to "not configured" in the model picker, nothing else breaks.
-      - key: OLLAMA_TUNNEL_URL
-        sync: false
-      - key: OLLAMA_TUNNEL_SECRET
-        sync: false
+      # Everything below this line (API keys, FLASK_SECRET_KEY, Discord OAuth settings, the Ollama
+      # tunnel settings) is now only relevant to the LOCAL machine's own .env - proxy_app.py has no
+      # database, no provider calls, and no session logic of its own, so none of these are read by
+      # anything running on Render anymore. Left commented here (rather than deleted outright) purely
+      # as a record of what this service used to need before the hosting move - see NOTES.md. If
+      # hosting ever moves back to Render running server:app directly, uncomment these and restore
+      # the old startCommand.
+      # - key: ANTHROPIC_API_KEY
+      #   sync: false
+      # - key: OPENAI_API_KEY
+      #   sync: false
+      # - key: FLASK_SECRET_KEY
+      #   generateValue: true
+      # - key: DISCORD_CLIENT_ID
+      #   sync: false
+      # - key: DISCORD_CLIENT_SECRET
+      #   sync: false
+      # - key: DISCORD_REDIRECT_URI
+      #   sync: false
+      # - key: OLLAMA_TUNNEL_URL
+      #   sync: false
+      # - key: OLLAMA_TUNNEL_SECRET
+      #   sync: false

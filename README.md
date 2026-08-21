@@ -158,32 +158,43 @@ AI_RPG_SETTING=rome_59_bce python loop.py    # play a different setting's premad
 Uses a single legacy save file (`save.json`), always the chosen setting's premade character - no
 accounts, no custom characters, no usage budget tracking. For those, use the webapp.
 
-## Deploying (Render, free tier, no domain needed)
+## Hosting (local machine + a thin Render pass-through)
 
-This gets you a real `https://<something>.onrender.com` URL anyone can open, without buying a
-domain or paying anything.
+As of 2026-08-21, the real app runs on the player's own machine, not Render - Render's free tier has
+no persistent disk, so `butterfly.db` (accounts and characters) kept getting silently wiped on every
+redeploy. The real app now runs locally (SQLite on a normal local disk, genuinely persistent) and is
+exposed to the public internet via a Cloudflare tunnel, the same pattern already proven out for the
+free local model below. Render keeps serving the existing public URL
+(`https://butterfly-haa9.onrender.com`) as a minimal reverse-proxy (`proxy_app.py`) that forwards
+every request to wherever the real app currently is - so anyone who already has that link keeps
+working, without a new URL to distribute.
+
+**See `local-site-tunnel/README.md` for the full setup and the every-time-you-play steps.** Short
+version: run `local-site-tunnel/start_local_site.ps1` (starts the real app via `waitress` + a
+Cloudflare quick tunnel), copy the tunnel's URL into Render's `LOCAL_TUNNEL_URL` environment
+variable on the service now running `proxy_app.py`. The tunnel URL changes every time that script
+restarts and needs updating each time - same operational reality as the free local model's
+`OLLAMA_TUNNEL_URL` below. The site is only fully live while this machine is on and awake - an
+accepted tradeoff, same as the local model.
+
+### Alternative: hosting the real app directly on Render
+
+Still fully supported if you'd rather not run this machine continuously - trades away persistent
+storage (back to the wipe-on-redeploy limitation above) for not needing a machine to stay on.
 
 1. **Push this repo to GitHub** if it isn't already (this repo already has a GitHub remote -
    `git push` your current branch).
 2. **Create a Render account** at render.com (free, GitHub login works) and click **New → Web
-   Service**, connect this GitHub repo. A `render.yaml` blueprint is included in the repo root, so
-   Render can pick up the service config (build/start commands, env var slots) automatically via
-   **New → Blueprint** instead of manual entry - either path works.
-3. Render should auto-detect Python. Confirm: **Build Command** `pip install -r requirements.txt`,
-   **Start Command** `gunicorn server:app` (this matches the included `Procfile`, so Render may
-   fill it in automatically).
+   Service**, connect this GitHub repo.
+3. **Start Command**: `gunicorn server:app --timeout 900 --worker-class gthread --threads 4`
+   (`render.yaml`'s current `startCommand` points at `proxy_app:app` instead - see above - so set
+   this manually rather than relying on the blueprint if you want this alternative).
 4. Under **Environment**, add each variable from `.env.example` as a real environment variable
    (not a `.env` file - Render doesn't read that): `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`,
    `FLASK_SECRET_KEY` (generate one: `python -c "import secrets; print(secrets.token_hex(32))"`),
    and the three `DISCORD_*` variables once you've done the Discord setup below (optional - skip
    them and the app still runs fine with local-only profiles).
 5. Deploy. Render gives you a URL like `https://butterfly-xyz.onrender.com`.
-
-**Known limitation to know about going in:** Render's free web services don't get a persistent
-disk, so `butterfly.db` (accounts and characters) resets on every redeploy or restart - fine for a
-demo tonight, not fine for anything you want to keep long-term. When you're ready to fix that,
-swap SQLite for a small hosted Postgres (Render's own, or Supabase's free tier) - `db.py` is a thin
-enough wrapper that this is a contained change, not a rewrite. See `ROADMAP.md`.
 
 The free tier also spins down after 15 minutes idle and takes 30-50 seconds to wake back up on the
 next request - expected behavior, not a bug, if the first request after a while feels slow.
@@ -286,7 +297,8 @@ level-1-eligible starting feat, and up to 2 starting liabilities. See
       `/api/character/<id>/state|turn|opening_scene`, `/api/me`, Discord auth routes) tested,
       including a live-route turn test through the real DB with a mocked provider
 - [ ] **Real playtesting against live APIs** - the actual next step
-- [ ] Persistent storage once actually hosted long-term (swap SQLite → Postgres - see "Deploying")
+- [x] Persistent storage - hosted on the user's own machine as of 2026-08-21 (see "Hosting" above),
+      SQLite persisting on a normal local disk instead of Render's ephemeral one
 - [ ] Real prerequisite enforcement for contingent canon events (currently only checks the event
       is still `pending`, not the conditions in each setting's `canon_timeline.md`)
 - [ ] Conversation history summarization once a session runs long (currently unbounded per

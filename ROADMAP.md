@@ -7,7 +7,10 @@ want to take it. Nothing here is committed - it's a menu, not a schedule.
 
 Three systems (Red Admiral, Monarch, Apollo) sharing one validated engine core; four playable
 settings (Petrograd 1917, Britannia 876, Rome 59 BCE, Crusades 1097); custom character creation;
-local SQLite accounts with optional Discord login; deployed to a free public URL; an always-on,
+local SQLite accounts with optional Discord login; hosted on the user's own machine as of 2026-08-21
+(genuinely persistent SQLite, exposed via a Cloudflare tunnel, with Render running only a thin
+pass-through so the original public URL keeps working - see `local-site-tunnel/README.md`); an
+always-on,
 router-sized multi-judge Council Mode reviewing every turn's narration (2026-08-20, redesigned from
 an initial opt-in/stakes-gated version the same night - see `council.py` and `NOTES.md`); a free,
 player-selectable local model (a home GPU's Ollama instance via a Cloudflare tunnel - see
@@ -16,9 +19,9 @@ currently-selectable models (`providers.ALLOWED_MODEL_KEYS`) - Sonnet/Haiku/Opus
 deliberate temporary default pending real cost data on the cloud providers, not a removal. See
 `README.md` for the honest status checklist - a few real gaps are called out there (OpenAI's/
 Anthropic's live APIs haven't been exercised yet, only the local model has been tested against real
-infrastructure; the free hosting tier's storage isn't durable; Council Mode specifically needs a
-real-cost playtest, and per `NOTES.md`'s cost math the $0.10 default budget likely needs raising now
-that Council Mode always runs, before either is recommended to anyone).
+infrastructure; Council Mode specifically needs a real-cost playtest, and per `NOTES.md`'s cost math
+the $0.10 default budget likely needs raising now that Council Mode always runs, before either is
+recommended to anyone).
 
 ## Phase 1 — Make tonight's deploy actually solid (days, not weeks)
 
@@ -26,12 +29,12 @@ that Council Mode always runs, before either is recommended to anyone).
   responses, but a real campaign turn against the live Anthropic and OpenAI APIs hasn't happened
   yet. Do this first - it's the highest-value, lowest-effort next step, and most likely to surface
   small integration bugs (a parameter name, a response shape) rather than design problems.
-- **Durable storage.** Swap SQLite for a small hosted Postgres (Render's own free-for-90-days
-  option, or Supabase's free tier) so accounts/characters survive redeploys. `db.py` is a thin
-  wrapper specifically so this is a contained change. Direction confirmed 2026-08-20: locally-hosted
-  (running the app on the user's own machine, where SQLite's file just persists normally) is an
-  equally acceptable answer to this, not just a Render/Postgres upgrade - not yet acted on either
-  way, still SQLite + Render's ephemeral disk today.
+- [x] **Durable storage.** Done 2026-08-21: went with the locally-hosted path (running the real app
+  on the user's own machine, SQLite persisting normally on local disk) rather than a Postgres
+  migration - Render now runs only a thin reverse-proxy (`proxy_app.py`) forwarding to the real app
+  via a Cloudflare tunnel, keeping the existing public URL working. See `local-site-tunnel/README.md`
+  and `NOTES.md`. A hosted-Postgres migration is still on the table later if continuous local hosting
+  ever stops being the preferred tradeoff (e.g. wanting the site up when this machine is off).
 - **Conversation length management.** Long campaigns will eventually hit context limits or get
   expensive. Add a summarization pass (compress older turns into `campaign_log_summary` entries,
   which already exist, and stop sending the full raw transcript past some turn count).
