@@ -41,6 +41,11 @@ def estimate_cost_usd(usage):
     sync with providers.MODEL_REGISTRY or spend on a new model goes untracked. There's no live
     traffic risk here (this is a ~$0.10 hobby budget, not real billing), so failing open is the
     safer default over crashing a turn on a pricing lookup miss.
+
+    "qwen3:30b" (providers.OllamaTunnelProvider, the local-ollama option) is DELIBERATELY absent
+    from PRICING_TABLE - it's a free provider by design (a home GPU, not a paid API), so it should
+    always cost $0.0 via this same fail-open path, not because it's unrecognized. Token counts still
+    get recorded in usage_events for observability; they're just never converted to a dollar cost.
     """
     rates = PRICING_TABLE.get(usage["model"])
     if rates is None:

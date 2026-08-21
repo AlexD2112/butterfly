@@ -33,10 +33,16 @@ SIZE of the judge panel:
    aborts back to the baseline narration rather than failing the whole turn - the player always
    gets a narration, worst case it's the single-pass one with no council review.
 
-   As of 2026-08-20, every call in this module is locked to providers.LOCKED_MODEL_KEY (currently
-   Luna) regardless of what model the player picked for their turn - see that constant's docstring.
-   There is no "escalate to a stronger model for high-stakes turns" path right now; the router's
-   only job is choosing HOW MANY/WHICH judges review a turn, not which model tier runs them.
+   As of 2026-08-20, council's judges/router/voice-editor follow whatever model the PLAYER picked
+   for their turn (via _cheap_model_key_for - a no-op identity function while only Luna and the
+   free local-ollama option are selectable, see providers.ALLOWED_MODEL_KEYS) - this was a
+   deliberate choice, not an accident: if a player picks the free local model specifically to avoid
+   cost, having council's ~7-9 internal calls silently still bill against a paid model would work
+   against the whole point of offering a free option. See NOTES.md for the alternative considered
+   (pinning council's internal machinery to a fixed reliable model regardless of the player's
+   choice) and why this one was picked instead. There is no "escalate to a stronger model for
+   high-stakes turns" path right now; the router's only job is choosing HOW MANY/WHICH judges
+   review a turn, not which model tier runs them.
 
 Design rationale (why this maps to real technique, not just "have some models argue"):
   - The overall independent-generation -> blind cross-ranking -> chairman-synthesis shape follows
@@ -204,13 +210,13 @@ def _ok(budget_ok):
 
 def _cheap_model_key_for(model_key):
     """Judges/router/voice-editor use a cheaper model than the current turn's candidates/chairman -
-    narrow checklist evaluation doesn't need a strong model. While providers.LOCKED_MODEL_KEY is set
-    (as of 2026-08-20, standing until reversed - see that constant's docstring), it wins outright:
-    every call in this module uses the same single locked model, full stop. Once unlocked, this
-    falls back to preferring haiku when the current model is on Anthropic, or reusing the current
-    model when it's Luna (MODEL_REGISTRY doesn't register anything cheaper than Luna for OpenAI)."""
-    if providers.LOCKED_MODEL_KEY:
-        return providers.LOCKED_MODEL_KEY
+    narrow checklist evaluation doesn't need a strong model. As of 2026-08-20 this is close to a
+    no-op: only Luna and the free local-ollama option are selectable at all right now
+    (providers.ALLOWED_MODEL_KEYS), and neither has a cheaper same-provider fallback to reach for -
+    Luna is already the cheap default, and local-ollama is already free. Deliberately follows the
+    player's own model choice rather than pinning to something else (see this module's docstring
+    for why) - the Anthropic-preference logic below is dead code while the current lock holds, kept
+    for when/if sonnet/haiku/opus become selectable again."""
     entry = providers.MODEL_REGISTRY.get(model_key, {})
     if entry.get("provider") == "anthropic":
         return "haiku"

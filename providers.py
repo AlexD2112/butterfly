@@ -30,6 +30,8 @@ forth phrasing on the turn you switch, not any loss of actual game state.
 
 import json
 import os
+import re
+import time
 from dataclasses import dataclass, field
 
 
@@ -197,6 +199,137 @@ class OpenAIProvider:
             )
 
 
+def _strip_thinking(text):
+    """Qwen3 (via Ollama) sometimes leaks its chain-of-thought directly into response content even
+    when think:false is requested (observed directly during testing 2026-08-20/21) - and not always
+    in a well-formed <think>...</think> pair; several observed responses had a bare closing </think>
+    with no matching opening tag, apparently because Ollama's own content capture already starts
+    mid-thought. Taking everything after the LAST </think> handles both the well-formed and the
+    opening-tag-missing cases the same way, and is a no-op (returns the text unchanged, just
+    stripped) when no </think> appears at all."""
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[-1]
+    return text.strip()
+
+
+class OllamaTunnelProvider:
+    """Talks to a local Ollama instance exposed via a Cloudflare quick tunnel + a small auth/rate-
+    limit proxy that machine runs (see local-ollama-proxy/ at the repo root) - never Ollama's raw
+    port directly, which has no authentication of its own. This is what makes the local model a
+    free, player-selectable option: $0 cost regardless of real token counts (see pricing.py - this
+    provider's model id is deliberately absent from PRICING_TABLE, so estimate_cost_usd() returns
+    0.0 for it via that module's existing fail-open behavior; real token counts still get recorded
+    in usage_events for observability, just billed at zero).
+
+    Uses Ollama's NATIVE /api/chat endpoint (via the proxy), not the OpenAI-compatible /v1/ surface
+    OpenAIProvider uses - confirmed by direct testing that Ollama's OpenAI-compat endpoint silently
+    ignores a context-length override in the request body, while the native endpoint honors it. The
+    proxy (not this class) is what actually sets the context length on every request - see
+    local-ollama-proxy/proxy.py's NUM_CTX for the reasoning behind that number. The native
+    endpoint's tool-calling shape is close to OpenAI's (tools/tool_calls, arguments as a JSON
+    object already - not a string needing parsing, unlike the other two providers here), so this
+    class's conversation handling looks similar to OpenAIProvider's despite using plain `requests`
+    rather than an SDK (there's no official Ollama Python SDK this app already depends on, and the
+    `openai` SDK is built around OpenAI's own endpoints - a natural fit for Anthropic/OpenAI's real
+    APIs, not for hand-rolling requests to a self-hosted JSON API like this one).
+
+    Configured via env vars OLLAMA_TUNNEL_URL (the cloudflared quick tunnel's current public HTTPS
+    URL - changes every time the tunnel restarts, so this needs to be updated as a Render env var,
+    not hardcoded - see local-ollama-proxy/README.md) and OLLAMA_TUNNEL_SECRET (the shared secret
+    the local proxy requires, sent as a Bearer token - must match that proxy's PROXY_SHARED_SECRET).
+    """
+
+    env_var = ("OLLAMA_TUNNEL_URL", "OLLAMA_TUNNEL_SECRET")
+
+    def __init__(self):
+        self.base_url = (os.environ.get("OLLAMA_TUNNEL_URL") or "").rstrip("/")
+        self.secret = os.environ.get("OLLAMA_TUNNEL_SECRET")
+        if not self.base_url or not self.secret:
+            raise ProviderError("OLLAMA_TUNNEL_URL / OLLAMA_TUNNEL_SECRET are not set.")
+        import requests  # imported lazily, matching the other providers' lazy-import convention
+
+        self._requests = requests
+
+    def new_conversation(self):
+        return []
+
+    def append_user_message(self, conversation, text):
+        conversation.append({"role": "user", "content": text})
+
+    def _tools_payload(self, tool_specs):
+        return [
+            {"type": "function", "function": {"name": s["name"], "description": s["description"], "parameters": s["parameters"]}}
+            for s in tool_specs
+        ]
+
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+        messages = [{"role": "system", "content": system_prompt}] + conversation
+        body = {"model": model, "messages": messages, "stream": False}
+        if tool_specs:
+            body["tools"] = self._tools_payload(tool_specs)
+        if force_tool_name:
+            body["tool_choice"] = {"type": "function", "function": {"name": force_tool_name}}
+
+        try:
+            response = self._requests.post(
+                f"{self.base_url}/api/chat",
+                json=body,
+                headers={"Authorization": f"Bearer {self.secret}"},
+                # Matches the local proxy's own timeout (local-ollama-proxy/proxy.py) - generation
+                # speed on that machine varies a fair amount (observed roughly 9-29 tok/s across
+                # testing) plus a one-time 30-50s+ reload whenever the model/context config changes.
+                timeout=280,
+            )
+        except self._requests.exceptions.RequestException as e:
+            raise ProviderError(
+                f"Local model is currently offline - couldn't reach the tunnel ({type(e).__name__})."
+            ) from e
+
+        if response.status_code == 401:
+            raise ProviderError(
+                "Local model tunnel rejected the request - OLLAMA_TUNNEL_SECRET doesn't match the "
+                "local proxy's PROXY_SHARED_SECRET."
+            )
+        if response.status_code == 429:
+            raise ProviderError("Local model is temporarily rate-limited on its own end - try again shortly.")
+        if response.status_code != 200:
+            raise ProviderError(f"Local model tunnel returned an error (HTTP {response.status_code}).")
+
+        data = response.json()
+        message = data.get("message", {})
+        text = _strip_thinking((message.get("content") or ""))
+        text_parts = [text] if text else []
+
+        tool_calls = []
+        for tc in message.get("tool_calls") or []:
+            fn = tc.get("function", {})
+            args = fn.get("arguments")
+            if isinstance(args, str):
+                args = json.loads(args) if args else {}
+            tool_calls.append({"id": tc.get("id") or fn.get("name"), "name": fn.get("name"), "input": args or {}})
+
+        usage = {
+            "provider": "ollama_tunnel",
+            "model": model,
+            "input_tokens": data.get("prompt_eval_count", 0),
+            "output_tokens": data.get("eval_count", 0),
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+        }
+        return TurnResult(text_parts=text_parts, tool_calls=tool_calls, raw=data, usage=usage)
+
+    def append_assistant_turn(self, conversation, turn_result):
+        raw_message = turn_result.raw.get("message", {})
+        message = {"role": "assistant", "content": raw_message.get("content", "")}
+        if raw_message.get("tool_calls"):
+            message["tool_calls"] = raw_message["tool_calls"]
+        conversation.append(message)
+
+    def append_tool_results(self, conversation, turn_result, results):
+        for r in results:
+            conversation.append({"role": "tool", "tool_call_id": r["id"], "content": r["content"]})
+
+
 MODEL_REGISTRY = {
     "luna": {
         "provider": "openai",
@@ -218,20 +351,27 @@ MODEL_REGISTRY = {
         "model": "claude-opus-5",
         "label": "Claude Opus 5 (Anthropic - top quality, slower/pricier)",
     },
+    "local-ollama": {
+        "provider": "ollama_tunnel",
+        "model": "qwen3:30b",
+        "label": "Qwen3 30B (local, via a home GPU - free, but slower and depends on that machine being on)",
+    },
 }
 DEFAULT_MODEL_KEY = "luna"
 
-# TEMPORARY LOCK (2026-08-20, standing until the user says otherwise - see NOTES.md). Every LLM
-# call in the app - main turn generation, and every part of Council Mode (router/judges/chairman/
-# extra candidates) - is forced onto this single model regardless of what's requested, both because
-# Council Mode now runs on every single turn (so cost discipline matters a lot more than before) and
-# because the "escalate to a stronger model on high-stakes turns" idea is explicitly on hold until
-# there's real cost data. This is deliberately NOT a removal of the other registry entries below
-# (sonnet/haiku/opus stay fully defined and functional) - set this back to None to revert instantly,
-# no other code change needed; server.py and council.py both key off this single constant.
-LOCKED_MODEL_KEY = "luna"
+# TEMPORARY LOCK (2026-08-20, standing until the user says otherwise - see NOTES.md). Only these
+# model keys are selectable right now - server.py rejects anything else in the turn route, and
+# /api/models only lists entries in this set, so sonnet/haiku/opus stay hidden from the picker.
+# Originally this was a single LOCKED_MODEL_KEY forcing everything onto Luna specifically; widened
+# to a set the same night the free local-ollama option was added, since that option should actually
+# be selectable (the whole point of building it), not just Luna alone - see NOTES.md for the
+# reasoning on what this implies for Council Mode's internal model choices. Deliberately NOT a
+# removal of the other registry entries above (sonnet/haiku/opus stay fully defined and functional)
+# - set this back to None to revert to "every registered model is selectable," no other code change
+# needed; server.py and the /api/models route both key off this single constant.
+ALLOWED_MODEL_KEYS = {"luna", "local-ollama"}
 
-_PROVIDER_CLASSES = {"anthropic": AnthropicProvider, "openai": OpenAIProvider}
+_PROVIDER_CLASSES = {"anthropic": AnthropicProvider, "openai": OpenAIProvider, "ollama_tunnel": OllamaTunnelProvider}
 _provider_instances = {}
 
 
@@ -245,6 +385,46 @@ def get_provider(model_key):
     return _provider_instances[provider_key], entry["model"]
 
 
-def provider_available(provider_key):
+def _required_env_vars(provider_key):
     env_var = _PROVIDER_CLASSES[provider_key].env_var
-    return env_var in os.environ
+    return (env_var,) if isinstance(env_var, str) else tuple(env_var)
+
+
+def provider_available(provider_key):
+    """Whether a provider is CONFIGURED (its required env vars are set) - not whether it's actually
+    reachable right now. For ollama_tunnel specifically, being "configured" doesn't mean the tunnel
+    is currently up (the laptop could be asleep) - see ollama_tunnel_is_healthy() for that liveness
+    check, used separately by /api/models to decide whether to show the option as selectable."""
+    return all(v in os.environ for v in _required_env_vars(provider_key))
+
+
+# Cached liveness check for the local-ollama tunnel specifically - a real network round-trip to a
+# home machine that might be asleep, so this is deliberately NOT done on every /api/models call
+# (that route gets hit on essentially every page load; an uncached check could add multi-second
+# latency to page loads for every player, not just ones considering the local model). Cached for a
+# short TTL rather than checked once at startup, since the tunnel can go up/down at any time
+# independent of a deploy. A lazy-checked-and-cached approach was chosen over a background polling
+# thread for simplicity - see NOTES.md for that tradeoff.
+_HEALTH_CACHE_TTL_SECONDS = 20
+_HEALTH_CHECK_TIMEOUT_SECONDS = 3
+_health_cache = {"healthy": False, "checked_at": 0.0}
+
+
+def ollama_tunnel_is_healthy(force=False):
+    if not provider_available("ollama_tunnel"):
+        return False
+    now = time.monotonic()
+    if not force and (now - _health_cache["checked_at"]) < _HEALTH_CACHE_TTL_SECONDS:
+        return _health_cache["healthy"]
+    import requests
+
+    healthy = False
+    try:
+        base_url = os.environ.get("OLLAMA_TUNNEL_URL", "").rstrip("/")
+        resp = requests.get(f"{base_url}/health", timeout=_HEALTH_CHECK_TIMEOUT_SECONDS)
+        healthy = resp.status_code == 200
+    except requests.exceptions.RequestException:
+        healthy = False
+    _health_cache["healthy"] = healthy
+    _health_cache["checked_at"] = now
+    return healthy

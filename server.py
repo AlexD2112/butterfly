@@ -162,19 +162,27 @@ def auth_logout():
 
 @app.route("/api/models")
 def api_models():
-    models = [
-        {
-            "key": key,
-            "label": entry["label"],
-            "available": providers.provider_available(entry["provider"]),
-        }
-        for key, entry in providers.MODEL_REGISTRY.items()
-    ]
-    # locked_model_key (non-null while providers.LOCKED_MODEL_KEY is set) tells the frontend to
-    # render a disabled, single-option selector instead of a real choice - see LOCKED_MODEL_KEY's
-    # comment. Reverting the lock server-side automatically un-hides the selector, no frontend
-    # change needed.
-    return jsonify({"models": models, "default": providers.DEFAULT_MODEL_KEY, "locked_model_key": providers.LOCKED_MODEL_KEY})
+    # Only lists entries in ALLOWED_MODEL_KEYS while that's set (see its docstring) - sonnet/haiku/
+    # opus are simply absent from the response right now, not shown-but-disabled, per the "hide
+    # them" direction. Reverting the lock server-side (set it to None) makes every registered model
+    # show up again automatically, no frontend change needed.
+    visible_keys = providers.ALLOWED_MODEL_KEYS if providers.ALLOWED_MODEL_KEYS is not None else providers.MODEL_REGISTRY.keys()
+    models = []
+    for key in visible_keys:
+        entry = providers.MODEL_REGISTRY[key]
+        configured = providers.provider_available(entry["provider"])
+        if key == "local-ollama":
+            # "Configured" (env vars set) isn't the same as "actually reachable right now" - the
+            # tunnel/laptop can be down independent of whether Render has the env vars set at all.
+            # This is the health-check hide/disable path from the feature's design: a player should
+            # never see this option as selectable and then have it fail on click.
+            available = configured and providers.ollama_tunnel_is_healthy()
+            reason = None if available else ("not configured" if not configured else "currently offline")
+        else:
+            available = configured
+            reason = None if available else "missing API key"
+        models.append({"key": key, "label": entry["label"], "available": available, "unavailable_reason": reason})
+    return jsonify({"models": models, "default": providers.DEFAULT_MODEL_KEY})
 
 
 @app.route("/api/settings")
@@ -322,14 +330,34 @@ def api_character_turn(character_id):
 
         body = request.get_json(force=True)
         user_input = (body.get("input") or "").strip()
-        # LOCKED_MODEL_KEY, when set, overrides whatever the client requested - this is the actual
-        # enforcement point (the frontend hiding the selector is a UX nicety, not the real guard;
-        # a direct API call must not be able to bypass the lock).
-        model_key = providers.LOCKED_MODEL_KEY or body.get("model_key") or providers.DEFAULT_MODEL_KEY
+        model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
         if model_key not in providers.MODEL_REGISTRY:
             return jsonify({"error": f"Unknown model key: {model_key}"}), 400
+        # ALLOWED_MODEL_KEYS, when set, restricts which registered models are actually selectable
+        # right now (see that constant's docstring) - this is the real enforcement point; the
+        # frontend only showing the allowed subset in the picker is a UX nicety, not the guard
+        # itself, so a direct API call requesting e.g. "sonnet" still gets rejected here.
+        if providers.ALLOWED_MODEL_KEYS is not None and model_key not in providers.ALLOWED_MODEL_KEYS:
+            return jsonify({"error": f"Model '{model_key}' isn't currently selectable."}), 400
         if not user_input:
             return jsonify({"error": "Empty input."}), 400
+
+        # Fail fast with a clear, distinguishable status before even attempting the (slow) call, if
+        # the local model's tunnel is known to be down - avoids the player waiting out a long
+        # timeout just to learn what a 3-second health check already knows. local_model_offline is a
+        # dedicated flag (not just relying on the generic error text) so the frontend can show the
+        # same clear state either here or if the tunnel drops mid-request (see the except block
+        # below) rather than a raw error message.
+        if model_key == "local-ollama" and not providers.ollama_tunnel_is_healthy():
+            return (
+                jsonify(
+                    {
+                        "error": "The local model is currently offline - the host machine or its tunnel isn't reachable right now.",
+                        "local_model_offline": True,
+                    }
+                ),
+                503,
+            )
 
         try:
             provider, model = providers.get_provider(model_key)
@@ -360,6 +388,17 @@ def api_character_turn(character_id):
                 usage_sink=usage_sink, budget_ok=budget_ok,
                 council_mode=True, model_key=model_key,
             )
+        except providers.ProviderError as e:
+            # Can come from the main generation call OR from anywhere inside Council Mode (which
+            # follows the player's model choice, including local-ollama - see council.py's module
+            # docstring) if the tunnel drops mid-turn after the earlier health-check passed. Unlike
+            # a budget exhaustion (which council.py degrades gracefully from), a connection failure
+            # mid-council fails the whole turn cleanly rather than returning a partial/degraded
+            # narration - the underlying infrastructure being down isn't a "keep going with less"
+            # situation the way running low on a known, bounded budget is.
+            if model_key == "local-ollama":
+                return jsonify({"error": str(e), "local_model_offline": True}), 503
+            return jsonify({"error": str(e)}), 502
         except Exception as e:  # surface API/model errors to the frontend instead of a bare 500
             return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
         finally:
