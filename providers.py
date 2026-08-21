@@ -52,7 +52,13 @@ class AnthropicProvider:
     env_var = "ANTHROPIC_API_KEY"
 
     def __init__(self):
-        if self.env_var not in os.environ:
+        # .strip() truthiness, not `in os.environ` - a .env file with the key present but blank
+        # (e.g. `ANTHROPIC_API_KEY=`, exactly what .env.example ships as a template) would pass an
+        # `in os.environ` check yet still be unusable - `anthropic.Anthropic()` itself doesn't
+        # validate emptiness at construction time, so a blank key made it all the way to a real,
+        # uncaught API-client error deep inside a call instead of this clean ProviderError. See
+        # NOTES.md - found via a real test failure caused by exactly this file layout, not guessed.
+        if not os.environ.get(self.env_var, "").strip():
             raise ProviderError(f"{self.env_var} is not set.")
         import anthropic  # imported lazily so a missing package only breaks this provider
 
@@ -132,7 +138,8 @@ class OpenAIProvider:
     env_var = "OPENAI_API_KEY"
 
     def __init__(self):
-        if self.env_var not in os.environ:
+        # See AnthropicProvider's identical check for why this is truthiness, not `in os.environ`.
+        if not os.environ.get(self.env_var, "").strip():
             raise ProviderError(f"{self.env_var} is not set.")
         import openai  # imported lazily so a missing package only breaks this provider
 
@@ -393,11 +400,16 @@ def _required_env_vars(provider_key):
 
 
 def provider_available(provider_key):
-    """Whether a provider is CONFIGURED (its required env vars are set) - not whether it's actually
-    reachable right now. For ollama_tunnel specifically, being "configured" doesn't mean the tunnel
-    is currently up (the laptop could be asleep) - see ollama_tunnel_is_healthy() for that liveness
-    check, used separately by /api/models to decide whether to show the option as selectable."""
-    return all(v in os.environ for v in _required_env_vars(provider_key))
+    """Whether a provider is CONFIGURED (its required env vars are set to a real, non-blank value -
+    not just present) - not whether it's actually reachable right now. Truthiness, not `in
+    os.environ`: a .env file with a key present but blank (e.g. `OPENAI_API_KEY=`, exactly what
+    .env.example ships as a template for someone to fill in) would otherwise report as "available"
+    and show up as selectable in /api/models despite being unusable - see the matching fix in
+    AnthropicProvider/OpenAIProvider's own __init__ checks and NOTES.md. For ollama_tunnel
+    specifically, being "configured" doesn't mean the tunnel is currently up (the laptop could be
+    asleep) - see ollama_tunnel_is_healthy() for that liveness check, used separately by /api/models
+    to decide whether to show the option as selectable."""
+    return all(os.environ.get(v, "").strip() for v in _required_env_vars(provider_key))
 
 
 # Cached liveness check for the local-ollama tunnel specifically - a real network round-trip to a

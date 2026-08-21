@@ -1,3 +1,46 @@
+# Real bug found via a test failure: blank-but-present API keys weren't caught (2026-08-21)
+
+Found while re-running the test suite before committing the login-button diagnosis below (a genuine
+test failure, not something I went looking for) - `providers.AnthropicProvider`/`OpenAIProvider`
+only checked `self.env_var not in os.environ` (presence), not whether the value was actually
+non-blank. A `.env` file with a key present but empty (`OPENAI_API_KEY=`, exactly what
+`.env.example` ships as a template before someone fills it in) passes that check, so construction
+proceeds into `openai.OpenAI()`/`anthropic.Anthropic()`, which DON'T validate emptiness themselves -
+the blank key made it all the way to an uncaught client-library error instead of this codebase's own
+clean `ProviderError`. `providers.provider_available()` (which `/api/models` uses to decide what to
+show as selectable) had the identical bug.
+
+**How this surfaced**: a stray `.env` file already sitting in this repo (gitignored, so invisible to
+`git status` - looks like it's left over from earlier testing, either mine or the previous session's)
+has both `ANTHROPIC_API_KEY=` and `OPENAI_API_KEY=` present but blank. Once `council.JUDGE_MODEL_KEY`
+became `"luna"` (the correction above), a full test-suite run started actually exercising
+`providers.get_provider("luna")`'s real (unmocked) construction path for the first time in a way
+that hit this blank key - `test_council_skipped_for_local_model.py`'s
+`test_other_models_still_get_council` failed with a real `openai.OpenAIError`, not a test bug.
+Bisected properly (ran subsets of test modules to isolate exactly which combination triggered it)
+rather than guessing.
+
+**Fixed properly, not just for the test**: both provider `__init__`s and `provider_available()` now
+check `os.environ.get(v, "").strip()` truthiness instead of `in os.environ`. Added
+`tests/test_provider_env_guard.py` (5 new tests) covering blank keys, whitespace-only keys, and the
+positive case, so this can't silently regress. 97/97 tests passing.
+
+**Why this matters beyond the test suite - flagging directly since I'm working in your actual repo,
+not an isolated copy**: if your REAL `.env` (the one `start_local_site.ps1` actually uses) has a
+blank `OPENAI_API_KEY`, every Luna turn (Luna is the default model) would already have been failing
+before this fix too - `server.py`'s turn route has its own broad `except Exception` that would have
+caught the raw `openai.OpenAIError` and shown it to the player as an ugly `"OpenAIError: Missing
+credentials..."` message rather than crashing the server outright, so it wasn't silent, but it also
+wasn't the clean, actionable message this codebase intends. After this fix, the same situation now
+shows the intended `"OPENAI_API_KEY is not set."` message instead - clearer, but **the underlying
+fix here is a better error message, not a workaround that makes Luna work without a real key**. If
+you're seeing AI turns fail (separate from the login button issue below), check that your real
+`.env` actually has a non-blank `OPENAI_API_KEY` (and `ANTHROPIC_API_KEY` if you plan to use
+Sonnet/Haiku/Opus) - I did not touch or inspect the actual contents of your real `.env` beyond
+confirming this exact blank-key pattern exists somewhere in this repo's working tree right now.
+
+---
+
 # Diagnosed: "login button broken" is almost certainly DISCORD_REDIRECT_URI (2026-08-21)
 
 You reported the Discord login button looked broken, without more detail yet. Traced the whole flow
