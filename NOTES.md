@@ -1,3 +1,136 @@
+# Free local model via home GPU + Cloudflare tunnel (2026-08-20/21, overnight into early morning)
+
+Implemented the full feature: a local Ollama instance (qwen3:30b, set up earlier tonight) exposed
+to the live Render deployment as a free, player-selectable model, via a Cloudflare quick tunnel and
+a small local auth/rate-limit proxy. Both halves are verified against REAL infrastructure, not just
+mocks - the local proxy, a real Cloudflare tunnel, and OllamaTunnelProvider were all exercised
+end-to-end against each other during this session. Judgment calls and findings below, roughly in
+order of how much they change the design versus just documenting a choice.
+
+## Endpoint switch: OpenAI-compat -> native Ollama API (a real finding, not a preference)
+
+The original plan was to use Ollama's OpenAI-compatible `/v1/chat/completions` surface, reusing
+patterns close to OpenAIProvider. Testing directly against the running Ollama instance found that
+endpoint **silently ignores** a context-length override in the request body - `ollama ps` kept
+reporting whatever the Ollama desktop app had configured (confirmed ~4K per the user's screenshot)
+regardless of what was sent, tried both as a nested `options.num_ctx` and a top-level `num_ctx`
+field. Ollama's NATIVE `/api/chat` endpoint honors `options.num_ctx` correctly (confirmed) and
+supports forced `tool_choice` the same way (confirmed) - so both the proxy and
+`OllamaTunnelProvider` target that endpoint instead. This is why `OllamaTunnelProvider` hand-rolls
+requests via `requests` rather than reusing the `openai` SDK the way `OpenAIProvider` does - the SDK
+is built around OpenAI's own endpoints, not really a natural fit for a different JSON API.
+
+## num_ctx=24576 - reasoned from real measurements, not picked arbitrarily
+
+Full reasoning lives in `local-ollama-proxy/proxy.py`'s comment next to `NUM_CTX`, summarized: the
+real system prompt (rules/NPCs/factions/canon/resources/state) measures ~9,500 tokens, ~10,650 with
+tool definitions - the floor requirement for a single call with zero conversation history. Tested
+context sizes directly on this machine (RTX 4080 Laptop, 12GB VRAM): GPU-resident model layers
+declined gently as context grew (~54% GPU at the ~4K default, ~51% at 16K, ~49% at 24K, ~47% at
+32K) rather than falling off a cliff, so there was real room to raise it. 24576 covers the
+~10,650-token floor with ~14K tokens of headroom for conversation growth (which isn't summarized/
+trimmed anywhere in this app yet - an already-documented gap, so it grows unboundedly turn over
+turn regardless of this number) while keeping just under half the model GPU-resident.
+
+## Real latency is worse than initially estimated - found via unmocked testing, not assumed
+
+Earlier NOTES.md cost-math (for the always-on Council Mode redesign) assumed judge/router calls
+would produce short output (~80-100 tokens) based on how cloud models typically behave for
+structured scoring tasks. Running `OllamaTunnelProvider` directly against the live tunnel (not
+mocked) found qwen3 is a reasoning model that thinks extensively regardless of task size - a single
+judge call scoring one sentence produced **1,304 output tokens** of chain-of-thought before its
+15-word structured answer; a "say hello in three words" narration call produced 1,618. At the
+~10-25 tok/s measured on this hardware, that's routinely 1-2+ minutes for a SINGLE call. Council
+Mode chains ~9 such calls per turn (router, extra candidate, 3-6 judges, chairman, voice editor) -
+a fully-reviewed turn on the local model could reasonably take many minutes end to end, not the
+"maybe a bit slow" I'd loosely assumed going in.
+
+This drove a real, necessary infrastructure change: gunicorn's Procfile/render.yaml startCommand now
+sets `--timeout 900` (without it, Render would kill the worker mid-response on any slow local-model
+turn) and `--worker-class gthread --threads 4` (without THIS, gunicorn's default single sync worker
+would let one slow local-model turn block every other player on the site - not just the person who
+picked it - for the full duration). Confirmed this is safe with the existing per-account turn lock,
+which already used `threading.Lock` specifically (correctly serializes across threads in one
+process; the multi-*process* case was already called out as its one known gap, not multi-thread).
+
+**What I still can't verify from here**: whether Render's own platform-level proxy imposes an
+independent timeout ceiling below 900s regardless of what gunicorn allows - same caveat as the
+gunicorn-timeout note from the budget feature earlier tonight, still unresolved, would need Render's
+docs/support to confirm. If local-model turns still time out after this change, that's the likely
+next thing to check.
+
+## Council follows the player's own model choice, including the free local one (confirmed per your instruction to write this up, not silently decide)
+
+You asked me to confirm this reasoning here rather than just deciding quietly. Two options existed:
+(A) council's internal machinery (router/judges/chairman/candidates) follows whatever model the
+player picked for their turn, including local-ollama; (B) council's internal machinery always uses a
+fixed model (Luna) regardless of the player's choice, treating it as "infrastructure" separate from
+"content." I picked (A) - `_cheap_model_key_for` now just returns the player's own model_key
+(previously it forced everything onto `LOCKED_MODEL_KEY`). Reasoning: if a player picks the free
+local model specifically to avoid cost, having council's ~9 internal calls silently keep billing a
+paid model would work against the entire point of offering the free option - "free" should mean the
+WHOLE turn, not just the visible narration call. The tradeoff this accepts: choosing local-ollama
+now means Council Mode's full latency cost (the many-minutes concern above) applies to literally
+every turn for that player, with no way to get council's quality benefit on a fast paid model while
+still avoiding cost on the narration itself. If that tradeoff turns out to feel wrong in practice,
+option (B) is a small, isolated change (pin `_cheap_model_key_for` and the candidate/chairman model
+choice back to a fixed key) - flagging so it's easy to revisit, not treating this as permanently
+settled.
+
+## ALLOWED_MODEL_KEYS replaces the singular LOCKED_MODEL_KEY (confirmed per your instruction)
+
+You asked me to confirm how much of the earlier "lock everything to Luna" direction to keep versus
+relax, rather than deciding silently. Widened `providers.LOCKED_MODEL_KEY` (a single forced model)
+to `providers.ALLOWED_MODEL_KEYS` (a set, currently `{"luna", "local-ollama"}`) - Sonnet/Haiku/Opus
+stay excluded from both `/api/models` and the turn route exactly as before (still hidden, not
+shown-disabled, per that earlier direction), but the picker now offers a genuine choice between the
+two currently-sanctioned options rather than showing one disabled entry. This is the smallest change
+that satisfies "show Luna (locked/default) plus the new free local option, still hiding the rest" -
+reverting to full openness is still one constant (`ALLOWED_MODEL_KEYS = None`), same revert story as
+before.
+
+## Local model still requires Discord login, despite being free - a call I made, not explicitly asked
+
+Your instructions said this provider should be free ($0 against budget) and go through the existing
+per-account turn-lock "like any other provider" - they didn't explicitly say whether it should also
+be exempt from the Discord-login requirement that gates every OTHER provider (since that
+requirement's original reasoning was specifically about a *budget* being meaningless against the
+shared local-profile identity - see the earlier budget-redesign NOTES.md entry). I chose NOT to
+exempt it: the turn route's `if user["is_local"]: return 403` check still applies unconditionally,
+before model_key is even read. Reasoning: even though there's no dollar budget to protect, there's
+still a real resource being protected (this specific user's home GPU/electricity), and the local
+profile's shared/trivially-resettable identity (documented in the earlier budget NOTES.md entry)
+would make it a much easier target for someone hammering the free option anonymously than a real
+Discord-gated identity. This felt like the safer default, but it's a genuine judgment call, not
+something explicitly specified - happy to relax it if the friction turns out to not be worth it.
+
+## Health check design: lazy + cached, not a background thread
+
+`ollama_tunnel_is_healthy()` checks the proxy's `/health` endpoint on demand (not proactively polled)
+with a 3-second timeout and a 20-second result cache. Chosen over a background polling thread for
+simplicity - no new always-running infrastructure inside the Flask process, consistent with this
+app's existing "no extra moving parts" style (no Redis, no APScheduler, no Celery anywhere in it). A
+background thread would avoid ANY per-request latency risk (a cache miss still costs up to 3
+seconds), which is the real tradeoff being made here - acceptable at this app's scale, worth
+revisiting if `/api/models` latency ever becomes a real complaint.
+
+## What's verified vs. not
+
+Verified for real, not mocked: the full local-machine stack (Ollama -> proxy -> Cloudflare tunnel)
+end to end, including auth rejection and a real forwarded/answered request through the public tunnel
+URL; `OllamaTunnelProvider` run directly (unmocked) against the live tunnel for both plain narration
+(confirmed thinking-stripping works on a real response) and forced tool-calling (confirmed structured
+judge-style output parses correctly); `/api/models` and the rendered model `<select>` against the
+live tunnel's real health-check result, both correctly showing Luna unavailable (no local API key)
+and local-ollama available. NOT verified: a complete authenticated turn through the actual browser
+UI with a real Discord login (no real Discord OAuth credentials available locally, same limitation
+as every other Discord-gated feature tonight) - the request/response shapes are proven correct at
+the provider level, but the full click-path through a real login has not been exercised. Also not
+verified: real behavior once this is actually live on Render (the timeout/threading fix is reasoned
+from measured local latency, not confirmed against Render's actual platform behavior).
+
+---
+
 # Council Mode redesign: always-on + cost math (2026-08-20, later that night)
 
 Direction change from you: Council Mode is no longer opt-in - it runs on every turn, with a router

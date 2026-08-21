@@ -89,14 +89,32 @@ word choice. See `council.py`'s module docstring for the full design.
 **Cost**: this materially increases per-turn cost - see `NOTES.md` for the actual math (roughly
 $0.009-0.010/turn with Council Mode versus ~$0.004/turn without it, meaning the $0.10 default budget
 affords roughly 11 turns rather than 25). **Model lock**: every call in the app (main narration,
-council router/judges/chairman/candidates) is currently locked to GPT-5.6 Luna only - see
-`providers.LOCKED_MODEL_KEY` - a deliberate, easily-reversible temporary default, not a removal of
-the other registered models. This has NOT yet been run against live APIs, only against mocked
-providers - see `NOTES.md` for what's verified versus what still needs a real playtest.
+council router/judges/chairman/candidates) is restricted to `providers.ALLOWED_MODEL_KEYS` -
+currently Luna and the free local model below, Sonnet/Haiku/Opus stay hidden from the picker
+entirely - a deliberate, easily-reversible temporary default (`ALLOWED_MODEL_KEYS = None` reverts
+to every registered model being selectable), not a removal of the other registered models. Luna/
+Anthropic/OpenAI's own turn generation has NOT yet been run against live APIs, only mocked - see
+`NOTES.md` for what's verified versus what still needs a real playtest.
 
 Regardless of Council Mode's panel, every turn's base narration prompt already includes a
 banned-word list and anti-purple-prose/anti-hand-waving guidance (`council.VOICE_GUIDANCE`) - that
 part is free and unconditional.
+
+## Free local model (optional)
+
+A player-selectable model option that costs $0 regardless of real token counts, backed by a home
+GPU running Ollama and exposed through a Cloudflare tunnel - see `local-ollama-proxy/README.md` for
+the local-machine setup and `providers.OllamaTunnelProvider` for the Butterfly-side integration.
+Requires `OLLAMA_TUNNEL_URL` and `OLLAMA_TUNNEL_SECRET` to be set (both blank by default in
+`render.yaml` - the option just shows as unavailable if they're not configured, nothing else
+breaks). The option only shows as selectable when a live health check against the tunnel actually
+succeeds - if the host machine or tunnel is down, it's hidden/disabled in the picker rather than
+failing on click, and a turn that was already in flight when the tunnel drops gets a clear "local
+model is currently offline" state instead of a raw error.
+
+This model is noticeably slower than the cloud providers (it's a reasoning model on consumer
+hardware, not a datacenter) - see `NOTES.md` for real measured latency and why gunicorn's timeout/
+threading config needed to change to accommodate it.
 
 ## Setup
 
