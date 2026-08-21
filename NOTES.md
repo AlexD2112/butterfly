@@ -1,3 +1,23 @@
+# Fix: start_local_site.ps1's waitress invocation didn't work on your machine (2026-08-21)
+
+Real-world failure, not caught during this session's own testing: running the script gave
+`waitress-serve : The term 'waitress-serve' is not recognized as the name of a cmdlet...`. Cause -
+`pip install waitress` installs the `waitress-serve` console script into Python's `Scripts` folder,
+which isn't reliably on `PATH` (confirmed not on this machine's). The script was calling
+`waitress-serve` directly, assuming it'd just be findable like any other command.
+
+**Fix**: changed the invocation to `python -m waitress` instead - takes identical arguments
+(confirmed directly: `python -m waitress --help` on this machine shows the same `--host`/`--port`/
+`--threads`/`MODULE:OBJECT` interface as `waitress-serve`), and only depends on `python` itself being
+on `PATH`, which the script already required anyway (the `.env`-creation step a few lines above it
+already shells out to `python -c ...`). Verified the corrected line actually starts and serves
+(`INFO:waitress:Serving on http://127.0.0.1:5599`) before committing, not just reasoned about.
+
+No other file referenced `waitress-serve` as an actual command (only in a couple of explanatory
+comments/notes), so this was the only place that needed the fix.
+
+---
+
 # CORRECTION: default stays Luna, not Claude (2026-08-21, right after the entry below)
 
 You corrected the "Claude restored as default" entry below immediately after I posted it: the

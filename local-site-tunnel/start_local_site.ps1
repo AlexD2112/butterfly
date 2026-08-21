@@ -40,7 +40,11 @@ $port = 5000
 if ($env:PORT) { $port = $env:PORT }
 
 Write-Host "Starting Butterfly (server.py) via waitress on port $port..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$repoRoot'; waitress-serve --host=127.0.0.1 --port=$port --threads=8 server:app"
+# `python -m waitress`, not the `waitress-serve` console script - pip installs waitress-serve into
+# Python's Scripts folder, which isn't reliably on PATH (confirmed: it wasn't on this machine's,
+# producing "waitress-serve is not recognized"). `python -m waitress` takes identical arguments and
+# only depends on `python` itself being on PATH, which the .env-creation step above already assumes.
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$repoRoot'; python -m waitress --host=127.0.0.1 --port=$port --threads=8 server:app"
 
 Start-Sleep -Seconds 3
 
