@@ -34,22 +34,26 @@ SIZE of the judge panel:
    gets a narration, worst case it's the single-pass one with no council review.
 
    As of 2026-08-21, council's judges/router/voice-editor always run on a fixed cheap model
-   (JUDGE_MODEL_KEY = "haiku" - see _cheap_model_key_for), regardless of what model the player
-   picked for their own turn. This reverses the 2026-08-20 design (judges followed the player's own
-   model choice), which made sense ONLY while Luna and the free local-ollama option were the sole
+   (JUDGE_MODEL_KEY = "luna" - see _cheap_model_key_for), regardless of what model the player picked
+   for their own turn. This reverses the 2026-08-20 design (judges followed the player's own model
+   choice), which made sense ONLY while Luna and the free local-ollama option were the sole
    selectable models - neither had a cheaper same-provider fallback to reach for, so "follow the
-   player" and "pin to a fixed cheap model" were the same thing in practice. That stopped being true
-   once Sonnet/Haiku/Opus became selectable again the same day (restoring Claude as the default,
-   see NOTES.md): with a real spread of model tiers now selectable, "follow the player" would mean
-   an always-on, minimum-3-judge council silently running ~7-9 internal calls on whatever the player
-   picked for narration - including Opus - which is exactly the runaway-cost failure mode a fixed
-   cheap judge model exists to prevent. The candidate/chairman calls are unaffected - they still use
-   the player's own model directly, so narration quality still scales with the player's choice, only
-   the narrow rubric-scoring work doesn't. Local-ollama is unaffected too (Council Mode is skipped
-   for it entirely - see SKIP_COUNCIL_FOR_MODEL_KEYS below - so a player choosing the free local
-   model still gets a genuinely free turn). There is no "escalate to a stronger model for high-stakes
-   turns" path right now; the router's only job is choosing HOW MANY/WHICH judges review a turn, not
-   which model tier runs them. See NOTES.md for the real cost math behind this change.
+   player" and "pin to a fixed cheap model" were the same thing in practice. That stopped being safe
+   once Sonnet/Haiku/Opus became selectable again the same day: with a real spread of model tiers now
+   selectable, "follow the player" would mean an always-on, minimum-3-judge council silently running
+   ~7-9 internal calls on whatever the player picked for narration - including Opus - which is
+   exactly the runaway-cost failure mode a fixed cheap judge model exists to prevent. Luna remains the
+   DEFAULT model a new account opens with (briefly changed to Sonnet the same day, then reverted per
+   direction - see NOTES.md), so pinning judges to Luna specifically (not Haiku, which briefly held
+   this role and is actually pricier than Luna) means the common default-path turn's cost is
+   unchanged from before Sonnet/Opus became selectable at all - the fix only matters for a player who
+   deliberately opts into a pricier model. The candidate/chairman calls are unaffected - they still
+   use the player's own model directly, so narration quality still scales with the player's choice,
+   only the narrow rubric-scoring work doesn't. Local-ollama is unaffected too (Council Mode is
+   skipped for it entirely - see SKIP_COUNCIL_FOR_MODEL_KEYS below - so a player choosing the free
+   local model still gets a genuinely free turn). There is no "escalate to a stronger model for
+   high-stakes turns" path right now; the router's only job is choosing HOW MANY/WHICH judges review
+   a turn, not which model tier runs them. See NOTES.md for the real cost math behind this change.
 
 Design rationale (why this maps to real technique, not just "have some models argue"):
   - The overall independent-generation -> blind cross-ranking -> chairman-synthesis shape follows
@@ -232,26 +236,37 @@ def _ok(budget_ok):
     return budget_ok is None or budget_ok()
 
 
-JUDGE_MODEL_KEY = "haiku"  # see _cheap_model_key_for's docstring for why this is fixed, not derived
+# Luna, not Haiku - deliberately reconsidered same-day (2026-08-21): DEFAULT_MODEL_KEY briefly moved
+# to "sonnet" and JUDGE_MODEL_KEY was set to "haiku" to match, then the default was reverted back to
+# Luna. Haiku ($1.00/$5.00 per 1M) is NOT actually cheap relative to Luna ($0.20/$1.20 per 1M) - it
+# was only "the cheap option" relative to Sonnet/Opus. With Luna back as the default, pinning judges
+# to Haiku would have been a real cost REGRESSION for the common case (every default-path turn paying
+# Haiku rates for ~7-9 calls that used to run on Luna, the cheapest model in the whole registry) for
+# no upside. Luna is both the default model AND the cheapest one available, so it's the correct fixed
+# target - see NOTES.md for the full math this reasoning is based on.
+JUDGE_MODEL_KEY = "luna"
 
 
 def _cheap_model_key_for():
-    """Judges/router/voice-editor always run on JUDGE_MODEL_KEY (Haiku) - as of 2026-08-21, no
-    longer derived from the player's own model choice. NOTES.md's 2026-08-20 entry deliberately
-    picked "follow the player's choice" specifically because only Luna and the free local-ollama
-    option were selectable then - neither had a cheaper same-provider fallback to reach for (Luna
-    was already the cheap default; local-ollama was already free), so following the player's choice
-    and pinning to a fixed model amounted to the same thing in practice. That stopped being true the
-    moment Sonnet/Haiku/Opus became selectable again (2026-08-21, restoring Claude as the default) -
-    with a real spread of model tiers now selectable, "follow the player's choice" would mean
-    council's ~7-9 internal router/judge/voice-editor calls silently run on whatever the player
-    picked for narration, including Opus, which is exactly the runaway-cost problem an always-on,
-    minimum-3-judge council creates if left unfixed. Local-ollama is unaffected either way - Council
-    Mode is skipped entirely for it (see SKIP_COUNCIL_FOR_MODEL_KEYS above), so this function is
-    never reached on that path. The candidate/chairman calls still use the player's own model_key
-    directly in run_council below, not this function - only the narrow rubric-style judging work
-    moves to a fixed cheap model, not narration itself. See NOTES.md for the real cost math this is
-    based on."""
+    """Judges/router/voice-editor always run on JUDGE_MODEL_KEY (Luna) - as of 2026-08-21, no longer
+    derived from the player's own model choice. NOTES.md's 2026-08-20 entry deliberately picked
+    "follow the player's choice" specifically because only Luna and the free local-ollama option were
+    selectable then - neither had a cheaper same-provider fallback to reach for (Luna was already the
+    cheap default; local-ollama was already free), so following the player's choice and pinning to a
+    fixed model amounted to the same thing in practice. That assumption breaks the moment a player
+    manually picks Sonnet/Haiku/Opus (all selectable again as of 2026-08-21, though Luna stays the
+    default a new account opens with) - "follow the player's choice" would mean council's ~7-9
+    internal router/judge/voice-editor calls silently run on whatever the player picked for
+    narration, including Opus, which is exactly the runaway-cost problem an always-on, minimum-3-
+    judge council creates if left unfixed. Pinning to Luna specifically (not Haiku - see the comment
+    above JUDGE_MODEL_KEY) means the common default-path turn sees no cost change at all versus
+    before Sonnet/Opus became selectable, while a player who opts into a pricier model for narration
+    still gets cost-contained judging rather than paying that model's rate ~7-9 extra times per turn.
+    Local-ollama is unaffected either way - Council Mode is skipped entirely for it (see
+    SKIP_COUNCIL_FOR_MODEL_KEYS above), so this function is never reached on that path. The
+    candidate/chairman calls still use the player's own model_key directly in run_council below, not
+    this function - only the narrow rubric-style judging work moves to a fixed cheap model, not
+    narration itself. See NOTES.md for the real cost math this is based on."""
     return JUDGE_MODEL_KEY
 
 

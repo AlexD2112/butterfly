@@ -334,12 +334,12 @@ MODEL_REGISTRY = {
     "luna": {
         "provider": "openai",
         "model": "gpt-5.6-luna",
-        "label": "GPT-5.6 Luna (OpenAI - fast/cheap)",
+        "label": "GPT-5.6 Luna (OpenAI - fast/cheap, default)",
     },
     "sonnet": {
         "provider": "anthropic",
         "model": "claude-sonnet-5",
-        "label": "Claude Sonnet 5 (Anthropic, default)",
+        "label": "Claude Sonnet 5 (Anthropic)",
     },
     "haiku": {
         "provider": "anthropic",
@@ -357,7 +357,7 @@ MODEL_REGISTRY = {
         "label": "Qwen3 30B (local, via a home GPU - free, but slower and depends on that machine being on)",
     },
 }
-DEFAULT_MODEL_KEY = "sonnet"  # switched back from "luna" 2026-08-21 - see NOTES.md
+DEFAULT_MODEL_KEY = "luna"  # briefly switched to "sonnet" 2026-08-21, reverted same day - see NOTES.md
 
 # Was a temporary lock (2026-08-20 - {"luna", "local-ollama"}, before that a single LOCKED_MODEL_KEY
 # forcing everything onto Luna) while cost data on the cloud providers was still unknown. Reopened
@@ -365,9 +365,12 @@ DEFAULT_MODEL_KEY = "sonnet"  # switched back from "luna" 2026-08-21 - see NOTES
 # model regardless of the player's own choice (see council._cheap_model_key_for) - the thing this
 # lock was originally protecting against (every one of council's ~7-9 internal calls silently
 # running on an expensive model just because the player picked one for narration) is now handled at
-# the source, not by hiding the picker. None means "every registered model is selectable" - server.py
-# and the /api/models route both key off this single constant, so re-restricting later (e.g. to
-# {"luna", "local-ollama"} again) is a one-line revert, not a bigger change.
+# the source, not by hiding the picker. This stays None even though DEFAULT_MODEL_KEY reverted to
+# Luna the same day - the two are independent: Sonnet/Haiku/Opus are still real, deliberate choices
+# a player can make, just no longer what a new account opens with. None means "every registered
+# model is selectable" - server.py and the /api/models route both key off this single constant, so
+# re-restricting later (e.g. to {"luna", "local-ollama"} again) is a one-line revert, not a bigger
+# change.
 ALLOWED_MODEL_KEYS = None
 
 _PROVIDER_CLASSES = {"anthropic": AnthropicProvider, "openai": OpenAIProvider, "ollama_tunnel": OllamaTunnelProvider}

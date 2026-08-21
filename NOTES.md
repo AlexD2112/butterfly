@@ -1,3 +1,60 @@
+# CORRECTION: default stays Luna, not Claude (2026-08-21, right after the entry below)
+
+You corrected the "Claude restored as default" entry below immediately after I posted it: the
+default should have stayed GPT-5.6 Luna - the "generally use Claude" comment that prompted item 2
+was about wanting Claude *available as a choice*, not about making it the account-opening default.
+Sonnet/Haiku/Opus stay selectable (that part of the entry below was correct and unchanged); only
+`DEFAULT_MODEL_KEY` reverts. The judge-cost-tiering fix (a fixed cheap model for router/judges/
+voice-editor, independent of the player's own choice) stays - you confirmed it's still needed since
+a player can still manually pick Sonnet/Opus.
+
+**One thing this correction changed beyond just flipping the default back**: with Luna back as the
+account-opening default, `council.JUDGE_MODEL_KEY` needed a second look too. It was set to `"haiku"`
+in the entry below, reasoned as "the cheap Anthropic option" - true only relative to Sonnet/Opus.
+Haiku ($1.00/$5.00 per 1M) is actually *more expensive* than Luna ($0.20/$1.20 per 1M). With Luna
+reinstated as the default, leaving `JUDGE_MODEL_KEY = "haiku"` would have been a real, silent cost
+**regression** for the common case: every default-path turn would pay Haiku's rate for council's
+~7-9 internal calls that used to run on Luna, the cheapest model in the entire registry - a strictly
+worse outcome than before Sonnet/Opus were ever unhidden, for a player who never touched the model
+picker at all. Changed `JUDGE_MODEL_KEY` to `"luna"` instead - this wasn't something you asked for
+explicitly, but followed directly from "default is Luna" once I re-checked the actual per-token
+rates rather than assuming Haiku was still "the cheap one." Flagging it as my own judgment call
+rather than silently folding it in, per the pattern established elsewhere in this file.
+
+**Corrected cost math** (same estimation methodology as below - real measured ~9,500-token system
+prompt, everything else a planning estimate):
+
+**Default path (Luna narration + Luna judges) - functionally identical to the pre-Sonnet design**,
+since judges now run on the same model as narration whenever a player never touches the picker:
+router ~$0.0003, candidate ~$0.0024, each judge ~$0.0003, chairman ~$0.0008, voice editor ~$0.0005 -
+council's incremental cost lands back at **~$0.0048-0.0057/turn** (3 vs. 6 judges), baseline stays
+**~$0.004/turn**. **Total ≈ $0.0092/turn, ≈ 11 turns per $0.10 account** - this is the ORIGINAL
+2026-08-20 math, restored. The "$0.10 buys ~1 turn" crisis from the entry below is gone from the
+default experience entirely, because the default experience no longer touches Sonnet at all.
+
+**A player who manually picks Sonnet** still pays Sonnet's rate for baseline/candidate/chairman
+(unchanged - narration quality should scale with the player's deliberate choice), but judges now run
+on Luna instead of Haiku: router ~$0.0003, each judge ~$0.0003, voice editor ~$0.0005 (all cheaper
+than the Haiku-costed entry below). Council's incremental cost at the 3-judge floor: 0.0003 (router)
++ 0.0229 (candidate, still Sonnet) + 3×0.0003 (judges) + 0.0068 (chairman, still Sonnet) + 0.0005
+(voice editor) ≈ **$0.0314**. Total: baseline ~$0.0375 (still Sonnet, ~1.5 calls/turn) + council
+~$0.0314 ≈ **~$0.069/turn ≈ 1.45 turns per $0.10 account** - a bit better than the Haiku-judge
+version's ~1.3 turns, but confirms what the entry below already found: **the judge model was never
+the dominant cost driver for a Sonnet-choosing player.** The baseline/candidate/chairman calls -
+which must stay on the player's chosen model, by design - are what makes opting into Sonnet
+materially pricier, not anything about how judges are costed. This is now an informed, opt-in
+tradeoff a player takes on for themselves, not something imposed on every new account by default -
+a much better place to be than the entry below described, even though the underlying per-model
+economics haven't changed. The budget/caching options listed below are still real and still
+worth considering, but are no longer urgent for the default experience - only relevant if/when you
+want a Sonnet/Opus turn to feel less expensive for players who choose it.
+
+Verified: 92/92 tests still passing after this correction (no test needed updating - the two new
+tests added below already asserted against `council.JUDGE_MODEL_KEY` as a symbol, not a hardcoded
+`"haiku"` string, so they kept passing once the constant's value changed).
+
+---
+
 # Frontend redesign (2026-08-21) - typography, collapsible sheet, centered column, slide-out panel
 
 Item 3 from your list, done after 1 and 2. All changes are in `static/index.html` only - no

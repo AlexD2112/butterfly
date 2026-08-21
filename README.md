@@ -86,22 +86,24 @@ characterization, groundedness, and a "what should go right" / "what should go w
 chairman synthesizes a final version from all of it, and a cheap-model voice-editor pass polishes
 word choice. See `council.py`'s module docstring for the full design.
 
-**Cost**: this materially increases per-turn cost, and the picture changed a lot on 2026-08-21 when
-Claude was restored as the default model (see `NOTES.md` for the full math) - with Sonnet as the
-default and Council Mode always on, a turn costs roughly **$0.075-0.080**, meaning the $0.10 default
-budget affords only about **1 turn**. `NOTES.md` lays out real options (raising the budget, prompt
-caching, a narrower judge floor) - none implemented yet, flagging this as genuinely not
-ship-ready in its current state, not just "a bit pricier."
+**Cost**: this materially increases per-turn cost on top of whatever the base narration already
+costs - see `NOTES.md` for the full math. On the default path (GPT-5.6 Luna), a turn costs roughly
+**$0.009/turn, ≈11 turns per $0.10 account** - essentially unchanged from before Council Mode's
+judges got their own cost-tiering fix. A player who deliberately switches to Sonnet or Opus takes on
+a materially pricier turn (**~$0.07-0.08/turn, ≈1-1.5 turns per $0.10 account** on Sonnet) - an
+informed tradeoff for that player, not something imposed on new accounts by default.
 
 **Model selection**: every registered model is selectable (`providers.ALLOWED_MODEL_KEYS = None`),
-Claude Sonnet 5 is the default (`providers.DEFAULT_MODEL_KEY`). Council Mode's router, judges, and
-voice-editor pass always run on a fixed cheap model (Haiku - `council.JUDGE_MODEL_KEY`) regardless
-of what the player picked for their own turn - only the baseline narration, the extra candidate, and
-the chairman's synthesis use the player's actual model choice. This was a deliberate 2026-08-21
-change from council's earlier behavior (following the player's choice for everything) - see
-`NOTES.md` for why that stopped being safe once Sonnet/Opus became selectable again. Every provider's
-own turn generation has NOT yet been run against live APIs, only mocked - see `NOTES.md` for what's
-verified versus what still needs a real playtest.
+GPT-5.6 Luna stays the default (`providers.DEFAULT_MODEL_KEY`) - Sonnet/Haiku/Opus are real,
+deliberate choices a player can make, not the account-opening default. Council Mode's router,
+judges, and voice-editor pass always run on a fixed cheap model (Luna - `council.JUDGE_MODEL_KEY`)
+regardless of what the player picked for their own turn - only the baseline narration, the extra
+candidate, and the chairman's synthesis use the player's actual model choice. This was a deliberate
+2026-08-21 change from council's earlier behavior (following the player's choice for everything) -
+see `NOTES.md` for why that stopped being safe once Sonnet/Opus became selectable, and why the fixed
+judge model is Luna specifically (the cheapest registered model, not just "the cheap Anthropic
+one"). Every provider's own turn generation has NOT yet been run against live APIs, only mocked -
+see `NOTES.md` for what's verified versus what still needs a real playtest.
 
 Regardless of Council Mode's panel, every turn's base narration prompt already includes a
 banned-word list and anti-purple-prose/anti-hand-waving guidance (`council.VOICE_GUIDANCE`) - that
@@ -228,13 +230,14 @@ account-linking flow is a `ROADMAP.md` item.
 
 ## Model switching
 
-`providers.MODEL_REGISTRY` currently has five options, Claude Sonnet 5 (Anthropic) as default as of
-2026-08-21 (see `NOTES.md` - was GPT-5.6 Luna, briefly locked to Luna-only, now reopened):
+`providers.MODEL_REGISTRY` currently has five options, GPT-5.6 Luna (OpenAI) as default - was briefly
+locked to Luna+local-ollama only, then briefly switched the default to Sonnet on 2026-08-21 before
+being reverted the same day (see `NOTES.md`); every model has been selectable again since:
 
 | key            | provider  | model                        |
 |----------------|-----------|------------------------------|
-| `sonnet`       | Anthropic | `claude-sonnet-5` (default)  |
-| `luna`         | OpenAI    | `gpt-5.6-luna`                |
+| `luna`         | OpenAI    | `gpt-5.6-luna` (default)     |
+| `sonnet`       | Anthropic | `claude-sonnet-5`            |
 | `haiku`        | Anthropic | `claude-haiku-4-5-20251001`  |
 | `opus`         | Anthropic | `claude-opus-5`              |
 | `local-ollama` | Ollama (home GPU) | `qwen3:30b` - free, see "Free local model" above |
