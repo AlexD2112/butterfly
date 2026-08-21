@@ -9,21 +9,24 @@
     --bg: #14161a; --panel: #1c1f26; --panel-2: #232732; --border: #333844;
     --text: #e8e6df; --muted: #9099a8; --accent: #b5482f; --accent-2: #d9c07a;
     --ok: #6fa36f; --bad: #b5482f;
+    --font-serif: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, 'Times New Roman', serif;
+    --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --content-width: 720px;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: var(--bg); color: var(--text); }
+  body { margin: 0; font-family: var(--font-serif); background: var(--bg); color: var(--text); }
 
   /* ---------- start-menu screens ---------- */
   .menu-screen { display: none; flex-direction: column; align-items: center; justify-content: center;
     min-height: 100vh; padding: 24px; text-align: center; }
   .menu-screen.active { display: flex; }
-  .menu-screen .eyebrow { font-family: sans-serif; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 6px; }
-  .menu-screen h1 { font-size: 26px; font-weight: normal; color: var(--accent-2); margin: 0 0 8px; }
-  .menu-screen .subtitle { font-family: sans-serif; font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+  .menu-screen .eyebrow { font-family: var(--font-ui); font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px; }
+  .menu-screen h1 { font-size: 27px; font-weight: normal; letter-spacing: 0.3px; color: var(--accent-2); margin: 0 0 10px; }
+  .menu-screen .subtitle { font-family: var(--font-ui); font-size: 13.5px; color: var(--muted); margin-bottom: 30px; line-height: 1.5; }
   .menu-options { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 480px; }
   .menu-option { display: block; width: 100%; text-align: left; background: var(--panel-2);
-    border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; font-family: sans-serif;
+    border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; font-family: var(--font-ui);
     color: var(--text); cursor: pointer; transition: border-color .15s; }
   .menu-option:hover:not(:disabled) { border-color: var(--accent-2); }
   .menu-option .opt-title { font-size: 14.5px; font-weight: bold; }
@@ -31,32 +34,32 @@
   .menu-option:disabled { opacity: 0.45; cursor: not-allowed; }
   .menu-option:disabled .opt-desc.coming-later { color: var(--accent-2); font-style: italic; }
   .menu-back { align-self: flex-start; margin-bottom: 18px; background: none; border: none; color: var(--muted);
-    font-family: sans-serif; font-size: 12.5px; cursor: pointer; }
+    font-family: var(--font-ui); font-size: 12.5px; cursor: pointer; }
   .menu-back:hover { color: var(--accent-2); }
   .menu-back-row { width: 100%; max-width: 480px; display: flex; justify-content: space-between; align-items: center; }
-  .user-chip { font-family: sans-serif; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .user-chip { font-family: var(--font-ui); font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
   .user-chip img { width: 20px; height: 20px; border-radius: 50%; }
   .discord-btn { background: #5865F2; color: #fff; border: none; border-radius: 4px; padding: 8px 14px;
-    font-family: sans-serif; font-size: 12.5px; cursor: pointer; margin-top: 10px; }
+    font-family: var(--font-ui); font-size: 12.5px; cursor: pointer; margin-top: 10px; }
   .discord-btn:hover { opacity: 0.9; }
 
   /* ---------- landing screen ---------- */
-  .landing-title { font-size: 34px; }
-  .landing-pitch { font-family: sans-serif; font-size: 13.5px; color: var(--text); max-width: 480px;
-    line-height: 1.6; margin: 0 0 22px; }
+  .landing-title { font-size: 38px; letter-spacing: 0.3px; }
+  .landing-pitch { font-family: var(--font-serif); font-size: 15px; color: var(--text); max-width: 520px;
+    line-height: 1.65; margin: 0 0 24px; }
   .landing-begin { max-width: 480px; text-align: center; margin-top: 16px; }
-  .budget-chip { font-family: sans-serif; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .budget-chip { font-family: var(--font-ui); font-size: 11.5px; color: var(--muted); margin-top: 8px; }
   .budget-chip.low { color: var(--accent-2); }
   .budget-chip.exhausted { color: var(--bad); }
 
   /* ---------- character creation ---------- */
-  .creation-wrap { width: 100%; max-width: 640px; text-align: left; font-family: sans-serif; }
+  .creation-wrap { width: 100%; max-width: 640px; text-align: left; font-family: var(--font-ui); }
   .creation-section { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
     padding: 14px; margin-bottom: 14px; }
   .creation-section h3 { margin: 0 0 8px; font-size: 12.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-2); }
   .field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; font-size: 13px; }
   .field-row input[type=text] { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--border);
-    border-radius: 4px; padding: 6px 8px; font-family: sans-serif; }
+    border-radius: 4px; padding: 6px 8px; font-family: var(--font-ui); }
   .field-row select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }
   .skill-group-creation { margin-bottom: 8px; }
   .skill-group-creation .sg-title { font-size: 11px; text-transform: uppercase; color: var(--muted); margin: 8px 0 2px; }
@@ -73,48 +76,84 @@
   .radio-card .rc-desc, .check-card .cc-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
   .creation-error { color: var(--bad); font-size: 12.5px; margin: 8px 0; white-space: pre-wrap; }
   .submit-btn { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 10px 20px;
-    font-family: sans-serif; font-size: 14px; cursor: pointer; width: 100%; }
+    font-family: var(--font-ui); font-size: 14px; cursor: pointer; width: 100%; }
   .submit-btn:hover { opacity: 0.9; }
   .char-list-item { display: flex; justify-content: space-between; align-items: center; }
   .char-list-item .cli-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
   /* ---------- game app ---------- */
-  #app { display: none; grid-template-columns: 1fr 320px; grid-template-rows: auto 1fr auto; height: 100vh; }
+  /* Single-column layout - the character sheet used to be a permanent 320px grid column; it's now a
+     fixed-position slide-out panel (see #sidebar below), so the main column has the full width to
+     center itself within. */
+  /* min-width: 0 overrides a grid item's default min-width:auto, which would otherwise force this
+     1fr column (and the whole page) wider than the viewport to fit the header's content instead of
+     letting it wrap - a real bug, not a hypothetical: confirmed via a real narrower-viewport check
+     (1024px) that without this the header forced 1115px of horizontal scroll. */
+  #app { display: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: 100vh; }
   #app.active { display: grid; }
-  header { grid-column: 1 / 3; display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
-  header h1 { font-size: 16px; margin: 0; font-weight: normal; letter-spacing: 0.5px; color: var(--accent-2); }
-  header .controls { display: flex; gap: 10px; align-items: center; font-family: sans-serif; font-size: 13px; }
+  header { grid-column: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; row-gap: 8px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  header h1 { font-family: var(--font-serif); font-size: 17px; margin: 0; font-weight: normal;
+    letter-spacing: 0.4px; color: var(--accent-2); }
+  header .controls { display: flex; flex-wrap: wrap; gap: 10px; row-gap: 8px; align-items: center;
+    font-family: var(--font-ui); font-size: 13px; }
   #header-budget { font-size: 11.5px; color: var(--muted); }
   #header-budget.low { color: var(--accent-2); }
   #header-budget.exhausted { color: var(--bad); font-weight: bold; }
   #inputbar.exhausted #inputbox, #inputbar.exhausted #send-btn { opacity: 0.5; pointer-events: none; }
   select, button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 4px; padding: 6px 10px; font-family: sans-serif; font-size: 13px; }
-  button { cursor: pointer; }
+    border-radius: 4px; padding: 6px 10px; font-family: var(--font-ui); font-size: 13px; }
+  button { cursor: pointer; transition: border-color .15s, background .15s; }
   button:hover { border-color: var(--accent-2); }
-  #log { overflow-y: auto; padding: 20px 24px; line-height: 1.55; }
-  .turn { margin-bottom: 22px; }
-  .turn.user { color: var(--accent-2); font-family: sans-serif; font-size: 13px; margin-bottom: 6px; }
-  .turn.narration { font-size: 16px; white-space: pre-wrap; }
-  .mechanics { margin-top: 8px; font-family: 'Courier New', monospace; font-size: 12px; color: var(--muted); }
-  .mechanics summary { cursor: pointer; }
+  #sheet-toggle-btn { display: flex; align-items: center; gap: 6px; }
+  #sheet-toggle-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2);
+    display: none; }
+  #sheet-toggle-btn.has-update .dot { display: inline-block; }
+
+  #log { grid-column: 1; min-width: 0; overflow-y: auto; padding: 32px 24px 100px; line-height: 1.6;
+    display: flex; flex-direction: column; align-items: center; }
+  .turn { width: 100%; max-width: var(--content-width); min-width: 0; margin-bottom: 26px; }
+  .turn.user { color: var(--accent-2); font-family: var(--font-ui); font-size: 12.5px;
+    letter-spacing: 0.3px; text-transform: uppercase; margin-bottom: 8px; opacity: 0.85; }
+  .turn.narration { font-family: var(--font-serif); font-size: 16.5px; line-height: 1.75;
+    white-space: pre-wrap; overflow-wrap: break-word; }
+  .mechanics { margin-top: 10px; font-family: 'Courier New', monospace; font-size: 12px; color: var(--muted); }
+  .mechanics summary { cursor: pointer; font-family: var(--font-ui); }
   .mechanics .line { padding: 3px 0 3px 14px; border-left: 2px solid var(--border); margin-top: 4px; }
   .mechanics .critical-success, .mechanics .success { color: var(--ok); }
   .mechanics .critical-failure, .mechanics .failure { color: var(--bad); }
   .mechanics .clamped { color: var(--accent-2); }
-  #sidebar { grid-row: 2 / 4; background: var(--panel); border-left: 1px solid var(--border);
-    padding: 16px; overflow-y: auto; font-family: sans-serif; font-size: 12.5px; }
-  #sidebar h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-2);
-    border-bottom: 1px solid var(--border); padding-bottom: 4px; margin: 18px 0 8px; }
-  #sidebar h2:first-child { margin-top: 0; }
+
+  /* ---------- character sheet: slide-out panel, not a permanent column ---------- */
+  #sidebar-backdrop { position: fixed; inset: 0; background: rgba(10, 11, 14, 0.55);
+    opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 40; }
+  #sidebar-backdrop.open { opacity: 1; pointer-events: auto; }
+  #sidebar { position: fixed; top: 0; right: 0; bottom: 0; width: 340px; max-width: 88vw;
+    background: var(--panel); border-left: 1px solid var(--border);
+    padding: 18px 18px 32px; overflow-y: auto; font-family: var(--font-ui); font-size: 12.5px;
+    transform: translateX(100%); transition: transform .22s ease; z-index: 50;
+    box-shadow: -8px 0 24px rgba(0,0,0,0.3); }
+  #sidebar.open { transform: translateX(0); }
+  #sidebar-close { position: sticky; top: 0; float: right; margin: -6px -6px 0 0; background: none;
+    border: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 6px; z-index: 1; }
+  #sidebar-close:hover { color: var(--accent-2); }
+  #sidebar details { margin: 0 0 4px; }
+  #sidebar details > summary { font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--accent-2); border-bottom: 1px solid var(--border); padding: 10px 0 6px; margin-top: 10px;
+    cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  #sidebar details > summary::-webkit-details-marker { display: none; }
+  #sidebar details > summary::after { content: '+'; color: var(--muted); font-size: 14px; }
+  #sidebar details[open] > summary::after { content: '\2212'; }
+  #sidebar details > summary:hover { color: var(--text); }
+  #sidebar details > .section-body { padding-top: 6px; }
+  #sidebar-header { padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
   .attr-row, .res-row, .rel-row, .skill-row, .enmity-row { display: flex; justify-content: space-between; margin: 4px 0; }
   .bar-wrap { background: var(--panel-2); border-radius: 3px; height: 6px; margin-top: 2px; overflow: hidden; }
   .bar-fill { height: 100%; background: var(--accent-2); }
   .canon-event { display: flex; justify-content: space-between; padding: 2px 0; }
   .canon-event.fired { color: var(--ok); }
   .canon-event.pending { color: var(--muted); }
-  .level-line { font-size: 13px; margin-bottom: 4px; }
+  .level-line { font-family: var(--font-serif); font-size: 14px; margin-bottom: 4px; }
   .xp-bar-wrap { background: var(--panel-2); border-radius: 3px; height: 8px; margin: 4px 0 2px; overflow: hidden; }
   .xp-bar-fill { height: 100%; background: var(--ok); }
   .level-up-banner { background: var(--accent); color: #fff; border-radius: 4px; padding: 6px 8px;
@@ -139,11 +178,14 @@
   .commitment-status.fulfilled { color: var(--ok); }
   .commitment-status.broken { color: var(--bad); }
   .divergence-entry { font-size: 11.5px; color: var(--muted); padding: 3px 0; border-bottom: 1px dotted var(--border); }
-  #inputbar { grid-column: 1 / 2; display: flex; gap: 8px; padding: 14px 16px; background: var(--panel);
+
+  #inputbar { grid-column: 1; min-width: 0; display: flex; justify-content: center; padding: 16px 20px; background: var(--panel);
     border-top: 1px solid var(--border); }
+  .inputbar-inner { display: flex; gap: 8px; width: 100%; max-width: var(--content-width); }
   #inputbox { flex: 1; resize: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 4px; padding: 10px; font-family: sans-serif; font-size: 14px; height: 44px; }
-  #status { font-family: sans-serif; font-size: 12px; color: var(--muted); padding: 4px 16px; }
+    border-radius: 4px; padding: 10px 12px; font-family: var(--font-ui); font-size: 14px; height: 46px; }
+  #inputbox:focus, select:focus, button:focus { outline: none; border-color: var(--accent-2); }
+  #status { font-family: var(--font-ui); font-size: 12px; color: var(--muted); padding: 4px 20px; }
 </style>
 </head>
 <body>
@@ -238,13 +280,20 @@
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
       <span title="Every turn is reviewed by a multi-judge council before you see it - not optional right now, see the Mechanics panel for what the council did each turn.">Council Mode: always on</span>
+      <button id="sheet-toggle-btn" title="Character sheet">Character Sheet <span class="dot"></span></button>
     </div>
   </header>
   <div id="log"></div>
-  <aside id="sidebar"></aside>
+  <div id="sidebar-backdrop"></div>
+  <aside id="sidebar">
+    <button id="sidebar-close" title="Close (Esc)">&times;</button>
+    <div id="sidebar-content"></div>
+  </aside>
   <div id="inputbar">
-    <textarea id="inputbox" placeholder="What does your character do or say?"></textarea>
-    <button id="send-btn">Send</button>
+    <div class="inputbar-inner">
+      <textarea id="inputbox" placeholder="What does your character do or say?"></textarea>
+      <button id="send-btn">Send</button>
+    </div>
   </div>
 </div>
 <div id="status"></div>
@@ -550,6 +599,7 @@ function launchGame(characterId, isNew) {
   CURRENT_CHARACTER_ID = characterId;
   document.querySelectorAll('.menu-screen').forEach(el => el.classList.remove('active'));
   document.getElementById('app').classList.add('active');
+  closeSheet();
   document.getElementById('game-header').textContent =
     SELECTED_SETTING ? `Butterfly — ${SELECTED_SETTING.label}` : 'Butterfly';
   logEl.innerHTML = '';
@@ -566,11 +616,33 @@ document.getElementById('menu-btn').addEventListener('click', () => {
 
 // ---------------- game logic ----------------
 const logEl = document.getElementById('log');
-const sidebarEl = document.getElementById('sidebar');
+const sidebarEl = document.getElementById('sidebar-content');
+const sidebarPanel = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+const sheetToggleBtn = document.getElementById('sheet-toggle-btn');
 const modelSelect = document.getElementById('model-select');
 const inputBox = document.getElementById('inputbox');
 const sendBtn = document.getElementById('send-btn');
 const statusEl = document.getElementById('status');
+
+// ---------------- character sheet slide-out panel ----------------
+function openSheet() {
+  sidebarPanel.classList.add('open');
+  sidebarBackdrop.classList.add('open');
+  sheetToggleBtn.classList.remove('has-update');
+}
+function closeSheet() {
+  sidebarPanel.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+}
+sheetToggleBtn.addEventListener('click', () => {
+  sidebarPanel.classList.contains('open') ? closeSheet() : openSheet();
+});
+document.getElementById('sidebar-close').addEventListener('click', closeSheet);
+sidebarBackdrop.addEventListener('click', closeSheet);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && sidebarPanel.classList.contains('open')) closeSheet();
+});
 
 function setStatus(text) { statusEl.textContent = text; }
 function attrMod(score) { return Math.floor((score - 10) / 2); }
@@ -637,22 +709,32 @@ function renderSidebar(state) {
     `<div class="divergence-entry">Turn ${d.turn}: ${d.note}</div>`
   ).join('') || '<div class="card-desc">No divergence from history yet.</div>';
 
+  // Attributes/Skills/Resources stay open by default - the sections a player actually needs mid-turn.
+  // Everything else (feats, liabilities, relationships, enmity, commitments, canon, divergence) is
+  // reference info that rarely changes turn to turn, so it starts collapsed - open on demand instead
+  // of permanently taking up space, now that this whole sheet is a slide-out panel rather than an
+  // always-visible column.
+  const section = (title, bodyHtml, isOpen) =>
+    `<details${isOpen ? ' open' : ''}><summary>${title}</summary><div class="section-body">${bodyHtml}</div></details>`;
+
   sidebarEl.innerHTML = `
-    <h2>Turn ${state.turn_number} &mdash; ${state.date}</h2>
-    <div class="level-line">${escapeHtml(c.name)} &middot; Level ${c.level} &middot; Proficiency ${fmtMod(pb)}</div>
-    <div class="xp-bar-wrap"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
-    <div class="card-desc">${c.xp} / ${xpNeeded} XP</div>
-    ${levelUpBanner}
-    <h2>Attributes</h2>${attrRows}
-    <h2>Skills</h2>${skillGroups}
-    <h2>Feats</h2><div class="card-list">${featCards}</div>
-    <h2>Liabilities</h2><div class="card-list">${liabilityCards}</div>
-    <h2>Relationships</h2>${relRows}
-    <h2>Enmity</h2>${enmityRows}
-    <h2>Resources</h2>${resRows}
-    <h2>Commitments</h2><div class="card-list">${commitmentCards}</div>
-    <h2>Canon Events</h2>${canonRows}
-    <h2>Divergence Log</h2>${divergenceEntries}
+    <div id="sidebar-header">
+      <div class="card-desc" style="text-transform:uppercase;letter-spacing:1px;">Turn ${state.turn_number} &mdash; ${state.date}</div>
+      <div class="level-line">${escapeHtml(c.name)} &middot; Level ${c.level} &middot; Proficiency ${fmtMod(pb)}</div>
+      <div class="xp-bar-wrap"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
+      <div class="card-desc">${c.xp} / ${xpNeeded} XP</div>
+      ${levelUpBanner}
+    </div>
+    ${section('Attributes', attrRows, true)}
+    ${section('Skills', skillGroups, true)}
+    ${section('Resources', resRows, true)}
+    ${section('Feats', `<div class="card-list">${featCards}</div>`, false)}
+    ${section('Liabilities', `<div class="card-list">${liabilityCards}</div>`, false)}
+    ${section('Relationships', relRows || '<div class="card-desc">None yet.</div>', false)}
+    ${section('Enmity', enmityRows, false)}
+    ${section('Commitments', `<div class="card-list">${commitmentCards}</div>`, false)}
+    ${section('Canon Events', canonRows || '<div class="card-desc">None yet.</div>', false)}
+    ${section('Divergence Log', divergenceEntries, false)}
   `;
 }
 
@@ -805,6 +887,9 @@ async function sendTurn() {
       renderSidebar(data.state);
       renderBudget(data.budget);
       setStatus('');
+      // Nudge the player toward the sheet if it's closed - the turn may have changed something
+      // (level, resources, a new liability) they'd otherwise only notice by opening it themselves.
+      if (!sidebarPanel.classList.contains('open')) sheetToggleBtn.classList.add('has-update');
     }
   } catch (e) {
     appendTurn(text, `[Request failed: ${e}]`, []);

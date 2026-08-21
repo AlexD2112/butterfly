@@ -97,8 +97,11 @@ genuinely not ship-ready as-is, not just pricier than before).
   atrocity - worth a deliberate pass on what the GM should and shouldn't narrate in graphic detail,
   independent of Anthropic's/OpenAI's own model-level guardrails, once this is more than a handful
   of trusted players.
-- **Mobile-friendly layout.** The current single-file frontend is desktop-oriented (fixed sidebar
-  grid); a real mobile pass is a CSS/layout project, not an architecture one.
+- **Mobile-friendly layout.** The current single-file frontend is still desktop-oriented; a real
+  mobile pass is a CSS/layout project, not an architecture one. Partial progress 2026-08-21: the
+  character sheet moved from a fixed 320px grid column to a slide-out panel (see `NOTES.md`), and a
+  real horizontal-overflow bug at laptop-width viewports got fixed along the way - but no phone-width
+  layout, touch-target sizing, or responsive breakpoints below ~768px have been attempted.
 - **Backups/export.** A "download my campaign as JSON" button is cheap and worth having before this
   holds anything anyone would be upset to lose.
 

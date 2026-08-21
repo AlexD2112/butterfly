@@ -1,3 +1,86 @@
+# Frontend redesign (2026-08-21) - typography, collapsible sheet, centered column, slide-out panel
+
+Item 3 from your list, done after 1 and 2. All changes are in `static/index.html` only - no
+server-side/API changes, so no test-suite impact (still 92/92 passing, unrelated to this).
+
+**Typography**: added `--font-serif` (Palatino Linotype/Book Antiqua/Palatino/Georgia fallback chain)
+for narration prose and headings, `--font-ui` (a real system-font stack -
+`-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif` - replacing the
+old bare `sans-serif` generic, which rendered inconsistently across OSes) for UI chrome. Deliberately
+kept the serif/sans split rather than picking one font everywhere - narration and the landing page's
+pitch copy stay serif (period-appropriate, matches this app's existing character), while buttons/
+labels/the character sheet stay sans (legible at small UI sizes). Bumped narration to 16.5px/1.75
+line-height (was 16px/1.55) and widened landing copy slightly - small, deliberately conservative
+changes, not a full visual overhaul.
+
+**Collapsible sidebar sections**: the character sheet's ten sections used to all render open,
+always, in a permanently-visible column. Wrapped the seven that rarely change turn-to-turn (Feats,
+Liabilities, Relationships, Enmity, Commitments, Canon Events, Divergence Log) in native `<details>`,
+collapsed by default. Left Attributes/Skills/Resources open by default - the ones a player actually
+needs mid-turn. **Judgment call**: which sections count as "secondary" wasn't specified: I judged by
+how often each one's content actually changes turn-to-turn / how often a player needs to glance at
+it mid-decision, not by how "important" the underlying data is narratively (e.g. Liabilities matter a
+lot narratively but change maybe once every several sessions, so it's collapsed).
+
+**Centered, width-capped content column**: narration and the input bar now cap at
+`--content-width: 720px` and center within the available space (`#log` as a centered flex column,
+`.turn` and `.inputbar-inner` capped to that width) - previously the log filled the entire
+`1fr` grid track edge-to-edge, which read as uncomfortably wide on anything past ~1400px.
+
+**Character sheet as a slide-out panel**: `#sidebar` is no longer a permanent 320px grid column -
+it's `position: fixed`, slides in from the right (`transform: translateX(100%)` closed ->
+`translateX(0)` open, `.22s` transition), with a click-to-dismiss backdrop, a close button, and Esc-
+to-close. A new "Character Sheet" button in the header toggles it; a small dot badge lights up on the
+toggle button after a turn changes something in the sheet while it's closed (cleared the moment it's
+opened) - a way to surface "something changed" without forcing the panel open every turn. `#app`'s
+grid dropped to a single `1fr` column now that the sidebar is out of grid flow.
+
+**A real bug found and fixed during verification, not part of the original plan**: the header's six
+controls (budget, menu button, model label+select, Council Mode note, the new sheet-toggle button)
+don't wrap by default, and CSS Grid's `1fr` tracks default to `min-width: auto` - meaning at any
+viewport narrower than the header's full content width, the grid column (and the whole page) was
+forced wider than the viewport, producing horizontal scroll. Confirmed directly (not just reasoned
+about): loaded the real running app at 1024px width and measured `header.scrollWidth` at 1115px, a
+genuine overflow, not a hypothetical. Fixed with `min-width: 0` on the grid item children (`header`,
+`#log`, `#inputbar`) plus `minmax(0, 1fr)` on the grid track itself, and `flex-wrap: wrap` on the
+header/`.controls` so the controls wrap to multiple rows on narrow viewports instead of forcing
+horizontal scroll. Verified clean (no `document.body.scrollWidth > window.innerWidth`) at 1024px and
+768px after the fix. This app is still desktop-oriented overall (a real mobile pass is its own
+`ROADMAP.md` item, not attempted here) but it no longer breaks outright at laptop-width viewports.
+
+## What's verified vs. not
+
+**Verified for real** via a live running instance (waitress on a local port) driven through the
+actual browser tooling, not just read from source: the full menu -> setting -> mode -> character
+flow reaches the game screen correctly; the model picker shows all five models with Sonnet marked
+default (confirms item 2's backend change surfaces correctly in this same UI); the slide-out panel's
+CSS end-state is correct (confirmed by disabling the transition and reading `getComputedStyle` -
+see below for why this was necessary); open/close via the toggle button, the backdrop, and Escape
+all work; a `<details>` section toggles open/closed on click; the "something changed" dot appears
+and clears correctly; the width-overflow bug above was caught and fixed via real measurement, not
+guessed; zero console errors across the whole session.
+
+**One real limitation of this session's verification, worth flagging honestly**: `computer`
+screenshots failed in this environment ("the Browser pane is not displayed, so the page is not
+compositing frames"), which also meant CSS *transitions* never visibly progressed in this headless
+tab (confirmed: `getComputedStyle` right after triggering the slide-in kept reporting the CLOSED
+transform value, even though the `open` class and the matching CSS rule were both unquestionably
+correct - proven by temporarily setting `transition: none` and re-reading, which immediately showed
+the correct OPEN value). So: the animation's *end state* is verified correct, but I never actually
+watched the panel visually slide in, and could not confirm smoothness/timing/visual polish of the
+transition itself by eye. If the slide-in looks janky or wrong in a real browser, that's the one
+part of this change I couldn't see for myself - worth a real look next time you're at the app.
+
+**Not verified**: real-content stress tests (a very long campaign log, a character with many feats/
+liabilities/relationships filling the panel) - only tested against a fresh level-1 premade character
+with mostly-empty secondary sections, since sending a real AI turn needs API keys not present in
+this environment (same limitation as every other "not yet run against live APIs" note in this file).
+Also not checked: any specific screen-reader/keyboard-only navigation beyond Escape-to-close (the
+`<details>`/`<summary>` elements are natively keyboard-operable, but I didn't specifically drive them
+via Tab/Enter).
+
+---
+
 # Claude restored as default + Council Mode judge-cost fix (2026-08-21) - real math, real problem found
 
 Direction from you: bring Claude back as the standard/default model (un-hide Sonnet/Haiku/Opus),
