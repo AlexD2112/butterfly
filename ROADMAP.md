@@ -10,18 +10,18 @@ settings (Petrograd 1917, Britannia 876, Rome 59 BCE, Crusades 1097); custom cha
 local SQLite accounts with optional Discord login; hosted on the user's own machine as of 2026-08-21
 (genuinely persistent SQLite, exposed via a Cloudflare tunnel, with Render running only a thin
 pass-through so the original public URL keeps working - see `local-site-tunnel/README.md`); an
-always-on,
-router-sized multi-judge Council Mode reviewing every turn's narration (2026-08-20, redesigned from
-an initial opt-in/stakes-gated version the same night - see `council.py` and `NOTES.md`); a free,
-player-selectable local model (a home GPU's Ollama instance via a Cloudflare tunnel - see
-`local-ollama-proxy/`, `providers.OllamaTunnelProvider`, `NOTES.md`) alongside Luna, the only two
-currently-selectable models (`providers.ALLOWED_MODEL_KEYS`) - Sonnet/Haiku/Opus stay hidden, a
-deliberate temporary default pending real cost data on the cloud providers, not a removal. See
-`README.md` for the honest status checklist - a few real gaps are called out there (OpenAI's/
-Anthropic's live APIs haven't been exercised yet, only the local model has been tested against real
-infrastructure; Council Mode specifically needs a real-cost playtest, and per `NOTES.md`'s cost math
-the $0.10 default budget likely needs raising now that Council Mode always runs, before either is
-recommended to anyone).
+always-on, router-sized multi-judge Council Mode reviewing every turn's narration (2026-08-20,
+redesigned from an initial opt-in/stakes-gated version the same night - see `council.py` and
+`NOTES.md`); a free, player-selectable local model (a home GPU's Ollama instance via a Cloudflare
+tunnel - see `local-ollama-proxy/`, `providers.OllamaTunnelProvider`, `NOTES.md`); Claude Sonnet 5
+restored as the default model as of 2026-08-21, with every registered model selectable again
+(`providers.ALLOWED_MODEL_KEYS = None`) and Council Mode's judges/router/voice-editor pinned to a
+fixed cheap model (Haiku) regardless of the player's own choice, to contain cost. See `README.md`
+for the honest status checklist - a few real gaps are called out there (OpenAI's/Anthropic's live
+APIs haven't been exercised yet, only the local model has been tested against real infrastructure;
+Council Mode specifically needs a real-cost playtest; and per `NOTES.md`'s 2026-08-21 cost math, the
+$0.10 default budget now affords only ~1 turn with Sonnet as the default and Council Mode always on -
+genuinely not ship-ready as-is, not just pricier than before).
 
 ## Phase 1 — Make tonight's deploy actually solid (days, not weeks)
 

@@ -744,8 +744,8 @@ function escapeHtml(s) {
 
 async function loadModels() {
   // /api/models already only returns the currently-selectable subset (see
-  // providers.ALLOWED_MODEL_KEYS - sonnet/haiku/opus are hidden entirely right now, not shown
-  // disabled) - this just renders whatever it gets, real functional choice among those. The local
+  // providers.ALLOWED_MODEL_KEYS - as of 2026-08-21 that's every registered model, none hidden -
+  // see NOTES.md) - this just renders whatever it gets, real functional choice among those. The local
   // model additionally reflects a live health check (unavailable_reason: "currently offline" vs
   // "not configured") so a down tunnel shows as disabled here instead of failing on click.
   const res = await fetch('/api/models');

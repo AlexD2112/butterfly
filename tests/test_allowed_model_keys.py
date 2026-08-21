@@ -29,9 +29,10 @@ class FakeProvider:
 
 
 class TestAllowedModelKeys(unittest.TestCase):
-    """providers.ALLOWED_MODEL_KEYS replaced the earlier singular LOCKED_MODEL_KEY once the free
-    local-ollama option needed to be genuinely selectable alongside Luna, not just Luna alone -
-    sonnet/haiku/opus stay excluded from both the picker and the turn route either way."""
+    """providers.ALLOWED_MODEL_KEYS replaced the earlier singular LOCKED_MODEL_KEY, and as of
+    2026-08-21 defaults to None (every registered model selectable, Claude restored as the default -
+    see NOTES.md) - but the restriction mechanism itself is still real and still enforced server-side
+    if re-enabled later, which these tests verify by patching it back on."""
 
     def setUp(self):
         self._tmpdir = TemporaryDirectory()
@@ -50,16 +51,20 @@ class TestAllowedModelKeys(unittest.TestCase):
         with self.client.session_transaction() as sess:
             sess["user_id"] = user["id"]
 
-    def test_api_models_only_lists_allowed_keys(self):
+    def test_api_models_lists_everything_by_default(self):
+        # ALLOWED_MODEL_KEYS defaults to None as of 2026-08-21 - Claude restored as the default
+        # model, no models hidden from the picker (see NOTES.md).
         res = self.client.get("/api/models")
         keys = {m["key"] for m in res.get_json()["models"]}
-        self.assertEqual(keys, {"luna", "local-ollama"})
+        self.assertEqual(keys, set(providers.MODEL_REGISTRY.keys()))
 
-    def test_api_models_lists_everything_when_restriction_lifted(self):
-        with patch.object(providers, "ALLOWED_MODEL_KEYS", None):
+    def test_api_models_only_lists_allowed_keys_when_restricted(self):
+        # The restriction mechanism itself still works if re-enabled later - not exercised by
+        # default anymore, but still real, still enforced server-side.
+        with patch.object(providers, "ALLOWED_MODEL_KEYS", {"luna", "local-ollama"}):
             res = self.client.get("/api/models")
             keys = {m["key"] for m in res.get_json()["models"]}
-            self.assertEqual(keys, set(providers.MODEL_REGISTRY.keys()))
+            self.assertEqual(keys, {"luna", "local-ollama"})
 
     def test_requesting_a_disallowed_model_is_rejected_not_silently_substituted(self):
         self._login_as_discord_user()
@@ -72,7 +77,8 @@ class TestAllowedModelKeys(unittest.TestCase):
             call_count["n"] += 1
             return FakeProvider(), "gpt-5.6-luna"
 
-        with patch.object(providers, "get_provider", side_effect=fake_get_provider):
+        with patch.object(providers, "ALLOWED_MODEL_KEYS", {"luna", "local-ollama"}), \
+             patch.object(providers, "get_provider", side_effect=fake_get_provider):
             res = self.client.post(
                 f"/api/character/{character_id}/turn",
                 json={"input": "I look around.", "model_key": "sonnet"},

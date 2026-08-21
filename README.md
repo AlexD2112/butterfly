@@ -86,15 +86,22 @@ characterization, groundedness, and a "what should go right" / "what should go w
 chairman synthesizes a final version from all of it, and a cheap-model voice-editor pass polishes
 word choice. See `council.py`'s module docstring for the full design.
 
-**Cost**: this materially increases per-turn cost - see `NOTES.md` for the actual math (roughly
-$0.009-0.010/turn with Council Mode versus ~$0.004/turn without it, meaning the $0.10 default budget
-affords roughly 11 turns rather than 25). **Model lock**: every call in the app (main narration,
-council router/judges/chairman/candidates) is restricted to `providers.ALLOWED_MODEL_KEYS` -
-currently Luna and the free local model below, Sonnet/Haiku/Opus stay hidden from the picker
-entirely - a deliberate, easily-reversible temporary default (`ALLOWED_MODEL_KEYS = None` reverts
-to every registered model being selectable), not a removal of the other registered models. Luna/
-Anthropic/OpenAI's own turn generation has NOT yet been run against live APIs, only mocked - see
-`NOTES.md` for what's verified versus what still needs a real playtest.
+**Cost**: this materially increases per-turn cost, and the picture changed a lot on 2026-08-21 when
+Claude was restored as the default model (see `NOTES.md` for the full math) - with Sonnet as the
+default and Council Mode always on, a turn costs roughly **$0.075-0.080**, meaning the $0.10 default
+budget affords only about **1 turn**. `NOTES.md` lays out real options (raising the budget, prompt
+caching, a narrower judge floor) - none implemented yet, flagging this as genuinely not
+ship-ready in its current state, not just "a bit pricier."
+
+**Model selection**: every registered model is selectable (`providers.ALLOWED_MODEL_KEYS = None`),
+Claude Sonnet 5 is the default (`providers.DEFAULT_MODEL_KEY`). Council Mode's router, judges, and
+voice-editor pass always run on a fixed cheap model (Haiku - `council.JUDGE_MODEL_KEY`) regardless
+of what the player picked for their own turn - only the baseline narration, the extra candidate, and
+the chairman's synthesis use the player's actual model choice. This was a deliberate 2026-08-21
+change from council's earlier behavior (following the player's choice for everything) - see
+`NOTES.md` for why that stopped being safe once Sonnet/Opus became selectable again. Every provider's
+own turn generation has NOT yet been run against live APIs, only mocked - see `NOTES.md` for what's
+verified versus what still needs a real playtest.
 
 Regardless of Council Mode's panel, every turn's base narration prompt already includes a
 banned-word list and anti-purple-prose/anti-hand-waving guidance (`council.VOICE_GUIDANCE`) - that
@@ -105,9 +112,12 @@ part is free and unconditional.
 A player-selectable model option that costs $0 regardless of real token counts, backed by a home
 GPU running Ollama and exposed through a Cloudflare tunnel - see `local-ollama-proxy/README.md` for
 the local-machine setup and `providers.OllamaTunnelProvider` for the Butterfly-side integration.
-Requires `OLLAMA_TUNNEL_URL` and `OLLAMA_TUNNEL_SECRET` to be set (both blank by default in
-`render.yaml` - the option just shows as unavailable if they're not configured, nothing else
-breaks). The option only shows as selectable when a live health check against the tunnel actually
+Requires `OLLAMA_TUNNEL_URL` and `OLLAMA_TUNNEL_SECRET` to be set (both blank by default - the
+option just shows as unavailable if they're not configured, nothing else breaks). Council Mode is
+skipped entirely for this option (see `NOTES.md`'s "URGENT FIX" entry - real testing found it's
+far too slow for a multi-call judge panel), so choosing it keeps the whole turn genuinely free and
+fast, not just the narration call. The option only shows as selectable when a live health check
+against the tunnel actually
 succeeds - if the host machine or tunnel is down, it's hidden/disabled in the picker rather than
 failing on click, and a turn that was already in flight when the tunnel drops gets a clear "local
 model is currently offline" state instead of a raw error.
@@ -218,14 +228,16 @@ account-linking flow is a `ROADMAP.md` item.
 
 ## Model switching
 
-`providers.MODEL_REGISTRY` currently has four options, GPT-5.6 Luna (OpenAI) as default:
+`providers.MODEL_REGISTRY` currently has five options, Claude Sonnet 5 (Anthropic) as default as of
+2026-08-21 (see `NOTES.md` - was GPT-5.6 Luna, briefly locked to Luna-only, now reopened):
 
-| key      | provider  | model                        |
-|----------|-----------|------------------------------|
-| `luna`   | OpenAI    | `gpt-5.6-luna` (default)     |
-| `sonnet` | Anthropic | `claude-sonnet-5`            |
-| `haiku`  | Anthropic | `claude-haiku-4-5-20251001`  |
-| `opus`   | Anthropic | `claude-opus-5`              |
+| key            | provider  | model                        |
+|----------------|-----------|------------------------------|
+| `sonnet`       | Anthropic | `claude-sonnet-5` (default)  |
+| `luna`         | OpenAI    | `gpt-5.6-luna`                |
+| `haiku`        | Anthropic | `claude-haiku-4-5-20251001`  |
+| `opus`         | Anthropic | `claude-opus-5`              |
+| `local-ollama` | Ollama (home GPU) | `qwen3:30b` - free, see "Free local model" above |
 
 You can switch models mid-campaign (webapp dropdown, or CLI's argv/env var on a fresh launch).
 Each provider tracks its own native conversation thread internally - switching models doesn't

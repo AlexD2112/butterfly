@@ -75,6 +75,32 @@ def make_state():
     return {"turn_number": 3, "date": "1917-09-28", "campaign_log_summary": []}
 
 
+class TestCheapModelKeyFor(unittest.TestCase):
+    """As of 2026-08-21, judges/router/voice-editor always target a fixed cheap model - no longer
+    derived from whatever the player picked for their own turn (see council.py's module docstring
+    and NOTES.md for why: with Sonnet/Haiku/Opus selectable again, "follow the player" would let an
+    always-on, minimum-3-judge council silently run on Opus if that's what the player chose)."""
+
+    def test_always_returns_the_fixed_judge_model_key_regardless_of_input(self):
+        for player_choice in ("luna", "sonnet", "haiku", "opus", "local-ollama", "unknown-key", None):
+            self.assertEqual(council._cheap_model_key_for(), council.JUDGE_MODEL_KEY)
+
+    def test_run_council_requests_the_fixed_judge_model_even_when_player_picked_opus(self):
+        fake = ScriptedProvider()
+        requested_keys = []
+
+        def fake_get_provider(model_key):
+            requested_keys.append(model_key)
+            return fake, "claude-haiku-4-5-20251001"
+
+        with patch.object(providers, "get_provider", side_effect=fake_get_provider):
+            council.run_council(
+                fake, "claude-opus-5", "opus", "SYSTEM PROMPT", "I give a speech.",
+                make_state(), make_debug_events(), "BASELINE NARRATION",
+            )
+        self.assertEqual(requested_keys, [council.JUDGE_MODEL_KEY])
+
+
 class TestRunCouncil(unittest.TestCase):
     def test_full_successful_run_uses_voice_edited_synthesis(self):
         fake = ScriptedProvider()  # router selects 4 judges by default

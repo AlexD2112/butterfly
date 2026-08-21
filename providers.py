@@ -334,12 +334,12 @@ MODEL_REGISTRY = {
     "luna": {
         "provider": "openai",
         "model": "gpt-5.6-luna",
-        "label": "GPT-5.6 Luna (OpenAI - fast/cheap, default)",
+        "label": "GPT-5.6 Luna (OpenAI - fast/cheap)",
     },
     "sonnet": {
         "provider": "anthropic",
         "model": "claude-sonnet-5",
-        "label": "Claude Sonnet 5 (Anthropic)",
+        "label": "Claude Sonnet 5 (Anthropic, default)",
     },
     "haiku": {
         "provider": "anthropic",
@@ -357,19 +357,18 @@ MODEL_REGISTRY = {
         "label": "Qwen3 30B (local, via a home GPU - free, but slower and depends on that machine being on)",
     },
 }
-DEFAULT_MODEL_KEY = "luna"
+DEFAULT_MODEL_KEY = "sonnet"  # switched back from "luna" 2026-08-21 - see NOTES.md
 
-# TEMPORARY LOCK (2026-08-20, standing until the user says otherwise - see NOTES.md). Only these
-# model keys are selectable right now - server.py rejects anything else in the turn route, and
-# /api/models only lists entries in this set, so sonnet/haiku/opus stay hidden from the picker.
-# Originally this was a single LOCKED_MODEL_KEY forcing everything onto Luna specifically; widened
-# to a set the same night the free local-ollama option was added, since that option should actually
-# be selectable (the whole point of building it), not just Luna alone - see NOTES.md for the
-# reasoning on what this implies for Council Mode's internal model choices. Deliberately NOT a
-# removal of the other registry entries above (sonnet/haiku/opus stay fully defined and functional)
-# - set this back to None to revert to "every registered model is selectable," no other code change
-# needed; server.py and the /api/models route both key off this single constant.
-ALLOWED_MODEL_KEYS = {"luna", "local-ollama"}
+# Was a temporary lock (2026-08-20 - {"luna", "local-ollama"}, before that a single LOCKED_MODEL_KEY
+# forcing everything onto Luna) while cost data on the cloud providers was still unknown. Reopened
+# 2026-08-21 now that Council Mode's judge/router/voice-editor calls are pinned to a fixed cheap
+# model regardless of the player's own choice (see council._cheap_model_key_for) - the thing this
+# lock was originally protecting against (every one of council's ~7-9 internal calls silently
+# running on an expensive model just because the player picked one for narration) is now handled at
+# the source, not by hiding the picker. None means "every registered model is selectable" - server.py
+# and the /api/models route both key off this single constant, so re-restricting later (e.g. to
+# {"luna", "local-ollama"} again) is a one-line revert, not a bigger change.
+ALLOWED_MODEL_KEYS = None
 
 _PROVIDER_CLASSES = {"anthropic": AnthropicProvider, "openai": OpenAIProvider, "ollama_tunnel": OllamaTunnelProvider}
 _provider_instances = {}

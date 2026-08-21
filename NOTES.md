@@ -1,3 +1,122 @@
+# Claude restored as default + Council Mode judge-cost fix (2026-08-21) - real math, real problem found
+
+Direction from you: bring Claude back as the standard/default model (un-hide Sonnet/Haiku/Opus),
+keep the free local model available too, but first fix a real cost risk - Council Mode's router +
+minimum 3 judges + chairman + voice-editor pass, previously following whatever model the player
+picked, would silently bill judges against Sonnet/Opus the moment they became selectable again.
+
+**What shipped:**
+- `providers.ALLOWED_MODEL_KEYS = None` (was `{"luna", "local-ollama"}`) - every registered model is
+  selectable again; `providers.DEFAULT_MODEL_KEY = "sonnet"` (was `"luna"`). Luna stays in the
+  registry and stays selectable - nothing about it was removed, it's just no longer the default.
+- `council._cheap_model_key_for()` now always returns a fixed `JUDGE_MODEL_KEY = "haiku"`, regardless
+  of the player's own `model_key` - previously it followed the player's choice (a no-op while only
+  Luna/local-ollama were selectable, but a real problem the instant Sonnet/Opus became choosable
+  again). Only the router, the judges, and the voice-editor pass move to Haiku; the baseline
+  narration, the extra candidate, and the chairman's synthesis still run on whatever model the
+  player picked - narration quality still scales with the player's choice, only the narrow
+  rubric-scoring work doesn't. Local-ollama is unaffected either way (Council Mode is skipped for it
+  entirely - see the URGENT FIX entry below - so this function is never reached on that path).
+- Added a test (`tests/test_council_orchestration.py::TestCheapModelKeyFor`) asserting this directly -
+  previously nothing actually checked which model key the judge/router calls requested, since every
+  existing test mocked `get_provider` with a blanket `return_value` that ignored its argument.
+- 92/92 tests passing (90 existing + 2 new), including updates to `tests/test_allowed_model_keys.py`
+  (its old assertions - "only luna/local-ollama are listed," "sonnet is rejected with 400" - directly
+  encoded the now-reverted lock; restructured to verify the restriction *mechanism* still works via
+  `patch.object` rather than asserting on the now-stale default).
+
+## The real cost math - and a bigger problem than the judge-model fix alone solves
+
+You asked me to recompute this for real rather than assume the fix would be enough, and it wasn't -
+the judge-model fix is correct and worth having, but it is **not sufficient on its own** to make the
+current $0.10 default budget usable with Claude as the default and Council Mode always on. Read this
+whole section before treating "Claude is back" as a finished, ship-ready state.
+
+Same estimation methodology as the 2026-08-20 entry below (real measured ~9,500-token base system
+prompt + ~1,140 tokens of tool defs from `wc -c` on the actual setting files; conversation
+history/output length still estimated, not measured, since that varies turn to turn):
+
+| Call | Input (est.) | Output (est.) | Model | Cost |
+|---|---|---|---|---|
+| Baseline turn generation | ~11,250 | ~250 | Sonnet ($2.00/$10.00 per 1M) | ~$0.0250 |
+| Router | ~1,080 | ~80 | Haiku ($1.00/$5.00 per 1M) | ~$0.0015 |
+| Extra candidate | ~9,950 | ~300 | Sonnet | ~$0.0229 |
+| Each judge | ~1,000 | ~90 | Haiku | ~$0.0015 |
+| Chairman | ~1,500 | ~380 | Sonnet | ~$0.0068 |
+| Voice editor | ~580 | ~300 | Haiku | ~$0.0021 |
+
+Baseline generation still runs ~1.5 calls/turn on average (same assumption as before): **~$0.0375**
+just for the pre-existing baseline narration, before any council overhead - already more than
+1/3 of the entire $0.10 budget, from Sonnet's per-token rate alone (~10x Luna's).
+
+**Council's incremental cost per turn** (router + candidate + judges + chairman + voice editor):
+- At the MIN_JUDGES=3 floor: 0.0015 + 0.0229 + (3 × 0.0015) + 0.0068 + 0.0021 ≈ **$0.0378**
+- At the max of 6 judges: 0.0015 + 0.0229 + (6 × 0.0015) + 0.0068 + 0.0021 ≈ **$0.0423**
+
+**Total cost per turn with Council Mode on Sonnet**: roughly **$0.075-0.080**, call it **~$0.077** as
+a representative middle estimate (most turns land at the 3-judge floor per the router's own design -
+"most turns should just get the MIN_JUDGES most relevant judges").
+
+**Turns per $0.10 account: 0.10 / 0.077 ≈ ~1.3 turns.** Not a typo. The $0.10 default now affords
+barely more than a single turn.
+
+**What the judge-model fix actually bought, quantified**: I computed the counterfactual (judges/
+router/voice-editor all on Sonnet, i.e. what "follow the player's choice" would have done the moment
+Sonnet became the default) - that comes out to **~$0.083-0.092/turn** (0.10/0.083 ≈ 1.2 turns,
+0.10/0.092 ≈ 1.09 turns). The fix saves roughly $0.006-0.012/turn (about 8-14% of the total), real
+and worth having, but **it is not the dominant cost driver**. The dominant driver is that the
+baseline narration, the extra candidate, and the chairman synthesis - all three genuinely need a
+strong model, so pinning them to Haiku isn't the right fix - together resend something close to the
+full ~10,650-token system prompt at Sonnet's per-token rate on 2-3 separate calls, every single turn.
+That's the actual problem, and the judge-model fix was never going to touch it, because it was never
+about the judges.
+
+## What this means - options, not a decision I made for you
+
+I did **not** change `DEFAULT_BUDGET_USD` or implement caching - consistent with how this exact
+question was handled in the 2026-08-20 entry below (you asked me to surface it, not silently pick a
+number), and this is the same kind of call. But I want to be direct about what "Claude is back as
+default" currently means in practice: a new account gets essentially one turn before hitting the
+budget wall, which reads as broken to a player, not just "a bit pricier than before." I'd genuinely
+recommend NOT treating this as done-and-shippable in its current state - one of the options below
+(most likely the budget raise, since it's a one-line change versus caching's real implementation
+work) probably needs to happen before this goes back in front of real players. Options, not
+mutually exclusive:
+
+- **Raise `DEFAULT_BUDGET_USD` substantially.** To match the old Luna-era experience of roughly
+  10-11 turns per account, the math says ~10 × $0.077 ≈ **$0.75-$1.00**. This is the fastest fix (a
+  one-line constant change) but a real, larger dollar commitment per account than before - worth
+  deciding deliberately, not defaulting into.
+- **Prompt caching** (flagged as the most promising lever in the 2026-08-20 entry below, still not
+  implemented - `cache_control` is set on zero calls anywhere in `providers.py` today). The
+  ~9,500-10,650-token stable prefix (rules/NPCs/factions/canon/resources/tools - everything except
+  the small per-turn state digest) is close to IDENTICAL between the baseline call and the extra
+  candidate every single turn. Rough math on just those two calls: uncached, they cost
+  (11,250+9,950) tokens × $2.00/1M ≈ $0.0424 in input alone; with the shared prefix cached (one
+  cache-write call at a 1.25x premium, one cache-read call at a 0.1x discount), that drops to
+  roughly $0.030 - about a **28% reduction on just those two calls**, before counting a turn's
+  second baseline-retry call (common per the "~1.5 calls/turn" figure) also hitting a warm cache for
+  even more savings. This is a genuinely separate, real piece of work (restructuring
+  `engine.build_system_prompt` to put the stable content first/last consistently, adding
+  `cache_control` breakpoints, verifying real cache hits against the live API) - not done tonight,
+  flagging as the highest-leverage lever that doesn't require raising anyone's dollar cost.
+- **Narrower judge floor or roster** (`MIN_JUDGES`, currently 3) would reduce council's own
+  incremental cost roughly linearly, but per the math above council's incremental cost isn't the
+  main problem - narrowing it further would save maybe $0.003-0.006/turn, a much smaller lever than
+  either option above. Noting it exists, not recommending it as the primary fix.
+
+## What's estimated vs. real
+
+Same caveat as every prior cost-math entry in this file: the base system prompt size is a real
+measurement (`wc -c` on the actual setting files), everything else (conversation history length,
+narration length, judge verbosity) is a reasonable planning estimate, not a guarantee - the only way
+to get real numbers is running actual turns against the live Anthropic API, which I still can't do
+from here (no API keys configured in this repo, deliberately, per earlier NOTES.md entries). If
+you've since run any real turns and have actual token counts from Anthropic's own usage response,
+those would supersede everything estimated here.
+
+---
+
 # Local hosting + Render pass-through (2026-08-21, continuation session)
 
 Picking this up in a fresh session after the previous one started hitting persistent safety-

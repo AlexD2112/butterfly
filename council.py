@@ -33,16 +33,23 @@ SIZE of the judge panel:
    aborts back to the baseline narration rather than failing the whole turn - the player always
    gets a narration, worst case it's the single-pass one with no council review.
 
-   As of 2026-08-20, council's judges/router/voice-editor follow whatever model the PLAYER picked
-   for their turn (via _cheap_model_key_for - a no-op identity function while only Luna and the
-   free local-ollama option are selectable, see providers.ALLOWED_MODEL_KEYS) - this was a
-   deliberate choice, not an accident: if a player picks the free local model specifically to avoid
-   cost, having council's ~7-9 internal calls silently still bill against a paid model would work
-   against the whole point of offering a free option. See NOTES.md for the alternative considered
-   (pinning council's internal machinery to a fixed reliable model regardless of the player's
-   choice) and why this one was picked instead. There is no "escalate to a stronger model for
-   high-stakes turns" path right now; the router's only job is choosing HOW MANY/WHICH judges
-   review a turn, not which model tier runs them.
+   As of 2026-08-21, council's judges/router/voice-editor always run on a fixed cheap model
+   (JUDGE_MODEL_KEY = "haiku" - see _cheap_model_key_for), regardless of what model the player
+   picked for their own turn. This reverses the 2026-08-20 design (judges followed the player's own
+   model choice), which made sense ONLY while Luna and the free local-ollama option were the sole
+   selectable models - neither had a cheaper same-provider fallback to reach for, so "follow the
+   player" and "pin to a fixed cheap model" were the same thing in practice. That stopped being true
+   once Sonnet/Haiku/Opus became selectable again the same day (restoring Claude as the default,
+   see NOTES.md): with a real spread of model tiers now selectable, "follow the player" would mean
+   an always-on, minimum-3-judge council silently running ~7-9 internal calls on whatever the player
+   picked for narration - including Opus - which is exactly the runaway-cost failure mode a fixed
+   cheap judge model exists to prevent. The candidate/chairman calls are unaffected - they still use
+   the player's own model directly, so narration quality still scales with the player's choice, only
+   the narrow rubric-scoring work doesn't. Local-ollama is unaffected too (Council Mode is skipped
+   for it entirely - see SKIP_COUNCIL_FOR_MODEL_KEYS below - so a player choosing the free local
+   model still gets a genuinely free turn). There is no "escalate to a stronger model for high-stakes
+   turns" path right now; the router's only job is choosing HOW MANY/WHICH judges review a turn, not
+   which model tier runs them. See NOTES.md for the real cost math behind this change.
 
 Design rationale (why this maps to real technique, not just "have some models argue"):
   - The overall independent-generation -> blind cross-ranking -> chairman-synthesis shape follows
@@ -225,19 +232,27 @@ def _ok(budget_ok):
     return budget_ok is None or budget_ok()
 
 
-def _cheap_model_key_for(model_key):
-    """Judges/router/voice-editor use a cheaper model than the current turn's candidates/chairman -
-    narrow checklist evaluation doesn't need a strong model. As of 2026-08-20 this is close to a
-    no-op: only Luna and the free local-ollama option are selectable at all right now
-    (providers.ALLOWED_MODEL_KEYS), and neither has a cheaper same-provider fallback to reach for -
-    Luna is already the cheap default, and local-ollama is already free. Deliberately follows the
-    player's own model choice rather than pinning to something else (see this module's docstring
-    for why) - the Anthropic-preference logic below is dead code while the current lock holds, kept
-    for when/if sonnet/haiku/opus become selectable again."""
-    entry = providers.MODEL_REGISTRY.get(model_key, {})
-    if entry.get("provider") == "anthropic":
-        return "haiku"
-    return model_key
+JUDGE_MODEL_KEY = "haiku"  # see _cheap_model_key_for's docstring for why this is fixed, not derived
+
+
+def _cheap_model_key_for():
+    """Judges/router/voice-editor always run on JUDGE_MODEL_KEY (Haiku) - as of 2026-08-21, no
+    longer derived from the player's own model choice. NOTES.md's 2026-08-20 entry deliberately
+    picked "follow the player's choice" specifically because only Luna and the free local-ollama
+    option were selectable then - neither had a cheaper same-provider fallback to reach for (Luna
+    was already the cheap default; local-ollama was already free), so following the player's choice
+    and pinning to a fixed model amounted to the same thing in practice. That stopped being true the
+    moment Sonnet/Haiku/Opus became selectable again (2026-08-21, restoring Claude as the default) -
+    with a real spread of model tiers now selectable, "follow the player's choice" would mean
+    council's ~7-9 internal router/judge/voice-editor calls silently run on whatever the player
+    picked for narration, including Opus, which is exactly the runaway-cost problem an always-on,
+    minimum-3-judge council creates if left unfixed. Local-ollama is unaffected either way - Council
+    Mode is skipped entirely for it (see SKIP_COUNCIL_FOR_MODEL_KEYS above), so this function is
+    never reached on that path. The candidate/chairman calls still use the player's own model_key
+    directly in run_council below, not this function - only the narrow rubric-style judging work
+    moves to a fixed cheap model, not narration itself. See NOTES.md for the real cost math this is
+    based on."""
+    return JUDGE_MODEL_KEY
 
 
 def _route_judges(user_input, context_summary, provider, model, usage_sink, budget_ok):
@@ -536,6 +551,11 @@ def run_council(provider, model, model_key, system_prompt, user_input, state, de
     """Called on EVERY turn as of 2026-08-20 (see module docstring) - there is no gate to check
     before calling this; it always attempts the full pipeline, sized dynamically by the router.
 
+    model_key is no longer used inside this function as of 2026-08-21 (judge/router/voice-editor
+    now always target JUDGE_MODEL_KEY, not something derived from it - see _cheap_model_key_for)
+    - kept in the signature since engine.py already has it at the call site and it costs nothing to
+    keep passing, not because anything here still reads it.
+
     Returns (final_narration, council_log). council_log is always a dict (never None) suitable for
     appending directly to debug_events, so the frontend's existing Mechanics panel can show what the
     council did (or why it aborted) - this is also the "at minimum logging" fallback for surfacing
@@ -564,7 +584,7 @@ def run_council(provider, model, model_key, system_prompt, user_input, state, de
     context_summary = build_context_summary(state, debug_events)
     candidates = [baseline_narration]
 
-    judge_model_key = _cheap_model_key_for(model_key)
+    judge_model_key = _cheap_model_key_for()
     try:
         judge_provider, judge_model = providers.get_provider(judge_model_key)
     except providers.ProviderError:
