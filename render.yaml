@@ -4,7 +4,16 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn server:app
+    # --timeout 900: a local-model turn (via OllamaTunnelProvider) can legitimately take many
+    # minutes - qwen3's reasoning overhead measured 1000+ output tokens for even a short structured
+    # judge response during testing, and Council Mode chains ~9 sequential calls per turn (see
+    # NOTES.md). --worker-class gthread --threads 4: without this, gunicorn's default single sync
+    # worker would let ONE slow local-model turn block every other player on the site for the
+    # duration - threads let other players' requests proceed concurrently. Safe with the existing
+    # per-account turn lock (server.py's _turn_locks), which already uses threading.Lock
+    # specifically (correctly serializes across threads in one process; its own docs already called
+    # out multi-PROCESS as the thing it doesn't cover, not multi-thread).
+    startCommand: gunicorn server:app --timeout 900 --worker-class gthread --threads 4
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -19,4 +28,13 @@ services:
       - key: DISCORD_CLIENT_SECRET
         sync: false
       - key: DISCORD_REDIRECT_URI
+        sync: false
+      # Required for the free local-model option (OllamaTunnelProvider) to work at all - see
+      # local-ollama-proxy/README.md. OLLAMA_TUNNEL_URL changes every time the local quick tunnel
+      # restarts and needs updating here manually each time; OLLAMA_TUNNEL_SECRET must exactly
+      # match that proxy's PROXY_SHARED_SECRET. Leave both blank to simply not offer this option -
+      # it degrades to "not configured" in the model picker, nothing else breaks.
+      - key: OLLAMA_TUNNEL_URL
+        sync: false
+      - key: OLLAMA_TUNNEL_SECRET
         sync: false

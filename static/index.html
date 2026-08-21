@@ -743,23 +743,16 @@ function escapeHtml(s) {
 }
 
 async function loadModels() {
+  // /api/models already only returns the currently-selectable subset (see
+  // providers.ALLOWED_MODEL_KEYS - sonnet/haiku/opus are hidden entirely right now, not shown
+  // disabled) - this just renders whatever it gets, real functional choice among those. The local
+  // model additionally reflects a live health check (unavailable_reason: "currently offline" vs
+  // "not configured") so a down tunnel shows as disabled here instead of failing on click.
   const res = await fetch('/api/models');
   const data = await res.json();
-  if (data.locked_model_key) {
-    // Model choice is temporarily locked server-side (see providers.LOCKED_MODEL_KEY) - show a
-    // single disabled option rather than a real choice. Reverting the lock server-side alone is
-    // enough to bring the real selector back, no frontend change needed.
-    const locked = data.models.find(m => m.key === data.locked_model_key) || data.models[0];
-    modelSelect.innerHTML = `<option value="${locked.key}">${locked.label} (locked)</option>`;
-    modelSelect.disabled = true;
-    modelSelect.title = 'Model selection is temporarily locked.';
-    return;
-  }
-  modelSelect.disabled = false;
-  modelSelect.title = '';
   modelSelect.innerHTML = data.models.map(m =>
     `<option value="${m.key}" ${!m.available ? 'disabled' : ''} ${m.key === data.default ? 'selected' : ''}>
-      ${m.label}${!m.available ? ' — missing API key' : ''}
+      ${m.label}${!m.available ? ` — ${m.unavailable_reason || 'unavailable'}` : ''}
     </option>`
   ).join('');
 }
@@ -795,6 +788,11 @@ async function sendTurn() {
       appendTurn(text, `[Log in with Discord to send AI turns — see the start menu or landing page.]`, []);
       setStatus('Discord login required.');
       renderBudget(null);
+    } else if (res.status === 503 && data.local_model_offline) {
+      appendTurn(text, `[The local model is currently offline — pick a different model above and try again.]`, []);
+      setStatus('Local model offline.');
+      inputBox.value = text;  // give the input back rather than losing what they typed
+      loadModels();  // refresh so the now-known-offline option shows disabled immediately
     } else if (res.status === 402) {
       appendTurn(text, `[Out of usage budget — this account can't take further AI turns.]`, []);
       setStatus('Out of budget.');
