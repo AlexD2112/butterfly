@@ -246,10 +246,12 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
 
     narration = "\n".join(text_parts).strip()
 
-    if council_mode and model_key:
+    if council_mode and model_key and model_key not in council.SKIP_COUNCIL_FOR_MODEL_KEYS:
         # Runs on every turn as of 2026-08-20 - no gate here anymore, the router inside run_council
         # decides panel SIZE (>= council.MIN_JUDGES), not whether to run at all. See council.py's
         # module docstring for the history and NOTES.md for the cost tradeoff this implies.
+        # SKIP_COUNCIL_FOR_MODEL_KEYS (added 2026-08-21) is a real exception to "runs on every
+        # turn" - see that constant's comment for why local-ollama specifically can't afford it.
         narration, council_log = council.run_council(
             provider, model, model_key, system_prompt, user_input, state, debug_events, narration,
             usage_sink=usage_sink, budget_ok=budget_ok,

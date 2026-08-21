@@ -88,6 +88,23 @@ person in a specific place and moment, not like narration describing a generic h
 """
 
 
+# Model keys Council Mode is skipped for entirely (engine.run_turn checks this before ever calling
+# run_council - see there). Added 2026-08-21 for local-ollama specifically: real unmocked testing
+# found Qwen3 burns 1000+ reasoning tokens even on short structured judge output, and at this
+# hardware's measured ~9-29 tok/s, a full ~8-11-call council turn (router + candidate + 3-6 judges +
+# chairman + voice editor, on top of the baseline generation) realistically runs 6-24 MINUTES end to
+# end - confirmed against a real hung-looking turn on the live site, not just estimated. That's both
+# a broken player experience and, in the worse cases, longer than gunicorn's 900s timeout, so the
+# turn could fail anyway after all that wait. Mechanics are completely unaffected either way (Council
+# Mode never touches dice/state - see this module's docstring), so skipping it here only means this
+# provider's narration doesn't get the extra judge-panel pass, not that anything about the game
+# itself is degraded. See NOTES.md for the full reasoning and the alternative considered (capping
+# output tokens instead - rejected: a reasoning model needs room to finish its <think> block AND
+# answer, so a tight-enough cap to bound latency risks cutting generation off mid-thought, before it
+# ever reaches its actual answer or tool call, which is worse than not running the panel at all).
+SKIP_COUNCIL_FOR_MODEL_KEYS = {"local-ollama"}
+
+
 def detect_stakes_signals(debug_events):
     """Free, rule-based (no LLM call) - inspects a turn's already-resolved debug_events for concrete
     stakes signals (resource label-band crossings, canon events, liabilities gained, critical rolls).
