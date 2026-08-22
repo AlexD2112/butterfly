@@ -1,3 +1,45 @@
+# Initiative attribute swap + a second, more subtle AI-cadence pass (2026-08-21)
+
+Two small fixes, folded in without derailing the room-conclusion work.
+
+**Initiative: Physique → Presence.** Direction from you. Updated `multiplayer._roll_initiative` and
+its docstring's reasoning: this game's combat is as much political/social as physical (revolutionary
+Petrograd, feudal courts, the Senate, a crusader camp), so "who seizes the initiative" reads truer as
+presence/force-of-personality than raw physical quickness here. 165/165 tests unaffected (they assert
+behavior, not which specific attribute drives it).
+
+**A second pass on AI-sounding copy - and a real finding about my own earlier fix.** You flagged the
+landing page subtitle/pitch specifically - and pointing at it revealed something worth being direct
+about: that text was MY OWN rewrite from the first de-AI-ification pass. I'd successfully removed the
+literal "AI"/"model" vocabulary that pass was aimed at, but replaced it with a DIFFERENT AI tell I
+wasn't yet looking for: em-dash-heavy sentences building to a short, poetic, aphoristic closing clause
+("the dice decide the risks, and every consequence sticks"; "push events somewhere history never
+went"). That's a cadence/rhythm tell, not a vocabulary one - symmetrical build-up-to-punchline
+structure reads as AI-generated even when no individual word does.
+
+Once I knew to look for that specific pattern, I found it in two more places from that same earlier
+pass and fixed those too, not just the one you quoted:
+- The landing subtitle and pitch paragraph - rewritten plainer and slightly looser/less compressed
+  (real hobbyist copy tends to ramble a little, not land every sentence on a mic-drop).
+- The "Freeform" mode's description ("pure narrated roleplay, resolved entirely by the game master's
+  judgment") - same em-dash-into-abstraction pattern, simplified.
+- **The four setting blurbs** (per your "check the character descriptions too"): individually each
+  one was fine, but as a SET they were a different kind of tell - all four followed the identical
+  template ("Name, Title, prepositional scene-setter"), which reads as algorithmically generated even
+  with plain word choice, just from the mechanical uniformity. Varied the sentence structure across
+  all four so they don't read as four fills of the same mold, kept every historical fact unchanged.
+
+**Deliberately left alone**: README's technical sections - real engineering docs often have some of
+this same "nothing is left to X" cadence naturally (it's a stock phrasing pattern in human-written
+technical writing too, not uniquely an AI tell), and you scoped this round to landing-page/character
+text specifically, not documentation.
+
+Verified for real: ran the actual server and drove a real click-through (landing → setting selection
+→ mode selection), confirming every rewritten string renders correctly and reads as intended, with
+zero console errors. 165/165 tests passing (pure text change, no logic touched).
+
+---
+
 # Multiplayer, phase 4: room conclusion (mark-concluded + storm-out) (2026-08-21)
 
 Continuing in build order. This phase also implements the confirmed 0.5x-shared/50%-subsidized

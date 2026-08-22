@@ -237,10 +237,11 @@ def handle_message(provider, model, game_id, room_id, location_id, character_id,
 # ==================== action resolution + combat initiative ====================
 
 def _roll_initiative(character_row):
-    """d20 + Physique modifier - Physique was picked as the initiative attribute for the same reason
-    D&D-family games use Dexterity: it's the attribute that reads as "quick to react" across all
-    three systems here. A real judgment call, not specified in the brief - flagged in NOTES.md."""
-    score = character_row["state"]["character"]["attributes"].get("physique", 10)
+    """d20 + Presence modifier - switched from Physique to Presence per direction (2026-08-21):
+    this game's combat is political/social as much as physical (revolutionary Petrograd, feudal
+    courts, the Roman Senate, a crusader camp), so "who seizes the initiative in a confrontation"
+    reads truer as presence/force-of-personality than raw physical quickness here."""
+    score = character_row["state"]["character"]["attributes"].get("presence", 10)
     return random.randint(1, 20) + shared_core.attribute_modifier(score)
 
 
