@@ -321,7 +321,7 @@
     </button>
     <button class="menu-option" id="opt-multiplayer">
       <div class="opt-title">Multiplayer</div>
-      <div class="opt-desc">Join a shared server — talk and act alongside other players in the same rooms.</div>
+      <div class="opt-desc">Join a shared server — talk and act alongside other players.</div>
     </button>
   </div>
 </div>
@@ -340,11 +340,11 @@
   <div class="menu-back-row"><button class="menu-back" data-back="screen-setting">&larr; Back</button></div>
   <div class="eyebrow" id="mode-eyebrow">Setting chosen</div>
   <h1>Choose a Gameplay Mode</h1>
-  <div class="subtitle">How much mechanical structure do you want under the narration?</div>
+  <div class="subtitle">How much structure do you want under the narration?</div>
   <div class="menu-options">
     <button class="menu-option" id="mode-freeform" disabled>
       <div class="opt-title">Freeform</div>
-      <div class="opt-desc coming-later">No dice, no attributes - just narration, and the game master decides what happens. Coming later.</div>
+      <div class="opt-desc coming-later">No dice, no attributes - the game master decides what happens. Coming later.</div>
     </button>
     <button class="menu-option" id="mode-attributes" disabled>
       <div class="opt-title">Attributes &amp; Feats</div>
@@ -379,7 +379,7 @@
   <div class="menu-back-row"><button class="menu-back" data-back="screen-start">&larr; Back</button></div>
   <div class="eyebrow">Multiplayer</div>
   <h1>Choose a Server</h1>
-  <div class="subtitle">Each server is its own shared world, with its own rooms and its own pace of time.</div>
+  <div class="subtitle">Each server is its own shared world, with its own rooms and pace of time.</div>
   <div class="mp-wrap">
     <div class="mp-section">
       <h3>Servers
@@ -457,7 +457,7 @@
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
-      <span title="Every turn is reviewed by a panel of specialist judges before you see it - see the Mechanics panel below each turn for what they found.">Council Mode: always on</span>
+      <span title="Every turn is reviewed by a panel of specialist judges - see the Mechanics panel below for what they found.">Council Mode: always on</span>
       <button id="sheet-toggle-btn" title="Character sheet">Character Sheet <span class="dot"></span></button>
     </div>
   </header>
@@ -488,7 +488,7 @@
   <div id="mp-locbar">
     <span class="mp-loc-title" id="mp-loc-title">—</span>
     <select id="mp-loc-move-select"></select>
-    <select id="mp-loc-peek-select" title="Look at another location in this room, without moving there"></select>
+    <select id="mp-loc-peek-select" title="See another location in this room without moving there"></select>
     <button id="mp-mark-concluded-btn">Mark Scene Concluded</button>
     <button id="mp-storm-out-btn">Storm Out</button>
     <span id="mp-occupants"></span>
@@ -781,7 +781,7 @@ async function openCreationForm() {
       ${feats}
     </div>
     <div class="creation-section">
-      <h3>Starting Liabilities — optional, up to 2. Each one taken grants ${s.liability_bonus_skill_points} extra skill points above, in exchange for a real narrative constraint.</h3>
+      <h3>Starting Liabilities — optional, up to 2. Each grants ${s.liability_bonus_skill_points} extra skill points, in exchange for a narrative constraint.</h3>
       ${liabilities}
     </div>
     <div class="creation-error" id="cc-error"></div>

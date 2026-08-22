@@ -1,3 +1,59 @@
+# Third overdescription pass - and a real distinction found along the way (2026-08-22)
+
+Two earlier passes ("De-AI-ified the UI chrome", and a follow-up "more subtle" pass) weren't
+aggressive enough per direct feedback. Given exact verbatim replacement text for the landing
+subtitle/pitch - checked it against the file first rather than assuming: it was already
+character-for-character identical to what's currently there, so no change was needed there. Said so
+plainly rather than silently no-op'ing it.
+
+## What got cut
+
+Trimmed genuine redundant restating in the app's UI chrome (`static/index.html`):
+- "Join a shared server — talk and act alongside other players **in the same rooms**." → dropped the
+  trailing clause, already implied by "shared server."
+- "How much **mechanical** structure do you want..." → dropped "mechanical," already implied.
+- "No dice, no attributes - **just narration, and** the game master decides what happens." → cut
+  "just narration, and" - restated what "no dice, no attributes" already established.
+- "...its own rooms **and its own** pace of time." → one "its own" too many.
+- Council Mode tooltip: cut "before you see it" and "each turn" - neither added information beyond
+  what "reviewed by a panel of specialist judges" and "the Mechanics panel below" already said.
+- Peek tooltip: "Look at another location in this room, without moving there" → "See another
+  location..." (shorter verb, same meaning).
+- Liabilities section header: cut "one taken" and "above" (redundant given the sentence structure)
+  and "real" (empty intensifier) from "grants N extra skill points above, in exchange for a real
+  narrative constraint."
+
+## What did NOT get touched, and why - this matters more than the cuts above
+
+The user's ask named "character blurbs" explicitly, which is what feat/liability descriptions
+(`FEAT_CATALOG`/`LIABILITY_CATALOG` in each `systems/<name>/mechanics.py`, ~61 entries across the 3
+systems) look like at character-creation time. Checked before touching them: they're NOT pure UI
+copy. `core.py`'s state-building functions embed each equipped feat/liability's full `description`
+text into the character's state dict, and `engine.build_system_prompt` dumps that whole state
+(feats/liabilities included) into the "CURRENT STATE" section of the system prompt sent to the AI
+game master on EVERY turn. For feats/liabilities with no `check_bonus`/`auto_trigger` (most of
+them - e.g. "Ruthless Pragmatist," "Battle-Tested"), that prose sentence IS the entire mechanical
+effect; there's nothing else defining what the feat does. The "flavor sentence, then a GM-instruction
+sentence" structure that looks like restating from a pure-copy-editing lens is actually two different
+jobs: describe the trait, then tell the AI how to apply it. Cutting either risks silently changing
+what the AI game master actually does with that feat/liability - not a prose trim, a mechanics
+change, which conflicts with the explicit "keep mechanics intact" instruction rather than serving it.
+Setting content fed the same way (`npcs.md`/`factions.md`/`canon_timeline.md`, also injected verbatim
+into the system prompt per `build_system_prompt`) wasn't touched for the same reason.
+
+Flagged this distinction back rather than either quietly skipping "character blurbs" or quietly
+rewriting mechanically-load-bearing prompt content under a copy-editing pass. If a pass through that
+text is wanted, it should be its own explicit task, treated as touching mechanics text, not chrome.
+
+## Verification
+
+Grepped for any remaining long user-facing strings in `static/index.html` after the edits - only the
+landing text (kept, verbatim) and two already-tight factual mode descriptions remained, confirming the
+chrome pass was thorough. Confirmed no test asserts on the exact copy strings changed. Full suite:
+209/209 (no backend logic touched, copy-only change).
+
+---
+
 # Saved-game history: single-player resume, and a multiplayer room-peek feature (2026-08-22)
 
 Two independent fixes, prompted by a direct question: "can players get their existing chatlogs back
