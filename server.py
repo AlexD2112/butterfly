@@ -631,10 +631,8 @@ def api_multiplayer_send(character_id):
     model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
     if not content:
         return jsonify({"error": "Empty message."}), 400
-    if kind != "message":
-        # Full "action" resolution (with initiative/turn order for combat) is a later phase - not
-        # built yet. Rejecting clearly here rather than faking a GM response that isn't real.
-        return jsonify({"error": "Only kind='message' is supported so far - action resolution isn't built yet."}), 501
+    if kind not in ("message", "action"):
+        return jsonify({"error": "kind must be 'message' or 'action'."}), 400
     if model_key not in providers.MODEL_REGISTRY:
         return jsonify({"error": f"Unknown model key: {model_key}"}), 400
     if providers.ALLOWED_MODEL_KEYS is not None and model_key not in providers.ALLOWED_MODEL_KEYS:
@@ -658,11 +656,42 @@ def api_multiplayer_send(character_id):
         # budget phase, not built yet (see NOTES.md). Charging the sender normally in the meantime is
         # safer than leaving multiplayer messages untracked/free.
         usage_sink = []
+
+        def budget_ok():
+            spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
+            return (budget_before["remaining_usd"] - spent_this_turn) > 0
+
+        response_body = {}
         try:
-            message_turn_id, reply_turn_id, responder = multiplayer.handle_message(
-                provider, model, char["game_id"], presence["room_id"], presence["location_id"],
-                character_id, content, reply_to_turn_id=reply_to_turn_id, usage_sink=usage_sink,
-            )
+            if kind == "message":
+                message_turn_id, reply_turn_id, responder = multiplayer.handle_message(
+                    provider, model, char["game_id"], presence["room_id"], presence["location_id"],
+                    character_id, content, reply_to_turn_id=reply_to_turn_id, usage_sink=usage_sink,
+                )
+                response_body = {
+                    "kind": "message",
+                    "message_turn_id": message_turn_id,
+                    "reply_turn_id": reply_turn_id,
+                    "responder": responder,
+                }
+            else:
+                provider_key = providers.MODEL_REGISTRY[model_key]["provider"]
+                conversation = _conversation_for(character_id, provider_key, provider)
+                try:
+                    result = multiplayer.resolve_action(
+                        provider, model, model_key, char, presence["room_id"], presence["location_id"],
+                        content, conversation, usage_sink=usage_sink, budget_ok=budget_ok,
+                    )
+                except multiplayer.CombatTurnError as e:
+                    return jsonify({"error": str(e)}), 409
+                response_body = {
+                    "kind": "action",
+                    "turn_id": result["turn_id"],
+                    "reply_turn_id": result["reply_turn_id"],
+                    "narration": result["narration"],
+                    "debug_events": result["debug_events"],
+                    "combat_encounter_id": result["combat_encounter_id"],
+                }
         except Exception as e:
             return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
         finally:
@@ -676,9 +705,7 @@ def api_multiplayer_send(character_id):
 
         return jsonify(
             {
-                "message_turn_id": message_turn_id,
-                "reply_turn_id": reply_turn_id,
-                "responder": responder,
+                **response_body,
                 "budget": db.get_budget_status(user["id"]),
             }
         )

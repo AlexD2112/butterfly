@@ -1,28 +1,45 @@
 """
-Multiplayer message orchestration: deciding whether an AI response to a player's room message is
-warranted at all, and if so, in whose voice - a specific present NPC, or the GM. See NOTES.md
-(2026-08-21) for the corrected design this implements: a real yes/no gate first, THEN pick a
-responder - not "the AI always responds," which was an earlier, wrong reading of the brief.
+Multiplayer orchestration: two mostly-independent pieces sharing this module.
 
-Reply-threading short-circuits the judge entirely, per direction (not inferred):
-  - a reply to another PLAYER's message never needs judging - it's obviously player-to-player, so
-    the GM may still add a brief ambient beat, but no NPC voice is ever picked for it.
-  - a reply to an existing AI/NPC message never needs judging either - we already know exactly whose
-    voice this is continuing.
-  - only a fresh, non-reply message needs the judge call at all.
+1. Message judging - deciding whether an AI response to a player's room message is warranted at
+   all, and if so, in whose voice: a specific present NPC, or the GM. See NOTES.md (2026-08-21) for
+   the corrected design this implements: a real yes/no gate first, THEN pick a responder - not "the
+   AI always responds," which was an earlier, wrong reading of the brief.
 
-Mechanics (dice, checks, state changes) are completely untouched by any of this - this module never
-calls anything in systems/_shared/core.py. It only ever decides who speaks in a room's shared chat
-log, and what they say. Full "action"-kind resolution (with initiative/turn order for combat) is a
-later phase, not handled here - see server.py's send route, which rejects kind="action" for now with
-a clear "not built yet" error rather than faking a response.
+   Reply-threading short-circuits the judge entirely, per direction (not inferred):
+     - a reply to another PLAYER's message never needs judging - it's obviously player-to-player, so
+       the GM may still add a brief ambient beat, but no NPC voice is ever picked for it.
+     - a reply to an existing AI/NPC message never needs judging either - we already know exactly
+       whose voice this is continuing.
+     - only a fresh, non-reply message needs the judge call at all.
+
+2. Action resolution + combat initiative - resolve_action() deliberately reuses engine.run_turn
+   UNCHANGED for the actual mechanical resolution (dice, state updates) - the same trusted,
+   single-player-tested path, not a parallel reimplementation. This module only wraps combat
+   DETECTION and turn-order ENFORCEMENT around that call: after a free action resolves, a cheap
+   classifier decides whether it ignited a fight and who else is now involved (initiative rolled by
+   the app - system._shared.core.attribute_modifier + a d20, never trusted to the model); while an
+   encounter is active, an action from a listed participant is rejected outright if it isn't their
+   turn - "no free-for-all resolution," enforced in code, not by asking nicely.
+
+Mechanics (dice, checks, state changes) still only ever happen inside engine.run_turn's existing
+tool loop - this module never calls systems/_shared/core.py's check/state functions directly, only
+engine.run_turn (for actions) and combat initiative's own dice roll (a narrow, separate mechanic).
 """
 
 import json
+import random
 
 import council
 import db
+import engine
 import providers
+from systems._shared import core as shared_core
+
+
+class CombatTurnError(Exception):
+    """Raised by resolve_action when a character tries to act out of turn during an active combat
+    encounter they're a participant in. Callers (server.py) turn this into a clear 409, not a 500."""
 
 # Same fixed cheap model council.py's judges use, and for the same reason - narrow judgment work
 # doesn't need a strong (or the sender's chosen) model. Kept as a separate name here rather than
@@ -205,3 +222,223 @@ def handle_message(provider, model, game_id, room_id, location_id, character_id,
             db.add_npc_memory(npc["id"], f'Responded to a message: "{content[:120]}" -> "{reply_text[:120]}"')
 
     return message_turn_id, reply_turn_id, responder
+
+
+# ==================== action resolution + combat initiative ====================
+
+def _roll_initiative(character_row):
+    """d20 + Physique modifier - Physique was picked as the initiative attribute for the same reason
+    D&D-family games use Dexterity: it's the attribute that reads as "quick to react" across all
+    three systems here. A real judgment call, not specified in the brief - flagged in NOTES.md."""
+    score = character_row["state"]["character"]["attributes"].get("physique", 10)
+    return random.randint(1, 20) + shared_core.attribute_modifier(score)
+
+
+def _roll_initiative_for_npc():
+    """NPCs don't carry an attribute block yet (see the NPC character-sheet phase - personality/
+    memory only, no stats) - flat d20 with no modifier until that changes. A real simplification,
+    not a hidden assumption - flagged in NOTES.md."""
+    return random.randint(1, 20)
+
+
+def _combat_actor_label(participant):
+    if participant is None:
+        return "someone else"
+    if participant.get("npc_key"):
+        return participant["npc_key"]
+    return f"character #{participant['character_id']}"
+
+
+def detect_combat_start(provider, model, location_id, narration, acting_character_id, usage_sink=None):
+    """After a free (non-combat) action resolves, ask a cheap judge whether it ignited a fight, and
+    if so which OTHER present characters/NPCs are now involved. Returns a list of participant
+    descriptors ({"character_id": id} or {"npc_key": key}) NOT including the acting character - the
+    caller always adds them separately, since anyone whose action starts a fight is unquestionably in
+    it. Empty list means no combat, including the trivial case where nobody else is even present."""
+    present_chars = [c for c in db.characters_at_location(location_id) if c != acting_character_id]
+    present_npcs = db.npcs_at_location(location_id)
+    if not present_chars and not present_npcs:
+        return []
+
+    roster_lines = [f"character #{c}" for c in present_chars] + [n["key"] for n in present_npcs]
+    system_prompt = f"""An action was just narrated in a multiplayer scene. Decide whether it ignited
+a fight/combat encounter involving anyone else present.
+
+# OTHERS PRESENT
+{", ".join(roster_lines)}
+
+# WHAT JUST HAPPENED
+{narration}
+
+If this is NOT combat, respond with started=false. If it IS combat, respond with started=true and
+list which of the others present (using the exact identifiers above) are now combat participants -
+only include people the fiction actually pulls into the fight, not everyone in the room. Submit via
+decide_combat."""
+    tool_specs = [
+        {
+            "name": "decide_combat",
+            "description": "Decide whether combat just started, and who besides the acting character is involved.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "started": {"type": "boolean"},
+                    "participants": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exact identifiers from the roster above, e.g. ['character #3', 'lenin'].",
+                    },
+                    "reasoning": {"type": "string"},
+                },
+                "required": ["started", "reasoning"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Decide now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_combat")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return []
+    decision = result.tool_calls[0]["input"]
+    if not decision.get("started"):
+        return []
+
+    out = []
+    for p in decision.get("participants") or []:
+        if p.startswith("character #"):
+            try:
+                cid = int(p[len("character #"):].strip())
+            except ValueError:
+                continue
+            if cid in present_chars:
+                out.append({"character_id": cid})
+        elif any(n["key"] == p for n in present_npcs):
+            out.append({"npc_key": p})
+    return out
+
+
+def detect_combat_end(provider, model, narration, usage_sink=None):
+    """After a combat participant's turn resolves, ask whether the fight is now over. Fails safe to
+    "still ongoing" on a missing/malformed response - silently dropping turn enforcement because a
+    judge call hiccuped would be a worse failure than one extra round of asking."""
+    system_prompt = f"""A combat participant's turn was just narrated. Decide whether the fight is
+now over (resolved, one side fled/yielded/was defeated, a truce was struck, etc.) or still ongoing.
+
+# WHAT JUST HAPPENED
+{narration}
+
+Submit via decide_combat_status."""
+    tool_specs = [
+        {
+            "name": "decide_combat_status",
+            "description": "Decide whether the fight has ended.",
+            "parameters": {
+                "type": "object",
+                "properties": {"ended": {"type": "boolean"}, "reasoning": {"type": "string"}},
+                "required": ["ended", "reasoning"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Decide now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_combat_status")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return False
+    return bool(result.tool_calls[0]["input"].get("ended"))
+
+
+def _start_combat(room_id, location_id, acting_character_row, other_participants):
+    """Rolls initiative for the acting character plus every newly-detected participant, seats them in
+    descending order, and starts the rotation at whoever comes right after the acting character -
+    they already just acted (that's what triggered this), so the next real turn belongs to someone
+    else, not them again immediately."""
+    acting_character_id = acting_character_row["id"]
+    rolled = [{"character_id": acting_character_id, "initiative_roll": _roll_initiative(acting_character_row)}]
+    for p in other_participants:
+        if "character_id" in p:
+            other_row = db.get_character_unchecked(p["character_id"])
+            if other_row is None:
+                continue
+            rolled.append({"character_id": p["character_id"], "initiative_roll": _roll_initiative(other_row)})
+        elif "npc_key" in p:
+            rolled.append({"npc_key": p["npc_key"], "initiative_roll": _roll_initiative_for_npc()})
+
+    rolled.sort(key=lambda r: r["initiative_roll"], reverse=True)
+    acting_index = next(i for i, r in enumerate(rolled) if r.get("character_id") == acting_character_id)
+    start_turn_index = (acting_index + 1) % len(rolled) if len(rolled) > 1 else 0
+
+    return db.create_combat_encounter(room_id, location_id, rolled, start_turn_index=start_turn_index)
+
+
+def resolve_action(provider, model, model_key, char_row, room_id, location_id, content, conversation,
+                    usage_sink=None, budget_ok=None):
+    """Resolves a multiplayer "action" - the mechanical resolution ALWAYS goes through
+    engine.run_turn unchanged (dice/state stay app-owned via the same trusted, tested path
+    single-player uses). This function's only job is what happens around that call: turn-order
+    enforcement if the acting character is a combat participant, and combat start/end detection
+    afterward. Raises CombatTurnError instead of resolving anything if it isn't the character's turn.
+
+    Returns a dict: {"turn_id", "reply_turn_id", "narration", "debug_events", "combat_encounter_id"}
+    - combat_encounter_id is set whenever this action happened during (or just started) an active
+    encounter, else None.
+    """
+    character_id = char_row["id"]
+    game_id = char_row["game_id"]
+
+    encounter = db.get_active_combat_encounter(location_id)
+    if encounter:
+        participant_char_ids = {p["character_id"] for p in db.get_combat_participants(encounter["id"]) if p["character_id"]}
+        if character_id in participant_char_ids:
+            current_actor = db.get_current_combat_actor(encounter["id"])
+            is_my_turn = current_actor is not None and current_actor.get("character_id") == character_id
+            if not is_my_turn:
+                raise CombatTurnError(
+                    f"It isn't your turn in this fight - waiting on {_combat_actor_label(current_actor)}."
+                )
+
+    state = char_row["state"]
+    narration, debug_events = engine.run_turn(
+        provider, model, state, char_row["setting_key"], char_row["system_key"], conversation, content,
+        usage_sink=usage_sink, budget_ok=budget_ok,
+        # Council Mode is single-player-shaped (one narration, one player) - layering it onto a
+        # multiplayer room's shared action log is a separate design question, not tackled here, so
+        # it's explicitly off for this path rather than silently half-applied.
+        council_mode=False, model_key=model_key,
+    )
+
+    turn_id = db.record_room_message(
+        game_id, room_id, location_id, character_id, "action", content, model_key=model_key, debug_events=debug_events,
+    )
+    reply_turn_id = db.record_room_message(
+        game_id, room_id, location_id, character_id, "gm_reply", narration,
+        reply_to_turn_id=turn_id, responder="gm", model_key=model_key,
+    )
+
+    result = {
+        "turn_id": turn_id, "reply_turn_id": reply_turn_id,
+        "narration": narration, "debug_events": debug_events, "combat_encounter_id": None,
+    }
+
+    if encounter:
+        current_actor = db.get_current_combat_actor(encounter["id"])
+        if current_actor and current_actor.get("character_id") == character_id:
+            # This WAS the current combat actor's turn (already verified above) - advance or end.
+            if detect_combat_end(provider, model, narration, usage_sink=usage_sink):
+                db.end_combat_encounter(encounter["id"])
+            else:
+                db.advance_combat_turn(encounter["id"])
+                result["combat_encounter_id"] = encounter["id"]
+        else:
+            # A non-participant (bystander) acted freely alongside an ongoing fight - encounter
+            # continues untouched.
+            result["combat_encounter_id"] = encounter["id"]
+    else:
+        new_participants = detect_combat_start(provider, model, location_id, narration, character_id, usage_sink=usage_sink)
+        if new_participants:
+            encounter_id = _start_combat(room_id, location_id, char_row, new_participants)
+            result["combat_encounter_id"] = encounter_id
+
+    return result

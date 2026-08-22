@@ -32,6 +32,39 @@ class FakeProvider:
                                             "cache_read_tokens": 0, "cache_creation_tokens": 0})
 
 
+def _usage():
+    return {"provider": "openai", "model": "gpt-5.6-luna", "input_tokens": 10, "output_tokens": 5,
+            "cache_read_tokens": 0, "cache_creation_tokens": 0}
+
+
+class ActionFakeProvider:
+    """A fake shaped for engine.run_turn's tool-calling loop (a plain narration reply, no tool
+    calls, so the loop exits after one call) plus a "no combat" answer for the combat-start
+    classifier that always runs afterward - exercises the real action-resolution route end to end
+    without a live API."""
+
+    def new_conversation(self):
+        return []
+
+    def append_user_message(self, conversation, text):
+        conversation.append(("user", text))
+
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+        if force_tool_name == "decide_combat":
+            return providers.TurnResult(
+                text_parts=[], tool_calls=[{"id": "c1", "name": "decide_combat",
+                                             "input": {"started": False, "participants": [], "reasoning": "no threat"}}],
+                usage=_usage(),
+            )
+        return providers.TurnResult(text_parts=["You see nothing unusual."], tool_calls=[], usage=_usage())
+
+    def append_assistant_turn(self, conversation, turn_result):
+        conversation.append(("assistant", turn_result))
+
+    def append_tool_results(self, conversation, turn_result, results):
+        conversation.append(("tool_results", results))
+
+
 class TestMultiplayerRoutes(unittest.TestCase):
     def setUp(self):
         self._tmpdir = TemporaryDirectory()
@@ -123,11 +156,24 @@ class TestMultiplayerRoutes(unittest.TestCase):
         res = self.client.post(f"/api/multiplayer/characters/{character_id}/send", json={"kind": "message", "content": "hi"})
         self.assertIn(res.status_code, (403, 404))
 
-    def test_action_kind_is_rejected_as_not_yet_implemented(self):
+    def test_action_kind_resolves_through_the_engine_and_is_recorded(self):
         server_id, room_id, character_id = self._make_server_room_and_character()
         self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
-        res = self.client.post(f"/api/multiplayer/characters/{character_id}/send", json={"kind": "action", "content": "I look around."})
-        self.assertEqual(res.status_code, 501)
+
+        with patch.object(providers, "get_provider", return_value=(ActionFakeProvider(), "gpt-5.6-luna")):
+            res = self.client.post(
+                f"/api/multiplayer/characters/{character_id}/send",
+                json={"kind": "action", "content": "I look around the room.", "model_key": "luna"},
+            )
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["kind"], "action")
+        self.assertEqual(data["narration"], "You see nothing unusual.")
+        self.assertIsNone(data["combat_encounter_id"])
+
+        turns = db.get_turns(character_id)
+        self.assertTrue(any(t["kind"] == "action" for t in turns))
+        self.assertTrue(any(t["kind"] == "gm_reply" for t in turns))
 
     def test_a_message_send_records_it_and_returns_budget(self):
         server_id, room_id, character_id = self._make_server_room_and_character()

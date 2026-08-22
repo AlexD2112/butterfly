@@ -243,6 +243,37 @@ def init_db():
         )
         """
     )
+    # Combat: one active encounter at a time per location, participants in a fixed initiative order -
+    # "turn order/initiative must be respected... no free-for-all resolution" (2026-08-21). Rolling
+    # initiative and detecting when combat starts/ends happens in multiplayer.py (mechanics stay
+    # app-owned, not model-trusted); this is just the persisted state those decisions act on.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS combat_encounters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL REFERENCES rooms(id),
+            location_id INTEGER NOT NULL REFERENCES locations(id),
+            status TEXT NOT NULL DEFAULT 'active',
+            current_turn_index INTEGER NOT NULL DEFAULT 0,
+            created_at REAL NOT NULL,
+            ended_at REAL
+        )
+        """
+    )
+    # Exactly one of character_id/npc_key is set per row - a combatant is always either a player
+    # character or an NPC, never both and never neither.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS combat_participants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            encounter_id INTEGER NOT NULL REFERENCES combat_encounters(id),
+            character_id INTEGER REFERENCES characters(id),
+            npc_key TEXT,
+            initiative_roll INTEGER NOT NULL,
+            turn_order_index INTEGER NOT NULL
+        )
+        """
+    )
 
     _backfill_games(conn)
     conn.commit()
@@ -660,6 +691,88 @@ def get_room_messages(location_id, viewer_character_id):
     return out
 
 
+# ==================== combat encounters (initiative-ordered turn enforcement) ====================
+
+def get_active_combat_encounter(location_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM combat_encounters WHERE location_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
+        (location_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_combat_encounter(room_id, location_id, participants, start_turn_index=0):
+    """participants: a list of {"character_id": int|None, "npc_key": str|None, "initiative_roll": int}
+    dicts, already in the order the caller (multiplayer.py) wants them seated - turn_order_index is
+    just each entry's position in that list. start_turn_index lets the caller begin the rotation
+    partway through (e.g. skipping the participant who just acted to trigger this fight)."""
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO combat_encounters (room_id, location_id, status, current_turn_index, created_at) "
+        "VALUES (?, ?, 'active', ?, ?)",
+        (room_id, location_id, start_turn_index, time.time()),
+    )
+    encounter_id = cur.lastrowid
+    for idx, p in enumerate(participants):
+        conn.execute(
+            "INSERT INTO combat_participants (encounter_id, character_id, npc_key, initiative_roll, turn_order_index) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (encounter_id, p.get("character_id"), p.get("npc_key"), p["initiative_roll"], idx),
+        )
+    conn.commit()
+    conn.close()
+    return encounter_id
+
+
+def get_combat_participants(encounter_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM combat_participants WHERE encounter_id = ? ORDER BY turn_order_index ASC", (encounter_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_current_combat_actor(encounter_id):
+    """The combat_participants row whose turn it currently is, or None if the encounter/participant
+    lookup fails (shouldn't happen in practice, but callers should treat None as 'nobody's turn is
+    clearly established' rather than crashing)."""
+    conn = get_db()
+    encounter = conn.execute("SELECT current_turn_index FROM combat_encounters WHERE id = ?", (encounter_id,)).fetchone()
+    if encounter is None:
+        conn.close()
+        return None
+    row = conn.execute(
+        "SELECT * FROM combat_participants WHERE encounter_id = ? AND turn_order_index = ?",
+        (encounter_id, encounter["current_turn_index"]),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def advance_combat_turn(encounter_id):
+    """Moves current_turn_index to the next participant, wrapping back to the start after the last."""
+    conn = get_db()
+    encounter = conn.execute("SELECT current_turn_index FROM combat_encounters WHERE id = ?", (encounter_id,)).fetchone()
+    count = conn.execute("SELECT COUNT(*) AS n FROM combat_participants WHERE encounter_id = ?", (encounter_id,)).fetchone()["n"]
+    if encounter is None or count == 0:
+        conn.close()
+        return
+    next_index = (encounter["current_turn_index"] + 1) % count
+    conn.execute("UPDATE combat_encounters SET current_turn_index = ? WHERE id = ?", (next_index, encounter_id))
+    conn.commit()
+    conn.close()
+
+
+def end_combat_encounter(encounter_id):
+    conn = get_db()
+    conn.execute("UPDATE combat_encounters SET status = 'ended', ended_at = ? WHERE id = ?", (time.time(), encounter_id))
+    conn.commit()
+    conn.close()
+
+
 def get_character(character_id, user_id):
     """Returns the full row (with parsed state) if it exists and belongs to user_id, else None -
     ownership is always checked here rather than trusting a bare character_id from the client."""
@@ -667,6 +780,24 @@ def get_character(character_id, user_id):
     row = conn.execute(
         "SELECT * FROM characters WHERE id = ? AND user_id = ?", (character_id, user_id)
     ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    out = dict(row)
+    out["state"] = json.loads(out.pop("state_json"))
+    return out
+
+
+def get_character_unchecked(character_id):
+    """Same as get_character but WITHOUT an ownership check - only for multiplayer contexts that
+    legitimately need to read another player's character state (e.g. rolling their initiative, or
+    building combat context), never for anything the client can trigger against an arbitrary
+    character_id on someone else's behalf. Callers stay responsible for verifying the REQUESTING
+    character (the one the current session actually owns) via get_character first, same as today -
+    this is only ever used to look up OTHER participants already established as present/involved by
+    trusted server-side logic (room_occupancy, combat_participants), not from raw client input."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM characters WHERE id = ?", (character_id,)).fetchone()
     conn.close()
     if row is None:
         return None

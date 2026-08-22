@@ -1,3 +1,81 @@
+# Multiplayer, phase 3: multi-character actions + combat initiative (2026-08-21)
+
+Continuing in build order, no new ambiguities hit this round. The core architectural decision:
+`engine.run_turn` - the tested single-player resolution loop - is completely UNCHANGED. Every
+mechanical resolution (dice, state updates) still goes through it exactly as before; this phase only
+wraps combat detection and turn-order enforcement AROUND that call, entirely inside `multiplayer.py`.
+Zero risk to single-player from this phase - `engine.py` has no new imports, no new params, no new
+branches.
+
+## How it works
+
+- **Combat detection**: after a free (non-combat) action resolves via `engine.run_turn`, a cheap
+  classifier (`multiplayer.detect_combat_start`, same fixed judge model as message-judging) looks at
+  the narration and decides whether it ignited a fight, and who else present is now involved. Empty
+  result (including the trivial "nobody else is even here" case, which skips the AI call entirely) 
+  means no combat, same as before.
+- **Initiative, app-rolled, not model-trusted**: when combat starts, every participant (the acting
+  character plus everyone the classifier named) gets `d20 + Physique modifier` rolled by the
+  application (`systems._shared.core.attribute_modifier`, the exact same function single-player
+  checks use) - never invented by the model. Sorted descending, seated in that order. Rotation starts
+  at whoever comes right after the triggering character, since they just acted - the fight begins
+  with someone else's turn, not theirs again immediately.
+- **Enforcement - the actual "no free-for-all" requirement**: `resolve_action` checks, before doing
+  anything else, whether the acting character is a listed participant in an active encounter at their
+  location and whether it's currently their turn. If not, it raises `CombatTurnError` (server.py
+  turns this into a clean 409) - the action never reaches `engine.run_turn` at all. A character NOT
+  in the encounter (a bystander) can still act freely alongside it without disturbing the rotation.
+- **Ending**: after a combat participant's own turn resolves, a second cheap classifier
+  (`detect_combat_end`) asks whether the fight is over; if so the encounter closes and the location
+  goes back to normal. Fails safe to "still ongoing" on a malformed response - silently dropping
+  enforcement because a judge call hiccuped would be worse than one extra round of asking.
+
+## Judgment calls made, not explicitly specified - flagging rather than treating as settled
+
+- **Physique as the initiative attribute.** The brief said "turn order/initiative must be respected"
+  but didn't say what determines it. Physique was picked for the same reason D&D-family games use
+  Dexterity - it reads as "quick to react" across all three systems here. Reasonable people could
+  pick differently (e.g. a case for Cunning in a political-intrigue setting); easy to change in one
+  place (`multiplayer._roll_initiative`) if it feels wrong once actually played.
+- **NPCs roll initiative at a flat d20, no modifier.** NPCs don't have an attribute block yet (the
+  character-sheet phase gave them personality/traits/memory, not stats) - there's nothing to add a
+  modifier from. A real simplification, not a hidden bug; giving NPCs real stats is a natural future
+  extension of the NPC-sheet work, not attempted here.
+- **Council Mode is off for multiplayer actions.** Council Mode's whole design (independent
+  candidate, judge panel, chairman synthesis) assumes one narration for one player; layering it onto
+  a shared multiplayer action log is a genuinely separate design question (whose narration gets
+  reviewed? whose voice does the chairman write in?) that wasn't asked about and isn't answered here
+  - `council_mode=False` explicitly, not a silent gap.
+- **A bystander's action during an active fight isn't itself checked for igniting a SECOND
+  encounter.** Only participant turns run `detect_combat_end`; only free (non-combat, no active
+  encounter at that location) actions run `detect_combat_start`. A bystander acting alongside an
+  ongoing fight neither joins it nor is checked for starting a separate one. This felt like the
+  simplest coherent behavior for a first version - flagging in case a bystander doing something
+  clearly combat-adjacent (e.g. "I grab a weapon and jump in") is supposed to pull them into the
+  existing fight rather than resolve as an uninvolved side action. Not built; a real design choice
+  either way, not an oversight.
+
+## Verified for real
+
+Wrote real tests exercising the actual sequence, not just isolated units: an action that ignites
+combat correctly seats both the attacker and the detected defender; the character NOT currently up
+gets rejected with `CombatTurnError`; the character who IS up resolves normally and the rotation
+advances to someone else; a combat participant ending the fight frees the location for normal
+actions again; a bystander acts freely without disturbing an ongoing fight's turn order. 153/153
+tests passing (11 new: 5 for the combat_encounters/combat_participants storage layer, 6 for the full
+`resolve_action` orchestration with a scripted provider) - plus the one existing route test that
+asserted the OLD "action not implemented" 501 response was updated to assert the real behavior now
+that it exists.
+
+## Still to build
+
+Room conclusion mechanics (unanimous mark-concluded, storm-out, the daily sweep); rumor generation +
+real scheduled ticks (APScheduler) + the SSE live-update layer; the real 0.5x-shared/50%-subsidized
+multiplayer budget model (still interim full-price billing to the actor); the chat/combat UI itself
+(everything through this phase is backend/API only).
+
+---
+
 # Multiplayer, phase 2: rooms/locations + NPC sheets + corrected message judging (2026-08-21)
 
 Continuing in build order per direction. Two real pieces this phase, both backend/data-model only -
