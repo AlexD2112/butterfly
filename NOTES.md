@@ -1,3 +1,96 @@
+# Multiplayer phase 5: real scheduled ticks + the deferred daily sweep (2026-08-21)
+
+You said "continue with room-conclusion mechanics" - that phase was already committed
+(mark-concluded/storm-out), but its third piece (the daily sweep) was deliberately deferred because
+it's fundamentally coupled to real scheduled ticks, which didn't exist yet. Read this as completing
+that phase rather than a new one: this is that missing piece, plus the tick infrastructure it needs.
+
+## The scheduler itself
+
+New `scheduler.py`, a genuine background thread via APScheduler's `BackgroundScheduler` - not a
+lazy/request-triggered check, per your explicit requirement (item 9, much earlier: "otherwise a
+player starts a message and now needs to wait for this massive load of messages"). One recurring
+heartbeat job (every 60s) checks every multiplayer server's `(now - last_tick_at)` against its own
+`progression_rate_hours` and fires a real tick for anything due. This is simpler and more robust than
+one independent APScheduler job per server (which would need dynamic add/remove as servers are
+created/deleted) - the tradeoff is a tick can fire up to ~60s later than its exact due time, which is
+irrelevant at day/week/month granularity.
+
+**A new dependency** (`apscheduler`) - the first one added purely for infrastructure rather than an
+LLM SDK. Proportionate to an explicit "must be a real background scheduler" requirement, not a casual
+addition.
+
+**Safety-critical design point**: the scheduler does NOT start just from importing `server.py` (which
+every single test does). It's gated behind `ENABLE_TICK_SCHEDULER` (new env var, off by default,
+documented in `.env.example`) - a background thread silently starting during test runs, potentially
+touching whatever `db.DB_FILE` a given test has swapped in at whatever moment the heartbeat happens
+to fire, would have been a real, hard-to-diagnose source of flaky tests down the line. Verified this
+distinction directly: the full test suite (181 tests) imports `server.py` repeatedly and never starts
+a background thread, while a standalone script that explicitly calls `scheduler.start_scheduler()`
+does - confirmed the real APScheduler thread actually fires a tick within seconds, with zero Flask
+request involved anywhere in the path.
+
+## What a tick actually does
+
+Two things, per server, when due: advance the server's own shared world-clock (`current_date` - a
+new column, since multiplayer servers didn't have any shared calendar concept before this; each
+character's own `state["date"]` is separate, single-player-shaped state), then run the daily sweep.
+
+- **Date advancement** (`multiplayer.advance_date_string`): plain `datetime.date` + `timedelta`, no
+  new dependency. "day" advances 1, "week" advances 7, "month" is approximated as 30 days rather than
+  a real calendar month - exact month-length math needs `python-dateutil`, a second new dependency
+  this app doesn't otherwise need for one approximation. Documented, not hidden.
+- **A server's starting date is seeded from the setting's real premade starting date** (e.g.
+  "1917-09-25" for Petrograd) at server creation, resolved by the route (not `db.py`, which stays
+  agnostic of setting content the same way it already is everywhere else).
+- **The sweep** (`multiplayer.sweep_server`): walks every location across every room in the server;
+  empty locations are skipped entirely (nothing to conclude, no one to bill even if there were - same
+  reasoning already used to skip the combat classifier when nobody else is present). For each
+  occupied location, a cheap classifier decides whether the ongoing thread should now be concluded,
+  reusing the EXACT same `_conclude_thread` mechanism mark-concluded/storm-out already built - one
+  conclusion pathway, not three parallel ones.
+- **Billing reused, not reinvented**: `_bill_ambient_usage` moved out of `server.py` into
+  `multiplayer.bill_ambient_usage` (a pure function, no Flask dependency) specifically so the
+  scheduler's background thread can call the exact same confirmed cost-split model storm-out uses,
+  rather than a second implementation of the same rule.
+
+## A real bug I found and fixed before it shipped, not after
+
+The sweep's classifier prompt originally had a stray `{{unit}}` in an f-string - Python's escaped
+double-brace syntax, which would have sent the LITERAL text `"a new {unit} has begun"` to the model
+instead of interpolating anything (I never actually passed a `unit` variable in). Caught this by
+rereading my own draft before running it against tests, not by a test failure - flagging because it's
+exactly the kind of subtle, easy-to-miss bug that only running things for real (or a careful second
+read) catches, not something a schema/logic review would necessarily surface.
+
+## One more attribution workaround, same shape as the last one
+
+Sweep-triggered conclusions have no real triggering PLAYER (it's purely time-driven) - same
+`turns.character_id NOT NULL` friction as storm-out's headcount check. Reused the same resolution:
+attribute the log row to the first present character (bookkeeping only, to satisfy the real FK - the
+column isn't shown to players as "who caused this"), but give the sweep its own distinct, honest
+note text ("Time passes, and the scene quietly concludes.") rather than implying a player acted.
+
+## Verified for real
+
+`run_tick_heartbeat`/`fire_tick`/`sweep_server`/`advance_date_string` are all exercised directly
+against a real (temp) SQLite database, not mocked at the DB layer - including a real budget row
+moving after a sweep bills a present player, and a tick correctly still advancing the date even when
+no judge provider is configured (a partial-degradation path, not a crash). Then, separately, a real
+standalone script started the actual `BackgroundScheduler` (not a mock) with a shortened heartbeat
+and confirmed it fired a real tick within seconds with zero request involved - the two things
+combined are what count as this feature actually verified, not just its logic. 181/181 tests passing
+(16 new).
+
+## Still to build
+
+Rumor generation (compiling and publishing accumulated rumor summaries at each tick - the scheduler
+now exists to trigger this from, was the whole reason this phase came before it) and the SSE
+live-update layer. The chat/combat/conclusion/admin UI itself - still entirely backend/API through
+every multiplayer phase so far.
+
+---
+
 # Initiative attribute swap + a second, more subtle AI-cadence pass (2026-08-21)
 
 Two small fixes, folded in without derailing the room-conclusion work.

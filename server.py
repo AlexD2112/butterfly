@@ -31,8 +31,16 @@ import engine
 import multiplayer
 import pricing
 import providers
+import scheduler
 
 db.init_db()
+
+# Real scheduled background ticks for multiplayer progression - off by default (ENABLE_TICK_SCHEDULER
+# unset), so importing this module (every test does) never silently starts a background thread. See
+# scheduler.py's module docstring for why this needs to be a real background job, not a
+# lazy/request-triggered check.
+if scheduler.is_enabled():
+    scheduler.start_scheduler()
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
@@ -494,12 +502,18 @@ def api_admin_create_server():
         return jsonify({"error": "name and a valid setting_key are required."}), 400
     system_key = engine.SETTING_REGISTRY[setting_key]["system"]
     progression_speed = body.get("progression_speed") or "day"
+    if progression_speed not in ("day", "week", "month"):
+        return jsonify({"error": "progression_speed must be 'day', 'week', or 'month'."}), 400
     try:
         progression_rate_hours = float(body.get("progression_rate_hours") or 24)
     except (TypeError, ValueError):
         return jsonify({"error": "progression_rate_hours must be a number."}), 400
+    # Seeds the server's shared world-clock from the setting's real starting date (e.g.
+    # "1917-09-25") - db.py stays agnostic of setting content, so this is resolved here, not there.
+    initial_date = engine.load_premade_character_state(setting_key).get("date")
     server_id = db.create_multiplayer_server(
-        name, setting_key, system_key, progression_speed, progression_rate_hours, user["id"]
+        name, setting_key, system_key, progression_speed, progression_rate_hours, user["id"],
+        initial_date=initial_date,
     )
     return jsonify({"server_id": server_id})
 

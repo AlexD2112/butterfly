@@ -163,6 +163,7 @@ def init_db():
             system_key TEXT NOT NULL,
             progression_speed TEXT NOT NULL DEFAULT 'day',
             progression_rate_hours REAL NOT NULL DEFAULT 24,
+            current_date TEXT,
             last_tick_at REAL,
             created_by_user_id INTEGER NOT NULL REFERENCES users(id),
             created_at REAL NOT NULL
@@ -288,6 +289,13 @@ def init_db():
         )
         """
     )
+    # current_date wasn't in multiplayer_servers' original CREATE TABLE (added 2026-08-21 for real
+    # scheduled ticks) - same ALTER-and-swallow pattern as every other column added after a table
+    # already existed, so an existing deployment's servers pick it up on the next restart too.
+    try:
+        conn.execute("ALTER TABLE multiplayer_servers ADD COLUMN current_date TEXT")
+    except sqlite3.OperationalError:
+        pass  # column already exists
 
     _backfill_games(conn)
     conn.commit()
@@ -442,16 +450,25 @@ def get_game_for_server(server_id):
 
 # ==================== multiplayer servers / rooms / locations ====================
 
-def create_multiplayer_server(name, setting_key, system_key, progression_speed, progression_rate_hours, created_by_user_id):
+def create_multiplayer_server(name, setting_key, system_key, progression_speed, progression_rate_hours,
+                               created_by_user_id, initial_date=None):
     """Creates the server's single backing game first (multiplayer_server_id starts NULL - the
     server row doesn't exist yet to reference), then links them - avoids a circular insert between
-    games and multiplayer_servers without needing a redundant game_id column on this table."""
+    games and multiplayer_servers without needing a redundant game_id column on this table.
+
+    initial_date: the setting's real starting date (e.g. "1917-09-25") - the CALLER resolves this
+    from the setting's premade character state (see server.py), not this function, so db.py stays
+    agnostic of setting content the same way it already is everywhere else. Also seeds last_tick_at
+    to now, so the first real tick fires a full progression_rate_hours after creation, not
+    immediately on the scheduler's next heartbeat."""
     game_id = create_game("multiplayer", setting_key, system_key, multiplayer_server_id=None)
     conn = get_db()
+    now = time.time()
     cur = conn.execute(
         "INSERT INTO multiplayer_servers (name, setting_key, system_key, progression_speed, "
-        "progression_rate_hours, created_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (name, setting_key, system_key, progression_speed, progression_rate_hours, created_by_user_id, time.time()),
+        "progression_rate_hours, current_date, last_tick_at, created_by_user_id, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, setting_key, system_key, progression_speed, progression_rate_hours, initial_date, now, created_by_user_id, now),
     )
     server_id = cur.lastrowid
     conn.execute("UPDATE games SET multiplayer_server_id = ? WHERE id = ?", (server_id, game_id))
@@ -472,6 +489,28 @@ def list_multiplayer_servers():
     rows = conn.execute("SELECT * FROM multiplayer_servers ORDER BY created_at DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def list_locations_for_server(server_id):
+    """Every location across every room in a server, with its room_id alongside - the sweep needs to
+    walk all of them, not just one room at a time."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT l.* FROM locations l JOIN rooms r ON r.id = l.room_id WHERE r.server_id = ? ORDER BY l.id ASC",
+        (server_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def set_server_tick_state(server_id, new_date, tick_time):
+    conn = get_db()
+    conn.execute(
+        "UPDATE multiplayer_servers SET current_date = ?, last_tick_at = ? WHERE id = ?",
+        (new_date, tick_time, server_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def create_room(server_id, name, description=None):

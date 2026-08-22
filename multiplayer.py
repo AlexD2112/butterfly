@@ -37,12 +37,14 @@ tool loop - this module never calls systems/_shared/core.py's check/state functi
 engine.run_turn (for actions) and combat initiative's own dice roll (a narrow, separate mechanic).
 """
 
+import datetime
 import json
 import random
 
 import council
 import db
 import engine
+import pricing
 import providers
 from systems._shared import core as shared_core
 
@@ -457,12 +459,15 @@ def resolve_action(provider, model, model_key, char_row, room_id, location_id, c
 
 # ==================== room conclusion (mark-concluded / storm-out) ====================
 
-def _conclude_thread(game_id, room_id, location_id, triggered_by_character_id):
+def _conclude_thread(game_id, room_id, location_id, triggered_by_character_id, note="The scene concludes."):
     """Logs a visible marker and resets conclusion tracking so a fresh thread can start being
     counted at this location. triggered_by_character_id attributes the log row to whoever caused the
-    conclusion (the last to mark it, or whoever stormed out) - turns.character_id is NOT NULL and
-    there's no single "system" character to attribute an ambient event to instead."""
-    db.record_room_message(game_id, room_id, location_id, triggered_by_character_id, "thread_concluded", "The scene concludes.")
+    conclusion (the last to mark it, whoever stormed out, or - for the daily sweep, which has no real
+    triggering player - just the first present character) - turns.character_id is NOT NULL with a
+    real FK, and there's no "system" character to attribute a purely time-driven event to instead.
+    That attribution is bookkeeping only; `note` is what a player actually reads, which is why the
+    sweep passes a time-flavored note rather than implying some player caused it."""
+    db.record_room_message(game_id, room_id, location_id, triggered_by_character_id, "thread_concluded", note)
     db.clear_location_conclusions(location_id)
 
 
@@ -555,3 +560,124 @@ def storm_out(provider, model, char_row, room_id, location_id, final_message, us
     # else: no provider available - skip the check, thread stays open (fail-safe default).
 
     return new_location_id, auto_concluded
+
+
+# ==================== ambient AI-call billing (shared by storm-out and the sweep) ====================
+
+def bill_ambient_usage(usage_sink, present_character_ids):
+    """Bills a non-player-triggered AI call (a storm-out headcount check, the daily sweep) per the
+    confirmed cost model in NOTES.md: split evenly across every present player, each charged only
+    pricing.AMBIENT_COST_PLAYER_SHARE of their share - the rest isn't charged to anyone.
+    Local/anonymous-owned characters are skipped (no real budget to charge, same as everywhere else
+    in this app). No-op if usage_sink is empty or nobody present has a billable account. Pure
+    db/pricing calls, no Flask dependency - safe to call from the background scheduler thread as well
+    as from a request handler."""
+    if not usage_sink:
+        return
+    total_cost = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
+    payers = []
+    for cid in present_character_ids:
+        owner = db.get_character_owner(cid)
+        if owner and not owner["is_local"]:
+            payers.append((cid, owner["id"]))
+    if not payers:
+        return
+    per_player_cost = pricing.split_ambient_cost_per_player(total_cost, len(payers))
+    representative = max(usage_sink, key=lambda u: u.get("input_tokens", 0) + u.get("output_tokens", 0))
+    for cid, user_id in payers:
+        db.record_usage(
+            user_id, cid, representative["provider"], representative["model"],
+            representative.get("input_tokens", 0), representative.get("output_tokens", 0),
+            representative.get("cache_read_tokens", 0), representative.get("cache_creation_tokens", 0),
+            per_player_cost,
+        )
+
+
+# ==================== progression ticks + the daily conclusion sweep ====================
+
+_MONTH_APPROX_DAYS = 30  # see advance_date_string's docstring
+
+
+def advance_date_string(date_str, progression_speed):
+    """Advances an ISO 'YYYY-MM-DD' date string by one progression_speed unit, using plain
+    datetime.date + timedelta - no extra dependency. "month" is approximated as 30 days rather than
+    a real calendar month (exact month-length math needs python-dateutil, a dependency this app
+    doesn't otherwise need) - a documented simplification, not a hidden bug. Returns date_str
+    unchanged if it can't be parsed, rather than crashing a tick over bad/missing data."""
+    try:
+        d = datetime.date.fromisoformat(date_str)
+    except (TypeError, ValueError):
+        return date_str
+    if progression_speed == "week":
+        d += datetime.timedelta(days=7)
+    elif progression_speed == "month":
+        d += datetime.timedelta(days=_MONTH_APPROX_DAYS)
+    else:
+        d += datetime.timedelta(days=1)
+    return d.isoformat()
+
+
+def detect_location_should_conclude(provider, model, location_id, usage_sink=None):
+    """The daily sweep's per-location check: given the passage of time, should this location's
+    ongoing thread now be considered concluded? Fails safe to "leave it open" on a missing/malformed
+    response - an accidental auto-conclusion is worse than asking again at the next tick."""
+    context = _recent_location_context(location_id)
+    system_prompt = f"""A real amount of time has passed in this multiplayer scene since the last
+check. Decide whether the ongoing activity at this location should now be considered concluded, or
+is still meaningfully ongoing and should be left open.
+
+# RECENT ACTIVITY HERE
+{context}
+
+Submit via decide_sweep."""
+    tool_specs = [
+        {
+            "name": "decide_sweep",
+            "description": "Decide whether this location's ongoing thread should be concluded.",
+            "parameters": {
+                "type": "object",
+                "properties": {"should_conclude": {"type": "boolean"}, "reasoning": {"type": "string"}},
+                "required": ["should_conclude", "reasoning"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Decide now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_sweep")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return False
+    return bool(result.tool_calls[0]["input"].get("should_conclude"))
+
+
+def sweep_server(provider, model, server_id):
+    """The daily/weekly/monthly conclusion sweep - called by the tick scheduler (scheduler.py), never
+    by a player request. Walks every location in the server; locations with nobody present are
+    skipped entirely (nothing there to conclude, and no one to bill even if there were - matches the
+    same reasoning used to skip combat-classifier calls when nobody else is present). For each
+    occupied location, asks detect_location_should_conclude and concludes it if so.
+
+    Returns a list of per-location {"location_id", "usage_sink", "present_character_ids",
+    "concluded"} dicts - billing each location's usage (via bill_ambient_usage above) is left to the
+    caller, so this function's job stays "decide and log," not "decide and log and bill" tangled
+    together."""
+    results = []
+    game = db.get_game_for_server(server_id)
+    for location in db.list_locations_for_server(server_id):
+        location_id = location["id"]
+        present = db.characters_at_location(location_id)
+        if not present:
+            continue
+        usage_sink = []
+        should_conclude = detect_location_should_conclude(provider, model, location_id, usage_sink=usage_sink)
+        if should_conclude:
+            _conclude_thread(
+                game["id"], location["room_id"], location_id, present[0],
+                note="Time passes, and the scene quietly concludes.",
+            )
+        results.append({
+            "location_id": location_id, "usage_sink": usage_sink,
+            "present_character_ids": present, "concluded": should_conclude,
+        })
+    return results

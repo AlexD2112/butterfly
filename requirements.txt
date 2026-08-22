@@ -8,3 +8,7 @@ python-dotenv
 requests
 anthropic
 openai
+# Real scheduled background ticks for multiplayer progression (day/week/month advancement, the
+# daily conclusion sweep) - see scheduler.py and NOTES.md. Gated behind ENABLE_TICK_SCHEDULER, off
+# by default (see .env.example), so importing server.py in tests never starts a background thread.
+apscheduler
