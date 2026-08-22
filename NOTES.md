@@ -1,3 +1,87 @@
+# Multiplayer, phase 4: room conclusion (mark-concluded + storm-out) (2026-08-21)
+
+Continuing in build order. This phase also implements the confirmed 0.5x-shared/50%-subsidized
+ambient-cost model for real, for the first time - the earlier phases' "charge the actor full price"
+was always flagged as interim precisely because room conclusion was where a genuinely
+not-player-triggered AI call would first show up.
+
+## Scope boundary, decided not discovered as a blocker
+
+The original spec's room-conclusion piece has three parts: manual mark-concluded, storm-out, and a
+daily sweep tied to progression ticks. Only the first two are in this phase. The daily sweep is
+fundamentally coupled to real scheduled ticks (APScheduler), which don't exist yet - that's the next
+phase. Building a fake/stub trigger for the sweep now would mean throwaway code once real ticks land;
+deferring it to where it structurally belongs isn't a gap, it's sequencing.
+
+## "Thread" is scoped per-location, not per-room
+
+The original brief said "per-room," written before the rooms/locations clarification established
+locations as the actual sub-conversation unit. Re-interpreting "thread" as per-location is the
+coherent reading now - it's the only granularity where "all players who witnessed this" even means
+anything (a room can have several unrelated conversations running at once). Flagging the
+reinterpretation rather than treating it as unambiguously specified.
+
+## Mark-concluded
+
+Any player can mark their current location's thread concluded; it actually concludes once every
+PLAYER currently there has marked it (NPCs don't count - the brief says "players," not "everyone
+present"). A later arrival doesn't retroactively count as having marked anything, so unanimity always
+means the CURRENT full set, not whoever happened to be there when the first mark landed. Concluding
+logs a visible `thread_concluded` marker in the location's log (attributed to whoever's mark tipped
+it into unanimity - `turns.character_id` is NOT NULL and there's no "system" character to attribute
+an ambient event to) and resets tracking so the next thread at that location starts counting fresh.
+
+## Storm-out
+
+An optional final flavor message (pure narrative text - no AI judging or reply, same as any message
+that isn't addressed to anyone), then the character moves to their room's default location. Their own
+conclusion mark at the old location is cleared - their vote no longer counts once they're gone, the
+same way leaving a real conversation does. If nobody remains at the old location, it auto-concludes
+deterministically (no AI call needed to answer "is zero people enough"). If others remain, a cheap
+classifier decides whether the scene still has enough left to continue.
+
+**Where a storm-out lands** wasn't specified - I picked the room's own default location ("Main"),
+since a character can never be in no room at all (the base rule), and defaulting to a location
+within their existing room reads as the natural "left the specific conversation, still in the
+building" interpretation. A real judgment call, easy to point elsewhere later if wrong.
+
+## The real ambient-cost model, implemented for the first time
+
+`pricing.split_ambient_cost_per_player()`: the true cost of a non-player-triggered AI call (here,
+the storm-out headcount check) is split evenly across every present player, then each is charged only
+`AMBIENT_COST_PLAYER_SHARE` (0.5) of their share - the rest genuinely isn't charged to anyone, since
+there's no real mechanism for a human to manually settle a per-call subsidy; "covering it personally"
+in practice just means not deducting it. Two things worth knowing about who pays:
+- **The character who stormed out is never charged for this check** - it's a question about the
+  scene they're leaving behind, not their own action, so billing it to them would be attributing cost
+  to the wrong party.
+- **Local/anonymous-owned characters are silently skipped** from the split, consistent with local
+  accounts being budget-exempt everywhere else in this app - if every present character happens to be
+  local, the call still happens (courtesy to whoever's still playing) but nobody's charged for it.
+
+Verified directly, not just asserted: a real budget row's `spent_usd` moves by exactly
+`split_ambient_cost_per_player(real_cost, 1)` after a two-player storm-out scenario, and the leaving
+player's own budget is untouched.
+
+## Verified for real
+
+Real sequenced tests, not isolated units: solo mark-concluded is trivially unanimous; two present
+players need both marks; a third arrival mid-vote correctly resets what "unanimous" requires rather
+than letting the vote silently pass without them; storming out with nobody left auto-concludes
+deterministically and never even calls the AI; storming out with others remaining does call it and
+respects whatever it decides; a missing/unavailable provider degrades to "still ongoing" rather than
+blocking someone from leaving. Also ran this against a real live server (not just the test client) -
+solo mark-concluded and a nobody-remaining storm-out both behaved correctly end to end. 165/165 tests
+passing (12 new).
+
+## Still to build
+
+Rumor generation + real scheduled ticks (APScheduler) + the SSE live-update layer - the daily sweep
+deferred from this phase belongs here too, once real tick infrastructure exists to trigger it from.
+The chat/combat/conclusion UI itself (still backend/API only through this phase).
+
+---
+
 # Multiplayer, phase 3: multi-character actions + combat initiative (2026-08-21)
 
 Continuing in build order, no new ambiguities hit this round. The core architectural decision:

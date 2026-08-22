@@ -68,3 +68,21 @@ def estimate_cost_usd(usage):
     cost += cache_read_tokens / 1_000_000 * (rates["input"] * _CACHE_READ_MULTIPLIER)
     cost += cache_creation_tokens / 1_000_000 * (rates["input"] * _CACHE_CREATION_MULTIPLIER)
     return cost
+
+
+# Confirmed cost model (2026-08-21, NOTES.md) for multiplayer AI calls that aren't tied to any one
+# player's own action - a storm-out headcount check, the eventual daily conclusion sweep: split the
+# real cost evenly across every present player, then only charge each their AMBIENT_COST_PLAYER_SHARE
+# of that split. The rest isn't charged to anyone - the developer is personally covering it, which in
+# practice just means not deducting it from any account's budget (there's no real mechanism for a
+# human to manually settle a per-call subsidy).
+AMBIENT_COST_PLAYER_SHARE = 0.5
+
+
+def split_ambient_cost_per_player(total_cost_usd, num_players):
+    """Returns each present player's charge for one ambient (non-player-triggered) AI call. 0.0 if
+    there's nobody to split across - callers should skip billing entirely in that case rather than
+    calling this with num_players=0."""
+    if num_players <= 0:
+        return 0.0
+    return (total_cost_usd / num_players) * AMBIENT_COST_PLAYER_SHARE

@@ -274,6 +274,20 @@ def init_db():
         )
         """
     )
+    # Room conclusion (2026-08-21): who has marked the CURRENT thread at a location concluded. One
+    # row per character per location - PRIMARY KEY doubles as the "already marked" check. Cleared
+    # (see clear_location_conclusions) once a thread actually concludes, so a fresh thread at the
+    # same location starts tracking from zero again.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS location_conclusions (
+            location_id INTEGER NOT NULL REFERENCES locations(id),
+            character_id INTEGER NOT NULL REFERENCES characters(id),
+            marked_at REAL NOT NULL,
+            PRIMARY KEY (location_id, character_id)
+        )
+        """
+    )
 
     _backfill_games(conn)
     conn.commit()
@@ -771,6 +785,55 @@ def end_combat_encounter(encounter_id):
     conn.execute("UPDATE combat_encounters SET status = 'ended', ended_at = ? WHERE id = ?", (time.time(), encounter_id))
     conn.commit()
     conn.close()
+
+
+# ==================== room conclusion (mark-concluded / storm-out) ====================
+
+def mark_location_concluded_by(location_id, character_id):
+    conn = get_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO location_conclusions (location_id, character_id, marked_at) VALUES (?, ?, ?)",
+        (location_id, character_id, time.time()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def clear_character_conclusion_mark(location_id, character_id):
+    """Removes just one character's mark - used when they storm out, so their vote no longer counts
+    toward unanimity (they're gone, same as leaving a room mid-conversation in person)."""
+    conn = get_db()
+    conn.execute("DELETE FROM location_conclusions WHERE location_id = ? AND character_id = ?", (location_id, character_id))
+    conn.commit()
+    conn.close()
+
+
+def get_location_conclusion_marks(location_id):
+    conn = get_db()
+    rows = conn.execute("SELECT character_id FROM location_conclusions WHERE location_id = ?", (location_id,)).fetchall()
+    conn.close()
+    return {r["character_id"] for r in rows}
+
+
+def clear_location_conclusions(location_id):
+    """Resets tracking entirely - called once a thread actually concludes, so whatever happens next
+    at this location starts a fresh count."""
+    conn = get_db()
+    conn.execute("DELETE FROM location_conclusions WHERE location_id = ?", (location_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_character_owner(character_id):
+    """The user row that owns a character, regardless of who's asking - like
+    get_character_unchecked, only for multiplayer contexts that legitimately need to know (e.g.
+    whether a present character's account can be billed at all), never from raw client input."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT u.* FROM users u JOIN characters c ON c.user_id = u.id WHERE c.id = ?", (character_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_character(character_id, user_id):

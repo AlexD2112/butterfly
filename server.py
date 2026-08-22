@@ -713,6 +713,74 @@ def api_multiplayer_send(character_id):
         lock.release()
 
 
+def _bill_ambient_usage(usage_sink, present_character_ids):
+    """Bills a non-player-triggered AI call (a storm-out headcount check, and eventually the daily
+    conclusion sweep) per the confirmed cost model in NOTES.md: split evenly across every present
+    player, each charged only pricing.AMBIENT_COST_PLAYER_SHARE of their share - the rest isn't
+    charged to anyone. Local/anonymous-owned characters are skipped (same as everywhere else in this
+    app - they have no real budget to charge). No-op if usage_sink is empty (no AI call was actually
+    made, e.g. the headcount check was skipped) or nobody present has a billable account."""
+    if not usage_sink:
+        return
+    total_cost = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
+    payers = []
+    for cid in present_character_ids:
+        owner = db.get_character_owner(cid)
+        if owner and not owner["is_local"]:
+            payers.append((cid, owner["id"]))
+    if not payers:
+        return
+    per_player_cost = pricing.split_ambient_cost_per_player(total_cost, len(payers))
+    # The real, meaningful number here is the dollar cost, not a precise per-token attribution across
+    # players for a call that wasn't really "any one of them acting" anyway - token counts are
+    # recorded from whichever usage entry was largest, for observability, not exactness.
+    representative = max(usage_sink, key=lambda u: u.get("input_tokens", 0) + u.get("output_tokens", 0))
+    for cid, user_id in payers:
+        db.record_usage(
+            user_id, cid, representative["provider"], representative["model"],
+            representative.get("input_tokens", 0), representative.get("output_tokens", 0),
+            representative.get("cache_read_tokens", 0), representative.get("cache_creation_tokens", 0),
+            per_player_cost,
+        )
+
+
+@app.route("/api/multiplayer/characters/<int:character_id>/mark_concluded", methods=["POST"])
+def api_multiplayer_mark_concluded(character_id):
+    user = current_user()
+    char = db.get_character(character_id, user["id"])
+    if char is None:
+        return jsonify({"error": "Character not found."}), 404
+    presence = db.get_character_location(character_id)
+    if presence is None:
+        return jsonify({"error": "This character isn't in a room yet."}), 400
+
+    body = request.get_json(force=True) or {}
+    storm_out = bool(body.get("storm_out"))
+
+    if not storm_out:
+        concluded, marks, total = multiplayer.mark_concluded(char, presence["room_id"], presence["location_id"])
+        return jsonify({"concluded": concluded, "marks": marks, "total_present": total})
+
+    model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
+    final_message = (body.get("final_message") or "").strip() or None
+    remaining_before = [c for c in db.characters_at_location(presence["location_id"]) if c != character_id]
+
+    provider, model = None, None
+    if remaining_before:
+        try:
+            provider, model = providers.get_provider(model_key)
+        except providers.ProviderError:
+            provider, model = None, None  # leaving still succeeds; the headcount check just gets skipped
+
+    usage_sink = []
+    new_location_id, auto_concluded = multiplayer.storm_out(
+        provider, model, char, presence["room_id"], presence["location_id"], final_message, usage_sink=usage_sink,
+    )
+    _bill_ambient_usage(usage_sink, remaining_before)
+
+    return jsonify({"new_location_id": new_location_id, "thread_auto_concluded": auto_concluded})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "1") == "1"

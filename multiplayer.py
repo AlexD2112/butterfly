@@ -22,6 +22,16 @@ Multiplayer orchestration: two mostly-independent pieces sharing this module.
    encounter is active, an action from a listed participant is rejected outright if it isn't their
    turn - "no free-for-all resolution," enforced in code, not by asking nicely.
 
+3. Room conclusion - mark_concluded()/storm_out(). "Thread" is scoped per-LOCATION, not per-room
+   (locations are the actual sub-conversation unit built for message visibility - see NOTES.md's
+   rooms/locations entry), so conclusion tracking is per-location too. A thread concludes once every
+   PLAYER currently at that location has marked it (NPCs don't count - the brief says "players").
+   Storming out sends an optional final flavor message, moves the character to their room's default
+   location, and - if anyone remains - checks whether the scene should auto-conclude without them
+   (deterministically if literally nobody's left, via a cheap ambient classifier otherwise). The
+   eventual "publish a rumor summary of a concluded thread" feature (a separate later phase, tied to
+   real scheduled ticks) will hook into the same conclusion event this creates - not duplicated here.
+
 Mechanics (dice, checks, state changes) still only ever happen inside engine.run_turn's existing
 tool loop - this module never calls systems/_shared/core.py's check/state functions directly, only
 engine.run_turn (for actions) and combat initiative's own dice roll (a narrow, separate mechanic).
@@ -442,3 +452,105 @@ def resolve_action(provider, model, model_key, char_row, room_id, location_id, c
             result["combat_encounter_id"] = encounter_id
 
     return result
+
+
+# ==================== room conclusion (mark-concluded / storm-out) ====================
+
+def _conclude_thread(game_id, room_id, location_id, triggered_by_character_id):
+    """Logs a visible marker and resets conclusion tracking so a fresh thread can start being
+    counted at this location. triggered_by_character_id attributes the log row to whoever caused the
+    conclusion (the last to mark it, or whoever stormed out) - turns.character_id is NOT NULL and
+    there's no single "system" character to attribute an ambient event to instead."""
+    db.record_room_message(game_id, room_id, location_id, triggered_by_character_id, "thread_concluded", "The scene concludes.")
+    db.clear_location_conclusions(location_id)
+
+
+def mark_concluded(char_row, room_id, location_id):
+    """Regular (non-storm-out) mark-concluded. Returns (concluded: bool, marks_so_far: int,
+    total_present: int). Unanimous means every PLAYER character currently at this location has
+    marked it - NPCs aren't counted, per the brief's literal "all players" wording."""
+    character_id = char_row["id"]
+    game_id = char_row["game_id"]
+    db.mark_location_concluded_by(location_id, character_id)
+
+    present = db.characters_at_location(location_id)
+    marks = db.get_location_conclusion_marks(location_id)
+    if present and set(present) <= marks:
+        _conclude_thread(game_id, room_id, location_id, character_id)
+        return True, len(present), len(present)
+    return False, len(marks & set(present)), len(present)
+
+
+def detect_thread_should_continue(provider, model, location_id, remaining_character_count, usage_sink=None):
+    """After someone storms out, ask whether enough people remain for the scene to meaningfully
+    continue. Only ever called when at least one person remains - the zero-remaining case is decided
+    deterministically by the caller (storm_out below), no AI call needed. Fails safe to "continues"
+    on a missing/malformed response - silently auto-concluding a scene because a judge call hiccuped
+    would be a worse failure than asking again next time."""
+    context = _recent_location_context(location_id)
+    system_prompt = f"""A character just stormed out of a scene, leaving {remaining_character_count}
+participant(s) behind. Decide whether the scene has enough left to meaningfully continue, or whether
+it should be considered concluded now that they're gone.
+
+# RECENT ACTIVITY HERE
+{context}
+
+Submit via decide_continuation."""
+    tool_specs = [
+        {
+            "name": "decide_continuation",
+            "description": "Decide whether the remaining scene should continue or be concluded.",
+            "parameters": {
+                "type": "object",
+                "properties": {"continues": {"type": "boolean"}, "reasoning": {"type": "string"}},
+                "required": ["continues", "reasoning"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Decide now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_continuation")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return True
+    return bool(result.tool_calls[0]["input"].get("continues", True))
+
+
+def storm_out(provider, model, char_row, room_id, location_id, final_message, usage_sink=None):
+    """Sends an optional final flavor message (pure narrative text - no AI judging/reply, same as
+    any player-authored line that isn't addressed to anyone), moves the character to their room's
+    default location, clears their own conclusion mark at the location they left (their vote no
+    longer counts once they're gone), and checks whether the scene should auto-conclude without them.
+
+    provider/model may be None (e.g. the caller couldn't resolve a configured provider) - the leave
+    itself still succeeds either way; only the headcount check gets skipped, defaulting to "still
+    ongoing" rather than blocking someone from leaving because the AI is temporarily unavailable.
+
+    Returns (new_location_id, thread_auto_concluded: bool).
+    """
+    character_id = char_row["id"]
+    game_id = char_row["game_id"]
+
+    if final_message:
+        db.record_room_message(game_id, room_id, location_id, character_id, "storm_out", final_message)
+
+    db.clear_character_conclusion_mark(location_id, character_id)
+
+    new_location_id = db.get_default_location(room_id)["id"]
+    server_id = db.get_room(room_id)["server_id"]
+    db.move_character(character_id, server_id, room_id, new_location_id)
+
+    remaining = [c for c in db.characters_at_location(location_id) if c != character_id]
+    auto_concluded = False
+    if not remaining:
+        _conclude_thread(game_id, room_id, location_id, character_id)
+        auto_concluded = True
+    elif provider is not None:
+        continues = detect_thread_should_continue(provider, model, location_id, len(remaining), usage_sink=usage_sink)
+        if not continues:
+            _conclude_thread(game_id, room_id, location_id, character_id)
+            auto_concluded = True
+    # else: no provider available - skip the check, thread stays open (fail-safe default).
+
+    return new_location_id, auto_concluded
