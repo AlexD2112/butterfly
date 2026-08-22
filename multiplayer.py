@@ -598,17 +598,14 @@ def storm_out(provider, model, char_row, room_id, location_id, final_message, us
 
 # ==================== ambient AI-call billing (shared by storm-out and the sweep) ====================
 
-def bill_shared_usage(usage_sink, present_character_ids):
-    """Bills an AI call whose cost is split across every present player rather than charged to one
-    account, per the confirmed model in NOTES.md: split evenly, each charged only
-    pricing.MULTIPLAYER_COST_PLAYER_SHARE of their share - the rest isn't charged to anyone. Used for
-    BOTH ambient calls (a storm-out headcount check, the daily sweep, rumor generation/compilation)
-    AND the core gameplay loop (regular messages/actions, since 2026-08-21 - see NOTES.md for why
-    that was still on an interim full-price-to-sender model until now). Local/anonymous-owned
-    characters are skipped (no real budget to charge, same as everywhere else in this app). No-op if
-    usage_sink is empty or nobody present has a billable account. Pure db/pricing calls, no Flask
-    dependency - safe to call from the background scheduler thread as well as from a request
-    handler."""
+def bill_ambient_usage(usage_sink, present_character_ids):
+    """Bills a non-player-triggered AI call (a storm-out headcount check, the daily sweep) per the
+    confirmed cost model in NOTES.md: split evenly across every present player, each charged only
+    pricing.AMBIENT_COST_PLAYER_SHARE of their share - the rest isn't charged to anyone.
+    Local/anonymous-owned characters are skipped (no real budget to charge, same as everywhere else
+    in this app). No-op if usage_sink is empty or nobody present has a billable account. Pure
+    db/pricing calls, no Flask dependency - safe to call from the background scheduler thread as well
+    as from a request handler."""
     if not usage_sink:
         return
     total_cost = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
@@ -619,7 +616,7 @@ def bill_shared_usage(usage_sink, present_character_ids):
             payers.append((cid, owner["id"]))
     if not payers:
         return
-    per_player_cost = pricing.split_shared_cost_per_player(total_cost, len(payers))
+    per_player_cost = pricing.split_ambient_cost_per_player(total_cost, len(payers))
     representative = max(usage_sink, key=lambda u: u.get("input_tokens", 0) + u.get("output_tokens", 0))
     for cid, user_id in payers:
         db.record_usage(
@@ -696,7 +693,7 @@ def sweep_server(provider, model, server_id):
     occupied location, asks detect_location_should_conclude and concludes it if so.
 
     Returns a list of per-location {"location_id", "usage_sink", "present_character_ids",
-    "concluded"} dicts - billing each location's usage (via bill_shared_usage above) is left to the
+    "concluded"} dicts - billing each location's usage (via bill_ambient_usage above) is left to the
     caller, so this function's job stays "decide and log," not "decide and log and bill" tangled
     together."""
     results = []
