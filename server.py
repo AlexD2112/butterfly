@@ -577,7 +577,15 @@ def api_admin_create_npc():
 
 @app.route("/api/multiplayer/servers")
 def api_multiplayer_servers():
-    return jsonify({"servers": db.list_multiplayer_servers()})
+    # game_id is folded in here (servers count is small - hobby scale, an N+1 lookup is fine) rather
+    # than added as a real column on multiplayer_servers, since games->multiplayer_servers is already
+    # the source of truth (see create_multiplayer_server) - the frontend's admin NPC-creation form is
+    # the one place that needs it (api_admin_create_npc requires game_id).
+    servers = db.list_multiplayer_servers()
+    for s in servers:
+        game = db.get_game_for_server(s["id"])
+        s["game_id"] = game["id"] if game else None
+    return jsonify({"servers": servers})
 
 
 @app.route("/api/multiplayer/servers/<int:server_id>/rooms")

@@ -1,3 +1,100 @@
+# Multiplayer phase 7: the frontend (2026-08-21)
+
+Everything through phase 6 was backend-only - tested API endpoints, zero UI. This phase builds the
+actual UI in `static/index.html`, reusing single-player's plumbing wherever the shapes match
+(renderSidebar, renderMechanics, escapeHtml, the character-creation screens/functions, loadModels -
+all now parametrized/shared rather than duplicated) rather than writing a second app.
+
+## New screens
+
+Start menu gets a third option, "Multiplayer", leading to: a server list (admin-only "+ Create
+Server" form) -> a server lobby (your characters in that server + a "+ New Character" picker reusing
+the existing premade/custom creation screens + the room list, each room admin-expandable with
+"+ Location"/"+ NPC" inline forms, + a recent-rumors feed) -> the room itself, a new `#mp-app` screen
+parallel to single-player's `#app`: a location bar (current room/location, a move-within-room
+dropdown, Mark Scene Concluded / Storm Out), a combat bar that only appears during an active fight
+(initiative order, current actor highlighted, Action locked out when it isn't your turn - `resolve_action`
+enforces this server-side regardless, so this is a UX nicety, not the real gate), a message/action
+toggle, reply-to threading (click Reply on any message/action/npc_reply/gm_reply, shows a chip, clears
+after send), and live updates via the existing SSE endpoint.
+
+**The character sheet slide-out is a single shared instance, not duplicated per screen.** It's
+`position:fixed`, so it must live OUTSIDE both `#app` and `#mp-app` as a top-level sibling - nested
+inside either one, it would be hidden whenever THAT screen wasn't the active one (a `display:none`
+ancestor hides descendants regardless of the descendant's own positioning), and duplicating it once
+per screen would create two elements sharing the same ids, which `getElementById` can't distinguish.
+Caught and fixed while writing the HTML, before it ever shipped - worth flagging anyway since it's
+exactly the kind of bug that's invisible until the second screen using a "shared" element exists.
+
+## Backend additions the frontend actually needed
+
+Three small, real gaps, not scope creep - each one because an existing endpoint had no way to answer
+a question the UI needed answered:
+- `db.get_room_messages`/`get_turn_by_id` now resolve `character_name` via a join - a turn row only
+  ever had `character_id`, and there was no client-facing way to turn that into a display name.
+  `get_turn_by_id` specifically matters because that's what every SSE event is built from
+  (`live.publish_location_event(location_id, db.get_turn_by_id(...))` in multiplayer.py) - without
+  this it would've shown a name on reload but not in the live feed.
+- `GET /api/multiplayer/locations/<id>/detail` - occupants, NPCs present, active combat state +
+  whose turn it is, conclusion-mark tally, all in one call. Nothing existed that answered "what does
+  this room currently look like."
+- `GET /api/multiplayer/servers/<id>/my_characters` - lets a returning player resume instead of being
+  funneled through character creation every time. Filters `get_game_characters` (already existed, but
+  returns everyone's characters) down to the caller's own.
+- `GET /api/multiplayer/servers` now folds in each server's `game_id` (an N+1 `get_game_for_server`
+  lookup - fine at this app's server-count scale) - the admin NPC-creation form needs it and there was
+  no client-facing way to learn it otherwise.
+
+## A correctness fix while wiring the send button: the budget guard was already right, kept it that way
+
+`api_multiplayer_send`'s `budget_ok()` closure (polled mid-turn by `resolve_action`'s tool-calling
+loop) was already correct for the CURRENT billing model - full price to the sender - so it needed no
+change here. Noting this only because the immediately preceding session (see the reverted billing
+commit above) nearly generalized it to a split-cost calculation that would have been wrong under the
+model that's actually in effect; worth a flag so a future change to billing remembers this guard has
+to move in lockstep with whatever `finally` block actually charges the account.
+
+## Two real bugs found via live browser verification, not code review
+
+Tested end to end against a throwaway copy of the app (own directory, own SQLite file, real API keys
+from a copied `.env`) rather than the live local-hosted instance on port 5000 - that port turned out
+to already be running the user's real server backed by the real database, and admin actions taken
+during UI testing (creating servers/rooms/NPCs, sending messages) would have written straight into
+production data visible on the live tunnel. Copying the repo to a scratch directory and running on a
+different port kept verification real (actual server.py, actual SQLite, actual OpenAI calls) without
+that risk. `window.prompt()`-based flows (admin unlock, storm-out's final message) can't be driven by
+the browser automation tool directly - stubbed `window.prompt` via the console for those specific
+clicks; the app code path itself was exercised unmodified.
+
+1. **`createPremadeAndLaunch`/`submitCreation` called `launchMpLobbyPostCreate(data.character_id)`
+   without the character's name** - the second parameter was just missing. Surfaced immediately as a
+   literal "undefined is ready - choose a room below to enter." status message on the very first
+   character creation. Fixed by passing `data.state.character.name` at both call sites.
+2. **An NPC's reply showed its raw key ("OLD_SAILOR") instead of its display name** - `turns.responder`
+   stores the NPC's `key` (matching `npcs.key`), not its name, and the initial render had nothing
+   resolving one to the other. Fixed with a small `key -> name` map (`MP_NPC_NAME_BY_KEY`), populated
+   from the location-detail response's `npcs` list and consulted by `resolveResponderName`.
+
+Also confirmed, live, working correctly: NPC judging + reply, reply-to-a-reply continuing the same
+voice without re-judging (`handle_message`'s documented short-circuit), an action resolving through
+the real `engine.run_turn` with a critical-failure check correctly flagged (⚑, with the real
+`council.detect_stakes_signals` reason in its tooltip) and its mechanics panel rendering, Mark Scene
+Concluded's live mark count, Storm Out (including the case where the room's only other location IS
+its default, so storming out doesn't visibly relocate the character - correct given that room's
+structure, not a bug), and the SSE connection staying open (`readyState === 1`) throughout. Full
+backend suite: 203/203 (three new tests since phase 6: `/locations/<id>/detail`,
+`/servers/<id>/my_characters`, and `character_name` on `location_messages`).
+
+## What's still not built
+
+Everything from the original spec is now reachable through the UI except: no dedicated rumor
+detail/history view beyond the lobby's list (broadcasts only, no per-rumor drill-down), no NPC
+character-sheet viewer for players (only admins see personality/traits at creation time), and no
+visual distinction yet for a message vs. an action beyond the "(action)" suffix and italics. None of
+these were asked for explicitly: worth asking before building further, not assuming.
+
+---
+
 # Multiplayer phase 6: rumors, significance flags, and live updates (2026-08-21)
 
 The last major backend piece of the multiplayer build. Two real bugs found and fixed along the way -
