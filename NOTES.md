@@ -1,3 +1,95 @@
+# Multiplayer, phase 1: admin unlock + games schema foundation (2026-08-21)
+
+First real implementation slice of the big multiplayer feature request, now that most of the open
+design questions have been answered across several rounds of back-and-forth (see the planning
+entries below this one for the full question list and reasoning). This phase deliberately covers
+only what was fully unblocked and foundational - admin access, and the `games` schema everything
+else (rooms, NPCs, multiplayer turns) will attach to. Rooms/locations, the real-time layer, NPC
+character sheets, message/action judging, initiative, rumors, and the multiplayer budget model are
+NOT in this phase - see "Still to build" below.
+
+## Admin unlock
+
+- `users.is_admin` (new column, same ALTER-TABLE-and-swallow pattern as `budget_usd`) - persisted on
+  the account per my proposed default (never explicitly confirmed, but not objected to either, and
+  "keep going on what's confirmed" was the standing instruction) - so the code doesn't need
+  re-entering every login.
+- `POST /api/admin/unlock` checks the code against `server.ADMIN_UNLOCK_CODE = "ElfbertWasRight"`
+  server-side (not client-side) - not because this needed to be secure (it explicitly doesn't yet),
+  but because a server-side check means the flag change goes through the same trusted mutation path
+  as everything else, for free. `/api/me` now also reports `is_admin`.
+- Frontend: a new "Account" chip in the in-game header, positioned left of the controls next to the
+  "Butterfly — {setting}" title (matching "top left, right of the Butterfly - Setting area" exactly).
+  Click opens a small dropdown; "Admin - enter code" prompts for the code via a plain `window.prompt`
+  (simplest faithful implementation of "dropdown → enter code," no need for a custom modal for a
+  single text field) and POSTs it. Shows "(Admin)" next to the account name once granted.
+- **Real caveat, worth knowing, not fixed**: for a local/anonymous session, this grants admin to the
+  single shared row every anonymous visitor deployment-wide uses (see `db.py`'s own docstring on
+  that) - meaning entering the code as a local visitor makes every other anonymous visitor an admin
+  too, not just the one who typed it. Harmless while nothing is actually admin-gated yet (multiplayer
+  server creation will be the first real stakes), but flagging now rather than after something
+  depends on it. If this matters before multiplayer creation ships, the fix is requiring a real
+  Discord login for the unlock route specifically - not done here since it wasn't asked for and adds
+  friction to what's explicitly meant to stay simple.
+- **The code itself is visible in `server.py`, checked into source control.** If this repo is ever
+  public, anyone reading the source has the code - consistent with "no security privileges right now
+  so no issue," but stating it plainly rather than assuming that's understood.
+
+## `games` schema - the foundation multiplayer attaches to
+
+- New `games` table: `id`, `mode` ('single'/'multiplayer'), `setting_key`, `system_key`,
+  `multiplayer_server_id` (NULL for now - that table doesn't exist until the multiplayer-server
+  feature itself is built). Per your confirmation, "character log" is just the roster (which
+  characters belong to a game) - `db.get_game_characters()` - not a state-change history.
+- `characters` and `turns` both got a new `game_id` column. `create_character()` now creates a
+  matching single-player `games` row in the same call (a single-player game and its one character
+  are still created together, same as before - just with an explicit `games` row backing it now).
+  `record_turn()` looks up the character's `game_id` and tags the turn with it. `create_game()` is
+  the direct-creation path multiplayer will use later, for a game with many characters attached
+  after the fact rather than one created inline.
+- **Migration, per your explicit instruction not to lose pre-existing games**: `_backfill_games()`
+  runs on every `init_db()` call (every process start) and finds every character with `game_id IS
+  NULL` (i.e., every character that predates this feature), creates a matching single-player `games`
+  row for it, and backfills both the character's and its turns' `game_id`. Idempotent by
+  construction - only ever touches unmigrated rows, so it's a cheap no-op on every subsequent
+  restart once a database is fully migrated. Verified this exact path directly: manually inserted a
+  "pre-migration-style" character+turn row bypassing the new code paths, called `init_db()` again,
+  confirmed both got backfilled correctly and that a second `init_db()` call doesn't create
+  duplicate `games` rows for the same character.
+
+## Verified for real
+
+Ran the actual server (not just the test suite): created a real character through the live app and
+confirmed its `games` row in the actual database, not just a mocked one. Drove the real browser
+through the full landing→game flow and confirmed the account chip renders, shows the "(Admin)" badge
+correctly once unlocked, and the dropdown opens/closes (including closing on an outside click) with
+zero console errors. Hit `/api/admin/unlock` for real with both a wrong and the correct code and
+confirmed the persisted result via a fresh `/api/me` call. 114/114 tests passing (11 new: 5 for
+admin unlock, 6 for the games schema/migration).
+
+## Still to build (next phases, not started)
+
+- Rooms + locations (confirmed: multiple concurrent sub-conversations per room, with per-message
+  visibility lists rather than "whoever's currently in the room" - so arriving later doesn't
+  retroactively grant access to earlier messages).
+- Message/action UI + reply-threading + the corrected NPC-judging design (real yes/no "does anyone
+  respond" gate, THEN pick a specific NPC's voice or the GM's voice - not "always responds," per your
+  correction to my earlier reading).
+- NPCs as first-class entities with real character sheets (personality, memory) fed into the AI's
+  context and referenceable during action resolution - deeper than the location-tracking-only scope
+  I'd originally proposed.
+- Multi-character actions + combat initiative/turn order.
+- Room conclusion mechanics (unanimous mark-concluded, storm-out + AI headcount judgment, the daily
+  sweep).
+- Rumor generation + tick broadcasts, on a real APScheduler-driven schedule (not lazy/request-
+  triggered) tied into an in-process SSE event bus for live updates.
+- The 0.5x multiplayer budget model, plus the confirmed cost-sharing rule for ambient/non-player-
+  triggered AI calls (split evenly across present players, each charged only 50% of their share -
+  you're covering the other 50% yourself, which in practice means simply not deducting that portion
+  from anyone's budget rather than needing a real payment mechanism).
+
+---
+
 # De-AI-ified the UI chrome (2026-08-21)
 
 You approved a full sweep after the earlier diagnose-only pass, with explicit instruction to leave

@@ -110,6 +110,19 @@
     display: none; }
   #sheet-toggle-btn.has-update .dot { display: inline-block; }
 
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  #account-menu { position: relative; }
+  #account-btn { background: none; border: none; color: var(--muted); font-family: var(--font-ui);
+    font-size: 12.5px; cursor: pointer; padding: 4px 6px; }
+  #account-btn:hover { color: var(--accent-2); }
+  #account-dropdown { position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 4px; padding: 4px; min-width: 170px; z-index: 60;
+    display: none; box-shadow: 0 6px 16px rgba(0,0,0,0.3); }
+  #account-dropdown.open { display: block; }
+  #account-dropdown button { display: block; width: 100%; text-align: left; background: none; border: none;
+    padding: 7px 8px; font-size: 12.5px; border-radius: 3px; }
+  #account-dropdown button:hover { background: var(--panel); border-color: transparent; }
+
   #log { grid-column: 1; min-width: 0; overflow-y: auto; padding: 32px 24px 100px; line-height: 1.6;
     display: flex; flex-direction: column; align-items: center; }
   .turn { width: 100%; max-width: var(--content-width); min-width: 0; margin-bottom: 26px; }
@@ -273,7 +286,15 @@
 <!-- Screen 6: the game itself -->
 <div id="app">
   <header>
-    <h1 id="game-header">Butterfly</h1>
+    <div class="header-left">
+      <h1 id="game-header">Butterfly</h1>
+      <div id="account-menu">
+        <button id="account-btn">Account &#9662;</button>
+        <div id="account-dropdown">
+          <button id="admin-unlock-btn">Admin - enter code</button>
+        </div>
+      </div>
+    </div>
     <div class="controls">
       <span id="header-budget"></span>
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
@@ -606,6 +627,7 @@ function launchGame(characterId, isNew) {
   loadModels();
   loadCharacterState(isNew);
   renderBudget(CURRENT_USER && CURRENT_USER.budget);
+  renderAccountMenu();
 }
 
 document.getElementById('menu-btn').addEventListener('click', () => {
@@ -624,6 +646,44 @@ const modelSelect = document.getElementById('model-select');
 const inputBox = document.getElementById('inputbox');
 const sendBtn = document.getElementById('send-btn');
 const statusEl = document.getElementById('status');
+
+// ---------------- account menu (in-game header, left of the controls) ----------------
+const accountBtn = document.getElementById('account-btn');
+const accountDropdown = document.getElementById('account-dropdown');
+
+function renderAccountMenu() {
+  if (!CURRENT_USER) return;
+  const name = CURRENT_USER.is_local ? 'Local Player' : (CURRENT_USER.username || 'Account');
+  accountBtn.textContent = `${name}${CURRENT_USER.is_admin ? ' (Admin)' : ''} ▾`;
+}
+
+accountBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  accountDropdown.classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+  if (!accountDropdown.contains(e.target) && e.target !== accountBtn) {
+    accountDropdown.classList.remove('open');
+  }
+});
+
+document.getElementById('admin-unlock-btn').addEventListener('click', async () => {
+  accountDropdown.classList.remove('open');
+  const code = window.prompt('Enter admin code:');
+  if (code === null) return;  // cancelled
+  const res = await fetch('/api/admin/unlock', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    CURRENT_USER.is_admin = true;
+    renderAccountMenu();
+    setStatus('Admin unlocked.');
+  } else {
+    setStatus(data.error || 'Incorrect admin code.');
+  }
+});
 
 // ---------------- character sheet slide-out panel ----------------
 function openSheet() {

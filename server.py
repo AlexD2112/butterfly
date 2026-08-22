@@ -119,10 +119,28 @@ def api_me():
             "username": user["username"],
             "avatar_url": user["avatar_url"],
             "is_local": bool(user["is_local"]),
+            "is_admin": bool(user["is_admin"]),
             "discord_login_available": discord_oauth.is_configured(),
             "budget": budget,
         }
     )
+
+
+# Deliberately a simple shared string, not a real secret - per explicit instruction, no admin-gated
+# functionality carries real security stakes yet. This IS checked into source control - if this repo
+# is ever public, treat the code as public knowledge too, not a real access control.
+ADMIN_UNLOCK_CODE = "ElfbertWasRight"
+
+
+@app.route("/api/admin/unlock", methods=["POST"])
+def api_admin_unlock():
+    user = current_user()
+    body = request.get_json(force=True)
+    code = body.get("code") or ""
+    if code != ADMIN_UNLOCK_CODE:
+        return jsonify({"ok": False, "error": "Incorrect code."}), 400
+    db.set_is_admin(user["id"], True)
+    return jsonify({"ok": True, "is_admin": True})
 
 
 @app.route("/auth/discord/login")

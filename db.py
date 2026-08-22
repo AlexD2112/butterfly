@@ -76,6 +76,13 @@ def init_db():
         conn.execute(f"ALTER TABLE users ADD COLUMN budget_usd REAL NOT NULL DEFAULT {DEFAULT_BUDGET_USD}")
     except sqlite3.OperationalError:
         pass  # column already exists
+    # is_admin - deliberately simple/low-stakes (see server.py's ADMIN_UNLOCK_CODE comment): no
+    # admin-gated functionality carries real security stakes yet, this just needs to persist across
+    # logins so the code doesn't need re-entering every session.
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS usage_events (
@@ -114,6 +121,65 @@ def init_db():
         )
         """
     )
+    # games - the top-level playthrough container multiplayer needs (2026-08-21): a single-player
+    # game has exactly one character; a multiplayer game has many, one per participating player, all
+    # tied to the same multiplayer_server_id (that table doesn't exist yet - added once the
+    # multiplayer-server feature itself is built; NULL here always means single-player for now).
+    # "Character log" is deliberately just the roster (which characters belong to this game) - the
+    # existing `turns` table is already the message/action log this was meant to avoid duplicating.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mode TEXT NOT NULL DEFAULT 'single',
+            setting_key TEXT NOT NULL,
+            system_key TEXT NOT NULL,
+            multiplayer_server_id INTEGER,
+            created_at REAL NOT NULL
+        )
+        """
+    )
+    try:
+        conn.execute("ALTER TABLE characters ADD COLUMN game_id INTEGER REFERENCES games(id)")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+    try:
+        conn.execute("ALTER TABLE turns ADD COLUMN game_id INTEGER REFERENCES games(id)")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+    _backfill_games(conn)
+    conn.commit()
+    conn.close()
+
+
+def _backfill_games(conn):
+    """Every character that predates the `games` table gets a fresh game_id backfilled (mode=single,
+    one game per pre-existing character - a game and a character were the same thing before
+    multiplayer existed, so this preserves that 1:1 relationship exactly, losing nothing). Every turn
+    belonging to a freshly-backfilled character gets the same game_id. Idempotent by construction -
+    only ever touches rows where game_id IS NULL, so calling this on every init_db() (every process
+    start) is safe and cheap once a database is fully migrated (a no-op query, not a real migration
+    each time)."""
+    orphaned = conn.execute("SELECT id, setting_key, system_key FROM characters WHERE game_id IS NULL").fetchall()
+    for char in orphaned:
+        cur = conn.execute(
+            "INSERT INTO games (mode, setting_key, system_key, multiplayer_server_id, created_at) "
+            "VALUES ('single', ?, ?, NULL, ?)",
+            (char["setting_key"], char["system_key"], time.time()),
+        )
+        game_id = cur.lastrowid
+        conn.execute("UPDATE characters SET game_id = ? WHERE id = ?", (game_id, char["id"]))
+        conn.execute("UPDATE turns SET game_id = ? WHERE character_id = ? AND game_id IS NULL", (game_id, char["id"]))
+
+
+def set_is_admin(user_id, value):
+    """See server.py's ADMIN_UNLOCK_CODE - deliberately simple, no real security hardening intended
+    yet. NOTE: for a local/anonymous user this grants admin to the single shared row every anonymous
+    visitor deployment-wide uses (see this module's own docstring) - meaning every other unauthenticated
+    visitor becomes admin too, not just the one who entered the code. Harmless while nothing
+    admin-gated exists yet, but worth knowing before this code is shared casually."""
+    conn = get_db()
+    conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if value else 0, user_id))
     conn.commit()
     conn.close()
 
@@ -170,17 +236,57 @@ def list_characters(user_id):
 
 
 def create_character(user_id, setting_key, system_key, name, state, is_premade=False):
+    """Every character created through this path is (for now) automatically a single-player game -
+    multiplayer games get created directly via create_game() once that feature exists, with
+    characters attached to an already-existing game_id instead."""
     now = time.time()
     conn = get_db()
+    game_cur = conn.execute(
+        "INSERT INTO games (mode, setting_key, system_key, multiplayer_server_id, created_at) "
+        "VALUES ('single', ?, ?, NULL, ?)",
+        (setting_key, system_key, now),
+    )
+    game_id = game_cur.lastrowid
     cur = conn.execute(
-        "INSERT INTO characters (user_id, setting_key, system_key, name, is_premade, state_json, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (user_id, setting_key, system_key, name, 1 if is_premade else 0, json.dumps(state), now, now),
+        "INSERT INTO characters (user_id, setting_key, system_key, name, is_premade, state_json, game_id, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, setting_key, system_key, name, 1 if is_premade else 0, json.dumps(state), game_id, now, now),
     )
     conn.commit()
     character_id = cur.lastrowid
     conn.close()
     return character_id
+
+
+def create_game(mode, setting_key, system_key, multiplayer_server_id=None):
+    """Direct game creation, for multiplayer (a game with many characters, all attached to the same
+    game_id after the fact) - single-player games are still created inline by create_character()
+    above, not through this function, since a single-player game and its one character are always
+    created together in one step today."""
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO games (mode, setting_key, system_key, multiplayer_server_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (mode, setting_key, system_key, multiplayer_server_id, time.time()),
+    )
+    conn.commit()
+    game_id = cur.lastrowid
+    conn.close()
+    return game_id
+
+
+def get_game(game_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_game_characters(game_id):
+    """The 'character log' for a game - which characters belong to it. See games table comment."""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM characters WHERE game_id = ?", (game_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def get_character(character_id, user_id):
@@ -256,10 +362,12 @@ def record_turn(character_id, turn_number, player_input, narration, model_key, d
     save_character_state - a failed/errored turn (caught earlier in that route) never reaches here,
     matching how campaign_log_summary already only records completed turns."""
     conn = get_db()
+    char_row = conn.execute("SELECT game_id FROM characters WHERE id = ?", (character_id,)).fetchone()
+    game_id = char_row["game_id"] if char_row else None
     conn.execute(
         "INSERT INTO turns (character_id, turn_number, player_input, narration, model_key, "
-        "debug_events_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (character_id, turn_number, player_input, narration, model_key, json.dumps(debug_events), time.time()),
+        "debug_events_json, game_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (character_id, turn_number, player_input, narration, model_key, json.dumps(debug_events), game_id, time.time()),
     )
     conn.commit()
     conn.close()
