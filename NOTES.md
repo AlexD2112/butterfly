@@ -1,3 +1,53 @@
+# Fourth overdescription pass - the landing text itself, plus a naming diagnosis (2026-08-22)
+
+Direct follow-up: even the exact verbatim text from the previous pass was, on reflection, still
+over-described. Named the actual pattern this time - "explain by negation": stating a fact, then
+adding a "not just X" clause that restates the same point defensively instead of just trusting the
+positive statement. Grepped for it (`not just|not simply|rather than just|instead of just`) - it was
+confined to exactly the two sentences flagged, confirming this wasn't spread everywhere, just habitual
+in those two spots.
+
+## Landing text, before and after
+
+Before: "...it's resolved with an actual dice roll against your character's stats, **not just
+narrated however it seems to fit in the moment**." / "...the game keeps track of that as a real
+divergence, **not just a line of flavor text**."
+
+After: "A game master narrates the story and plays every character you meet. Risky actions are
+resolved with a dice roll against your character's stats." / "Four settings so far: Leon Trotsky in
+Petrograd in 1917, Alfred the Great fighting off the Vikings in 876, Julius Caesar in Rome, and
+Bohemond of Taranto on the First Crusade. Play the setting's signature character, or build your own.
+Diverge from history, and the game tracks it as a real change to the story."
+
+Both negation clauses dropped entirely - the positive statement already carried the fact
+("resolved with a dice roll" already means it's not vibes-narrated; "tracks it as a real change"
+already means it's not flavor text). All real facts kept: all four settings/dates/names, the two
+character-start options, the dice-not-vibes mechanic, divergence tracking.
+
+## Same lens applied to everything touched in the last two passes
+
+- "The setting's signature character, ready to go." → "The setting's signature character." ("ready
+  to go" was redundant with the button's own "Play as X" label already implying immediacy.)
+- "Build a new character from scratch on this setting's system." → "Build a new character for this
+  setting." (cut "from scratch," redundant with "new"; simplified "on this setting's system.")
+- "Join a shared server — talk and act alongside other players." → "...talk and act **with** other
+  players." (shorter word, same meaning.)
+- Council Mode tooltip: cut "specialist" and "the...panel" from "reviewed by a panel of specialist
+  judges...see the Mechanics panel below" → "reviewed by a panel of judges...see Mechanics below."
+- Liabilities header: restructured "grants N extra skill points, in exchange for a narrative
+  constraint" → "granting N extra skill points for a narrative constraint" - same fact, fewer words.
+
+Still deliberately left alone: feat/liability catalog descriptions in `systems/*/mechanics.py` - see
+the previous NOTES.md entry for why (they're injected into the AI's system prompt every turn and are,
+for most feats/liabilities, the entire mechanical effect - not chrome).
+
+## Verification
+
+Full suite 209/209 (copy-only change, no logic touched). Re-grepped for the negation pattern
+afterward - zero remaining matches in user-facing text.
+
+---
+
 # Third overdescription pass - and a real distinction found along the way (2026-08-22)
 
 Two earlier passes ("De-AI-ified the UI chrome", and a follow-up "more subtle" pass) weren't

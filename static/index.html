@@ -294,8 +294,8 @@
 <div class="menu-screen active" id="screen-landing">
   <div class="eyebrow">Butterfly</div>
   <h1 class="landing-title">Change history.</h1>
-  <div class="subtitle">A game master narrates the story and plays every character you meet. When you attempt something risky, it's resolved with an actual dice roll against your character's stats, not just narrated however it seems to fit in the moment.</div>
-  <p class="landing-pitch">Four settings so far: Leon Trotsky in Petrograd in 1917, Alfred the Great fighting off the Vikings in 876, Julius Caesar in Rome, and Bohemond of Taranto on the First Crusade. Play the setting's main historical character, or build your own from scratch. If you end up making different choices than history did, the game keeps track of that as a real divergence, not just a line of flavor text.</p>
+  <div class="subtitle">A game master narrates the story and plays every character you meet. Risky actions are resolved with a dice roll against your character's stats.</div>
+  <p class="landing-pitch">Four settings so far: Leon Trotsky in Petrograd in 1917, Alfred the Great fighting off the Vikings in 876, Julius Caesar in Rome, and Bohemond of Taranto on the First Crusade. Play the setting's signature character, or build your own. Diverge from history, and the game tracks it as a real change to the story.</p>
   <div id="user-status" class="user-chip"></div>
   <div id="landing-budget" class="budget-chip"></div>
   <button class="menu-option landing-begin" id="opt-begin">
@@ -321,7 +321,7 @@
     </button>
     <button class="menu-option" id="opt-multiplayer">
       <div class="opt-title">Multiplayer</div>
-      <div class="opt-desc">Join a shared server — talk and act alongside other players.</div>
+      <div class="opt-desc">Join a shared server — talk and act with other players.</div>
     </button>
   </div>
 </div>
@@ -457,7 +457,7 @@
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
-      <span title="Every turn is reviewed by a panel of specialist judges - see the Mechanics panel below for what they found.">Council Mode: always on</span>
+      <span title="Every turn is reviewed by a panel of judges - see Mechanics below for what they found.">Council Mode: always on</span>
       <button id="sheet-toggle-btn" title="Character sheet">Character Sheet <span class="dot"></span></button>
     </div>
   </header>
@@ -683,7 +683,7 @@ async function loadCharacterScreen() {
   } else {
     html += `<button class="menu-option" data-premade="1">
       <div class="opt-title">Play as ${escapeHtml(data.premade_name)}</div>
-      <div class="opt-desc">The setting's signature character, ready to go.</div>
+      <div class="opt-desc">The setting's signature character.</div>
     </button>`;
   }
   customs.forEach(c => {
@@ -694,7 +694,7 @@ async function loadCharacterScreen() {
   });
   html += `<button class="menu-option" id="create-custom-btn">
     <div class="opt-title">+ Create Custom Character</div>
-    <div class="opt-desc">Build a new character from scratch on this setting's system.</div>
+    <div class="opt-desc">Build a new character for this setting.</div>
   </button>`;
   document.getElementById('character-options').innerHTML = html;
 
@@ -781,7 +781,7 @@ async function openCreationForm() {
       ${feats}
     </div>
     <div class="creation-section">
-      <h3>Starting Liabilities — optional, up to 2. Each grants ${s.liability_bonus_skill_points} extra skill points, in exchange for a narrative constraint.</h3>
+      <h3>Starting Liabilities — optional, up to 2, each granting ${s.liability_bonus_skill_points} extra skill points for a narrative constraint.</h3>
       ${liabilities}
     </div>
     <div class="creation-error" id="cc-error"></div>
@@ -1378,11 +1378,11 @@ document.getElementById('mp-new-character-btn').addEventListener('click', () => 
   document.getElementById('mp-new-character-options').innerHTML = `
     <button class="menu-option" id="mp-premade-btn">
       <div class="opt-title">Play as ${escapeHtml(SELECTED_SETTING.premade_character_name)}</div>
-      <div class="opt-desc">The setting's signature character, ready to go.</div>
+      <div class="opt-desc">The setting's signature character.</div>
     </button>
     <button class="menu-option" id="mp-custom-btn">
       <div class="opt-title">+ Create Custom Character</div>
-      <div class="opt-desc">Build a new character from scratch on this setting's system.</div>
+      <div class="opt-desc">Build a new character for this setting.</div>
     </button>
   `;
   document.getElementById('mp-premade-btn').addEventListener('click', createPremadeAndLaunch);
