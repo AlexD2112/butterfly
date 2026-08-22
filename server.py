@@ -668,15 +668,25 @@ def api_multiplayer_send(character_id):
         except providers.ProviderError as e:
             return jsonify({"error": str(e)}), 400
 
-        # Interim cost model: the sender is charged at normal single-player rates for now - the
-        # confirmed 0.5x-shared/50%-subsidized cost split is a separate piece of the multiplayer
-        # budget phase, not built yet (see NOTES.md). Charging the sender normally in the meantime is
-        # safer than leaving multiplayer messages untracked/free.
+        # Real cost model, closed 2026-08-21 (previously the sender was charged full single-player
+        # rate as an interim placeholder - see NOTES.md): every multiplayer message/action's cost is
+        # split evenly across every present player, each charged only
+        # pricing.MULTIPLAYER_COST_PLAYER_SHARE of their share, same as the ambient calls already
+        # used. present_character_ids is captured once, up front, and reused for BOTH the live
+        # budget_ok() guard below and the final billing - so the guard's estimate of "my share" and
+        # what actually gets charged always agree with each other, even if presence changed
+        # mid-resolution for some reason.
+        present_character_ids = db.characters_at_location(presence["location_id"])
+        num_payers = max(1, sum(
+            1 for cid in present_character_ids
+            if (db.get_character_owner(cid) or {}).get("is_local") is False
+        ))
         usage_sink = []
 
         def budget_ok():
-            spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
-            return (budget_before["remaining_usd"] - spent_this_turn) > 0
+            total_cost_so_far = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
+            my_share_so_far = pricing.split_shared_cost_per_player(total_cost_so_far, num_payers)
+            return (budget_before["remaining_usd"] - my_share_so_far) > 0
 
         response_body = {}
         try:
@@ -712,13 +722,7 @@ def api_multiplayer_send(character_id):
         except Exception as e:
             return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
         finally:
-            for usage in usage_sink:
-                cost = pricing.estimate_cost_usd(usage)
-                db.record_usage(
-                    user["id"], character_id, usage["provider"], usage["model"],
-                    usage["input_tokens"], usage["output_tokens"],
-                    usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
-                )
+            multiplayer.bill_shared_usage(usage_sink, present_character_ids)
 
         return jsonify(
             {
@@ -728,37 +732,6 @@ def api_multiplayer_send(character_id):
         )
     finally:
         lock.release()
-
-
-def _bill_ambient_usage(usage_sink, present_character_ids):
-    """Bills a non-player-triggered AI call (a storm-out headcount check, and eventually the daily
-    conclusion sweep) per the confirmed cost model in NOTES.md: split evenly across every present
-    player, each charged only pricing.AMBIENT_COST_PLAYER_SHARE of their share - the rest isn't
-    charged to anyone. Local/anonymous-owned characters are skipped (same as everywhere else in this
-    app - they have no real budget to charge). No-op if usage_sink is empty (no AI call was actually
-    made, e.g. the headcount check was skipped) or nobody present has a billable account."""
-    if not usage_sink:
-        return
-    total_cost = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
-    payers = []
-    for cid in present_character_ids:
-        owner = db.get_character_owner(cid)
-        if owner and not owner["is_local"]:
-            payers.append((cid, owner["id"]))
-    if not payers:
-        return
-    per_player_cost = pricing.split_ambient_cost_per_player(total_cost, len(payers))
-    # The real, meaningful number here is the dollar cost, not a precise per-token attribution across
-    # players for a call that wasn't really "any one of them acting" anyway - token counts are
-    # recorded from whichever usage entry was largest, for observability, not exactness.
-    representative = max(usage_sink, key=lambda u: u.get("input_tokens", 0) + u.get("output_tokens", 0))
-    for cid, user_id in payers:
-        db.record_usage(
-            user_id, cid, representative["provider"], representative["model"],
-            representative.get("input_tokens", 0), representative.get("output_tokens", 0),
-            representative.get("cache_read_tokens", 0), representative.get("cache_creation_tokens", 0),
-            per_player_cost,
-        )
 
 
 @app.route("/api/multiplayer/characters/<int:character_id>/mark_concluded", methods=["POST"])
@@ -791,7 +764,7 @@ def api_multiplayer_mark_concluded(character_id):
             char, presence["room_id"], presence["location_id"], provider=provider, model=model, usage_sink=usage_sink,
         )
         if concluded:
-            _bill_ambient_usage(usage_sink, present_before)
+            multiplayer.bill_shared_usage(usage_sink, present_before)
         return jsonify({"concluded": concluded, "marks": marks, "total_present": total})
     final_message = (body.get("final_message") or "").strip() or None
     remaining_before = [c for c in db.characters_at_location(presence["location_id"]) if c != character_id]
@@ -809,7 +782,7 @@ def api_multiplayer_mark_concluded(character_id):
     new_location_id, auto_concluded = multiplayer.storm_out(
         provider, model, char, presence["room_id"], presence["location_id"], final_message, usage_sink=usage_sink,
     )
-    _bill_ambient_usage(usage_sink, remaining_before)
+    multiplayer.bill_shared_usage(usage_sink, remaining_before)
 
     return jsonify({"new_location_id": new_location_id, "thread_auto_concluded": auto_concluded})
 

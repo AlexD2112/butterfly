@@ -1,3 +1,73 @@
+# Multiplayer: closing the last gap - real billing on the core gameplay loop (2026-08-21)
+
+Phase 6's summary below said "functionally complete" including the budget model. That was wrong in
+one specific way, caught before it got relayed further: the 0.5x-shared/50%-subsidized split was only
+ever wired into the *ambient* calls (storm-out's headcount check, the daily sweep, rumor
+generation/compilation) - regular multiplayer messages and actions, the actual core gameplay loop,
+were still billing the sender 100% of the raw cost, an interim placeholder from when that route was
+first built. This entry closes that gap. After this, the budget model matches the original spec
+everywhere multiplayer makes an AI call.
+
+## What changed
+
+- `pricing.AMBIENT_COST_PLAYER_SHARE` / `split_ambient_cost_per_player` renamed to
+  `MULTIPLAYER_COST_PLAYER_SHARE` / `split_shared_cost_per_player` - the "ambient" framing stopped
+  being accurate once the same split applies to player-triggered calls too.
+- `multiplayer.bill_ambient_usage` renamed to `bill_shared_usage`, same reasoning. `scheduler.py`'s
+  three call sites/references updated to match.
+- `server.py`'s duplicate local `_bill_ambient_usage` (a byte-for-byte copy of the multiplayer.py
+  version that had never actually been consolidated) deleted; the two `mark_concluded`/`storm_out`
+  call sites now go through the real shared function like everything else does.
+- `api_multiplayer_send`'s `finally` block - previously a manual loop calling `db.record_usage`
+  straight for the full raw cost, charged entirely to the sender - now calls
+  `multiplayer.bill_shared_usage(usage_sink, present_character_ids)`, splitting the cost across every
+  Discord-linked player present at the location, sender included.
+
+## A judgment call: is the sender billed differently here than in storm-out?
+
+Storm-out's headcount check deliberately excludes the character who just left from billing - they
+didn't cause that particular AI call, the remaining players' scene did. Here, the opposite: the sender
+of a message/action IS included in the split, same as everyone else present, because they genuinely
+did cause this cost through their own input. There's no reason to subsidize them further than the
+same 50% everyone else gets. If nobody else is present, `bill_shared_usage` still runs with just the
+sender as the sole payer - `split_shared_cost_per_player(cost, 1)` still applies the 50% discount, so
+even a solo action in an otherwise-empty location is cheaper than old single-player-rate billing was,
+which is an intentional, if minor, side effect of reusing one function for both cases rather than
+special-casing "am I alone."
+
+## A related fix: the mid-turn budget guard was checking the wrong number
+
+`api_multiplayer_send` already had a `budget_ok()` closure that `resolve_action` polls between tool
+calls inside `engine.run_turn`'s loop, to abort a turn early if it would blow the sender's budget.
+Before this fix it computed `spent_this_turn` from the FULL raw cost of calls made so far, checked
+against the sender's own `remaining_usd` - correct under the old full-price-to-sender model, but wrong
+now: the sender's actual eventual charge is their split share, typically much less than the raw cost.
+Left unfixed, the guard would abort turns far earlier than necessary. Fixed by computing
+`num_payers` once up front (Discord-linked characters present at the location, same rule
+`bill_shared_usage` uses) and checking `split_shared_cost_per_player(spent_so_far, num_payers)`
+against the sender's remaining budget instead - so the live guard and the final bill are now
+computing the same thing, just at different points in time. `present_character_ids` is captured once,
+before resolution starts, and reused for both the guard and the final `bill_shared_usage` call, so
+they can't disagree with each other even if presence changed mid-resolution.
+
+## Verification
+
+Added `test_action_cost_is_split_across_present_players_not_billed_full_to_sender` to
+`tests/test_multiplayer_routes.py` - two Discord-linked players in the same location, one sends an
+action, both get billed the same per-player share, and that share is asserted to be less than the raw
+call cost (not just "some positive number," which the pre-existing tests already checked and would
+have passed under either billing model). Full suite: 200/200. No live-server smoke test this time -
+unlike the SSE work, there's no waitress/real-socket-specific behavior in play here; the Flask test
+client already exercises the real route, the real `bill_shared_usage`, and a real temp SQLite budget
+ledger end to end, so a live run against a real LLM API would just spend real money to re-confirm the
+same code path the unit test already covers.
+
+With this, multiplayer's backend is genuinely functionally complete against the original spec,
+including the full budget model. It still has zero frontend/UI - every capability so far exists only
+as tested API endpoints. That's the natural next piece of work, not started here.
+
+---
+
 # Multiplayer phase 6: rumors, significance flags, and live updates (2026-08-21)
 
 The last major backend piece of the multiplayer build. Two real bugs found and fixed along the way -

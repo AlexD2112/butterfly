@@ -247,7 +247,7 @@ class TestMarkConcludedRoute(unittest.TestCase):
         # And it's specifically the 50%-subsidized rate (split across the 1 remaining player), not
         # the full cost of the single decide_continuation call that was made.
         full_cost = pricing.estimate_cost_usd(_usage())
-        expected_charge = pricing.split_ambient_cost_per_player(full_cost, 1)
+        expected_charge = pricing.split_shared_cost_per_player(full_cost, 1)
         self.assertAlmostEqual(budget_before["remaining_usd"] - budget_after["remaining_usd"], expected_charge, places=6)
 
     def test_storm_out_with_nobody_remaining_costs_nothing(self):

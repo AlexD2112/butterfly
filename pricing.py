@@ -70,19 +70,21 @@ def estimate_cost_usd(usage):
     return cost
 
 
-# Confirmed cost model (2026-08-21, NOTES.md) for multiplayer AI calls that aren't tied to any one
-# player's own action - a storm-out headcount check, the eventual daily conclusion sweep: split the
-# real cost evenly across every present player, then only charge each their AMBIENT_COST_PLAYER_SHARE
-# of that split. The rest isn't charged to anyone - the developer is personally covering it, which in
+# Confirmed cost model (2026-08-21, NOTES.md) for multiplayer: split the real cost of an AI call
+# evenly across every present player, then only charge each their MULTIPLAYER_COST_PLAYER_SHARE of
+# that split. The rest isn't charged to anyone - the developer is personally covering it, which in
 # practice just means not deducting it from any account's budget (there's no real mechanism for a
-# human to manually settle a per-call subsidy).
-AMBIENT_COST_PLAYER_SHARE = 0.5
+# human to manually settle a per-call subsidy). Originally named/scoped for "ambient" calls only
+# (storm-out headcount checks, the daily sweep) - widened 2026-08-21 to cover the core gameplay loop
+# too (regular multiplayer messages/actions), since the underlying split is identical either way; see
+# multiplayer.bill_shared_usage, the single call site both cases now go through.
+MULTIPLAYER_COST_PLAYER_SHARE = 0.5
 
 
-def split_ambient_cost_per_player(total_cost_usd, num_players):
-    """Returns each present player's charge for one ambient (non-player-triggered) AI call. 0.0 if
-    there's nobody to split across - callers should skip billing entirely in that case rather than
-    calling this with num_players=0."""
+def split_shared_cost_per_player(total_cost_usd, num_players):
+    """Returns each present player's charge for one AI call whose cost is being split across the
+    room/server rather than billed to a single account. 0.0 if there's nobody to split across -
+    callers should skip billing entirely in that case rather than calling this with num_players=0."""
     if num_players <= 0:
         return 0.0
-    return (total_cost_usd / num_players) * AMBIENT_COST_PLAYER_SHARE
+    return (total_cost_usd / num_players) * MULTIPLAYER_COST_PLAYER_SHARE

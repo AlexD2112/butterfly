@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import db
+import pricing
 import providers
 import server
 
@@ -189,6 +190,44 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self.assertIsNotNone(data["message_turn_id"])
         self.assertIsNone(data["reply_turn_id"])  # FakeProvider always says no one responds
         self.assertIn("budget", data)
+
+    def test_action_cost_is_split_across_present_players_not_billed_full_to_sender(self):
+        # Two Discord-linked players in the same location. The sender's own action still gets billed
+        # to BOTH of them (unlike storm-out's headcount check, the sender genuinely caused this cost),
+        # each at pricing.MULTIPLAYER_COST_PLAYER_SHARE of an even split - not the old interim
+        # placeholder of 100% to just the sender.
+        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+        b_user = self._login_as_discord_user("3", "PlayerB")
+        char_b_res = self.client.post(
+            "/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id},
+        )
+        character_b_id = char_b_res.get_json()["character_id"]
+        self.client.post(f"/api/multiplayer/characters/{character_b_id}/move", json={"room_id": room_id})
+
+        a_user = db.get_or_create_discord_user("2", "PlayerA", None)
+        a_budget_before = db.get_budget_status(a_user["id"])
+        b_budget_before = db.get_budget_status(b_user["id"])
+
+        self._login_as_discord_user("2", "PlayerA")
+        with patch.object(providers, "get_provider", return_value=(ActionFakeProvider(), "gpt-5.6-luna")):
+            res = self.client.post(
+                f"/api/multiplayer/characters/{character_id}/send",
+                json={"kind": "action", "content": "I look around the room.", "model_key": "luna"},
+            )
+        self.assertEqual(res.status_code, 200)
+
+        # ActionFakeProvider makes two calls for a no-combat action: engine.run_turn's one narration
+        # call, plus the post-check decide_combat classifier call - both shaped like _usage().
+        full_cost = 2 * pricing.estimate_cost_usd(_usage())
+        expected_charge = pricing.split_shared_cost_per_player(full_cost, 2)
+
+        a_budget_after = db.get_budget_status(a_user["id"])
+        b_budget_after = db.get_budget_status(b_user["id"])
+        self.assertAlmostEqual(a_budget_before["remaining_usd"] - a_budget_after["remaining_usd"], expected_charge, places=6)
+        self.assertAlmostEqual(b_budget_before["remaining_usd"] - b_budget_after["remaining_usd"], expected_charge, places=6)
+        # Sanity check this is genuinely a split, not the old full-price-to-sender behavior.
+        self.assertLess(expected_charge, full_cost)
 
 
 if __name__ == "__main__":
