@@ -28,6 +28,7 @@ load_dotenv(Path(__file__).parent / ".env")
 import db
 import discord_oauth
 import engine
+import multiplayer
 import pricing
 import providers
 
@@ -267,11 +268,21 @@ def api_create_character():
         return jsonify({"error": f"Unknown setting: {setting_key}"}), 400
     system_key = engine.SETTING_REGISTRY[setting_key]["system"]
 
+    # Optional: attach this character to an existing multiplayer server's shared game instead of
+    # creating a fresh single-player one - see db.create_character's game_id param.
+    game_id = None
+    multiplayer_server_id = body.get("multiplayer_server_id")
+    if multiplayer_server_id is not None:
+        mp_game = db.get_game_for_server(multiplayer_server_id)
+        if mp_game is None:
+            return jsonify({"error": f"Unknown multiplayer_server_id: {multiplayer_server_id}"}), 400
+        game_id = mp_game["id"]
+
     if body.get("type") == "premade":
         state = engine.load_premade_character_state(setting_key)
         state.pop("_is_new", None)
         name = state["character"]["name"]
-        character_id = db.create_character(user["id"], setting_key, system_key, name, state, is_premade=True)
+        character_id = db.create_character(user["id"], setting_key, system_key, name, state, is_premade=True, game_id=game_id)
         return jsonify({"character_id": character_id, "state": engine.build_state_digest(state), "is_new": True})
 
     if body.get("type") == "custom":
@@ -292,7 +303,7 @@ def api_create_character():
         state["character"] = character
         state["setting_pack"] = setting_key
         state["system"] = system_key
-        character_id = db.create_character(user["id"], setting_key, system_key, character["name"], state, is_premade=False)
+        character_id = db.create_character(user["id"], setting_key, system_key, character["name"], state, is_premade=False, game_id=game_id)
         return jsonify({"character_id": character_id, "state": engine.build_state_digest(state), "is_new": True})
 
     return jsonify({"error": "body.type must be 'premade' or 'custom'"}), 400
@@ -452,6 +463,222 @@ def api_character_turn(character_id):
                 "narration": narration,
                 "debug_events": debug_events,
                 "state": engine.build_state_digest(state),
+                "budget": db.get_budget_status(user["id"]),
+            }
+        )
+    finally:
+        lock.release()
+
+
+# ==================== multiplayer: admin-gated server/room/location creation ====================
+
+def _require_admin():
+    """Returns (user, None) if the current session is an admin, else (None, (response, status)) to
+    return directly from the calling route. See ADMIN_UNLOCK_CODE above - still no real security
+    hardening intended, this just gates the routes that actually do something now."""
+    user = current_user()
+    if not user["is_admin"]:
+        return None, (jsonify({"error": "Admin access required."}), 403)
+    return user, None
+
+
+@app.route("/api/admin/multiplayer_servers", methods=["POST"])
+def api_admin_create_server():
+    user, err = _require_admin()
+    if err:
+        return err
+    body = request.get_json(force=True)
+    name = (body.get("name") or "").strip()
+    setting_key = body.get("setting_key")
+    if not name or setting_key not in engine.SETTING_REGISTRY:
+        return jsonify({"error": "name and a valid setting_key are required."}), 400
+    system_key = engine.SETTING_REGISTRY[setting_key]["system"]
+    progression_speed = body.get("progression_speed") or "day"
+    try:
+        progression_rate_hours = float(body.get("progression_rate_hours") or 24)
+    except (TypeError, ValueError):
+        return jsonify({"error": "progression_rate_hours must be a number."}), 400
+    server_id = db.create_multiplayer_server(
+        name, setting_key, system_key, progression_speed, progression_rate_hours, user["id"]
+    )
+    return jsonify({"server_id": server_id})
+
+
+@app.route("/api/admin/multiplayer_servers/<int:server_id>/rooms", methods=["POST"])
+def api_admin_create_room(server_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_multiplayer_server(server_id) is None:
+        return jsonify({"error": "Unknown multiplayer server."}), 404
+    body = request.get_json(force=True)
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required."}), 400
+    room_id = db.create_room(server_id, name, body.get("description"))
+    return jsonify({"room_id": room_id})
+
+
+@app.route("/api/admin/rooms/<int:room_id>/locations", methods=["POST"])
+def api_admin_create_location(room_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_room(room_id) is None:
+        return jsonify({"error": "Unknown room."}), 404
+    body = request.get_json(force=True)
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required."}), 400
+    location_id = db.create_location(room_id, name)
+    return jsonify({"location_id": location_id})
+
+
+@app.route("/api/admin/npcs", methods=["POST"])
+def api_admin_create_npc():
+    """NPCs are scoped per-game, not per-setting - see db.py's npcs table comment. Not auto-seeded
+    from a setting's npcs.md; created explicitly here."""
+    user, err = _require_admin()
+    if err:
+        return err
+    body = request.get_json(force=True)
+    game_id = body.get("game_id")
+    key = (body.get("key") or "").strip()
+    name = (body.get("name") or "").strip()
+    if not (game_id and key and name):
+        return jsonify({"error": "game_id, key, and name are required."}), 400
+    room_id = body.get("room_id")
+    location_id = body.get("location_id")
+    npc_id = db.create_npc(
+        game_id, key, name, personality=body.get("personality", ""), traits=body.get("traits"),
+        room_id=room_id, location_id=location_id,
+    )
+    return jsonify({"npc_id": npc_id})
+
+
+# ==================== multiplayer: browsing, movement, messaging ====================
+
+@app.route("/api/multiplayer/servers")
+def api_multiplayer_servers():
+    return jsonify({"servers": db.list_multiplayer_servers()})
+
+
+@app.route("/api/multiplayer/servers/<int:server_id>/rooms")
+def api_multiplayer_rooms(server_id):
+    if db.get_multiplayer_server(server_id) is None:
+        return jsonify({"error": "Unknown multiplayer server."}), 404
+    return jsonify({"rooms": db.list_rooms(server_id)})
+
+
+@app.route("/api/multiplayer/rooms/<int:room_id>/locations")
+def api_multiplayer_locations(room_id):
+    if db.get_room(room_id) is None:
+        return jsonify({"error": "Unknown room."}), 404
+    return jsonify({"locations": db.list_locations(room_id)})
+
+
+@app.route("/api/multiplayer/characters/<int:character_id>/move", methods=["POST"])
+def api_multiplayer_move(character_id):
+    user = current_user()
+    char = db.get_character(character_id, user["id"])
+    if char is None:
+        return jsonify({"error": "Character not found."}), 404
+    body = request.get_json(force=True)
+    room_id = body.get("room_id")
+    room = db.get_room(room_id)
+    if room is None:
+        return jsonify({"error": "Unknown room."}), 400
+    location_id = body.get("location_id")
+    if location_id is None:
+        location_id = db.get_default_location(room_id)["id"]
+    elif db.get_location(location_id) is None or db.get_location(location_id)["room_id"] != room_id:
+        return jsonify({"error": "Unknown location for this room."}), 400
+    db.move_character(character_id, room["server_id"], room_id, location_id)
+    return jsonify({"ok": True, "room_id": room_id, "location_id": location_id})
+
+
+@app.route("/api/multiplayer/characters/<int:character_id>/location_messages")
+def api_multiplayer_location_messages(character_id):
+    user = current_user()
+    char = db.get_character(character_id, user["id"])
+    if char is None:
+        return jsonify({"error": "Character not found."}), 404
+    presence = db.get_character_location(character_id)
+    if presence is None:
+        return jsonify({"error": "This character isn't in a room yet."}), 400
+    messages = db.get_room_messages(presence["location_id"], character_id)
+    return jsonify({"messages": messages, "room_id": presence["room_id"], "location_id": presence["location_id"]})
+
+
+@app.route("/api/multiplayer/characters/<int:character_id>/send", methods=["POST"])
+def api_multiplayer_send(character_id):
+    user = current_user()
+    char = db.get_character(character_id, user["id"])
+    if char is None:
+        return jsonify({"error": "Character not found."}), 404
+    # Budget is Discord-only, same reasoning as the single-player turn route - see api_character_turn.
+    if user["is_local"]:
+        return jsonify({"error": "Log in with Discord to send messages.", "discord_login_required": True}), 403
+
+    presence = db.get_character_location(character_id)
+    if presence is None:
+        return jsonify({"error": "This character isn't in a room yet."}), 400
+
+    body = request.get_json(force=True)
+    kind = body.get("kind")
+    content = (body.get("content") or "").strip()
+    reply_to_turn_id = body.get("reply_to_turn_id")
+    model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
+    if not content:
+        return jsonify({"error": "Empty message."}), 400
+    if kind != "message":
+        # Full "action" resolution (with initiative/turn order for combat) is a later phase - not
+        # built yet. Rejecting clearly here rather than faking a GM response that isn't real.
+        return jsonify({"error": "Only kind='message' is supported so far - action resolution isn't built yet."}), 501
+    if model_key not in providers.MODEL_REGISTRY:
+        return jsonify({"error": f"Unknown model key: {model_key}"}), 400
+    if providers.ALLOWED_MODEL_KEYS is not None and model_key not in providers.ALLOWED_MODEL_KEYS:
+        return jsonify({"error": f"Model '{model_key}' isn't currently selectable."}), 400
+
+    lock = _turn_lock_for(user["id"])
+    if not lock.acquire(blocking=False):
+        return jsonify({"error": "Another turn is already in progress for this account."}), 429
+    try:
+        budget_before = db.get_budget_status(user["id"])
+        if budget_before["remaining_usd"] <= 0:
+            return jsonify({"error": "Out of usage budget for this account.", "budget": budget_before}), 402
+
+        try:
+            provider, model = providers.get_provider(model_key)
+        except providers.ProviderError as e:
+            return jsonify({"error": str(e)}), 400
+
+        # Interim cost model: the sender is charged at normal single-player rates for now - the
+        # confirmed 0.5x-shared/50%-subsidized cost split is a separate piece of the multiplayer
+        # budget phase, not built yet (see NOTES.md). Charging the sender normally in the meantime is
+        # safer than leaving multiplayer messages untracked/free.
+        usage_sink = []
+        try:
+            message_turn_id, reply_turn_id, responder = multiplayer.handle_message(
+                provider, model, char["game_id"], presence["room_id"], presence["location_id"],
+                character_id, content, reply_to_turn_id=reply_to_turn_id, usage_sink=usage_sink,
+            )
+        except Exception as e:
+            return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
+        finally:
+            for usage in usage_sink:
+                cost = pricing.estimate_cost_usd(usage)
+                db.record_usage(
+                    user["id"], character_id, usage["provider"], usage["model"],
+                    usage["input_tokens"], usage["output_tokens"],
+                    usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
+                )
+
+        return jsonify(
+            {
+                "message_turn_id": message_turn_id,
+                "reply_turn_id": reply_turn_id,
+                "responder": responder,
                 "budget": db.get_budget_status(user["id"]),
             }
         )

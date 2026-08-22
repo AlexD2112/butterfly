@@ -1,3 +1,90 @@
+# Multiplayer, phase 2: rooms/locations + NPC sheets + corrected message judging (2026-08-21)
+
+Continuing in build order per direction. Two real pieces this phase, both backend/data-model only -
+no chat UI yet (still its own later phase, not requested this round).
+
+## Rooms + locations, with permanent per-message visibility snapshots
+
+- `multiplayer_servers` (admin-created: name, setting/system, progression_speed, progression_rate_hours,
+  last_tick_at) each get exactly one backing `games` row (mode='multiplayer') - created via
+  `create_game()` first (server_id doesn't exist yet to link), then linked back, avoiding a circular
+  insert between the two tables without a redundant column.
+- `rooms` belong to a server; `locations` belong to a room - confirmed multiple concurrent
+  sub-conversations can run in one room, so every room can have several locations. `create_room()`
+  auto-creates a default "Main" location so movement always has somewhere valid to land.
+- `room_occupancy` has `character_id` as its PRIMARY KEY - structurally enforces "every player is
+  constantly located in exactly one room/area at a time," not just by convention. Moving between
+  locations within the same room doesn't reset `joined_room_at`; changing rooms does.
+- **The actual visibility mechanism, exactly as directed**: `turns` (reused, not duplicated - see
+  phase 1's games-schema entry) gained `room_id`, `location_id`, `kind`, `reply_to_turn_id`,
+  `responder`, and `visible_to_json`. `record_room_message()` snapshots "who's present at this
+  location right now" into `visible_to_json` ONCE, at send time, permanently - never updated
+  afterward. `get_room_messages()` filters by that frozen snapshot, not by current
+  `room_occupancy`. Verified directly (not just reasoned about): a character who arrives at a
+  location AFTER a message was sent there does not see it; a character who already saw a message
+  keeps seeing it in history even after they leave; a character who arrives correctly sees
+  everything sent after they got there.
+
+## NPC character sheets (personality + memory), fed into AI context
+
+- New `npcs` table, scoped per-game (not per-setting): `key`, `name`, `personality` (free text),
+  `traits_json`, `memory_json` (append-only, capped at the 20 most recent entries - same
+  prompt-size-sanity concern already documented for single-player's unbounded conversation history),
+  current `room_id`/`location_id`. Deliberately NOT auto-seeded from a setting's `npcs.md` - that's a
+  separate markdown-parsing feature nobody asked for; NPCs are created explicitly via
+  `POST /api/admin/npcs` for now.
+- `db.build_npc_sheet_text()` renders personality + traits + the 5 most recent memories as plain text
+  for prompt injection - the concrete "fed into the AI and referenced in actions" mechanism.
+
+## Corrected message/NPC judging - a real yes/no gate, not "always responds"
+
+You corrected my earlier reading directly: judge whether anyone responds AT ALL first, then who -
+not "always responds, just picks a voice." Implemented in the new `multiplayer.py` module:
+
+- **Reply-threading (new capability, added as part of this)**: every message can target a prior
+  `reply_to_turn_id`. Replying to another PLAYER's message skips judging entirely - GM may add a
+  brief ambient beat, but no NPC voice gets picked for it (it's obviously player-to-player). Replying
+  to an existing AI/NPC message also skips judging - we already know exactly whose voice is
+  continuing. **Only a fresh, non-reply message runs the actual judge call.**
+- The judge (`multiplayer.judge_responder`) is a forced-tool-call decision: `responds` (bool) first,
+  `responder` (an NPC key or "gm") only if true. Fails safe to no response on missing/malformed
+  output, or if the model names an NPC that isn't actually present - silence is the safer default
+  than an invented or impossible response.
+- Judging runs on `council.JUDGE_MODEL_KEY` (the same fixed cheap model, same reasoning as
+  single-player's Council Mode judges) regardless of the sender's own chosen model; the actual
+  reply text generation uses the sender's chosen model - narration quality still scales with their
+  choice, only the narrow "who responds" decision is cost-contained.
+- An NPC that replies gets a memory entry appended automatically (`db.add_npc_memory`) - the concrete
+  "referenced in actions" persistence mechanism, not just a static sheet.
+- `kind="action"` is explicitly rejected (501) for now with a clear "not built yet" message, rather
+  than faking a GM response - full action resolution (with initiative/turn order for combat) is still
+  a separate later phase, not attempted here.
+- **Interim cost note**: message sends currently charge the sender at normal single-player rates -
+  the confirmed 0.5x-shared/50%-you-subsidized cost model is still a separate later phase. Charging
+  normally in the meantime is safer than leaving multiplayer messages completely untracked/free.
+
+## Verified for real
+
+Ran a live server end-to-end (not just tests): unlocked admin, created a real multiplayer server +
+room + NPC through the actual HTTP routes, created a character attached to that server (confirmed its
+`game_id` matches the server's backing game in the real database), moved it into the room, and
+confirmed the location-messages endpoint reflects it. One thing this surfaced live, not just
+theorized: creating a SECOND fresh anonymous session and finding it was ALSO already admin - not a
+bug, but a real demonstration of the shared-local-account caveat flagged in phase 1 (every anonymous
+session shares one account, so unlocking admin as one anonymous visitor unlocks it for all of them).
+142/142 tests passing (28 new: 8 for rooms/locations/visibility, 6 for NPC sheets, 7 for the
+judging/reply logic with a scripted fake provider, 7 for the actual HTTP routes end-to-end including
+a full message-send through the real route with a mocked provider).
+
+## Still to build
+
+Multi-character actions + combat initiative/turn order; room conclusion mechanics (unanimous
+mark-concluded, storm-out, the daily sweep); rumor generation + real scheduled ticks (APScheduler) +
+the SSE live-update layer; the real 0.5x-shared/50%-subsidized multiplayer budget model (message
+sends are on interim full-price billing until then); and the actual chat UI (backend-only so far).
+
+---
+
 # Multiplayer, phase 1: admin unlock + games schema foundation (2026-08-21)
 
 First real implementation slice of the big multiplayer feature request, now that most of the open
