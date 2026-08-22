@@ -93,7 +93,12 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
         multiplayer.mark_concluded(self._char_row(char_a), self.room_id, self.location_id)
         # solo -> immediately concluded
         messages = db.get_room_messages(self.location_id, char_a)
-        self.assertTrue(any(m["kind"] == "thread_concluded" for m in messages))
+        concluded_rows = [m for m in messages if m["kind"] == "thread_concluded"]
+        self.assertTrue(concluded_rows)
+        # Real bug, found via a live SSE smoke test, not a code review: the note text used to be
+        # silently discarded for this kind (record_room_message's content routing only covered
+        # message/action and npc_reply/gm_reply, missing thread_concluded and storm_out entirely).
+        self.assertEqual(concluded_rows[0]["narration"], "The scene concludes.")
         self.assertEqual(db.get_location_conclusion_marks(self.location_id), set())
 
     def test_a_third_arrival_does_not_retroactively_count_as_having_marked(self):
@@ -121,6 +126,13 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
         # regardless of the scripted provider's answer (never even called).
         self.assertTrue(auto_concluded)
         self.assertNotIn("decide_continuation", fake.calls)
+
+        # The final flavor message's actual text must land somewhere retrievable - see the
+        # content-routing bug fix in db.record_room_message (found via a live SSE smoke test).
+        messages = db.get_room_messages(self.location_id, char_id)
+        storm_rows = [m for m in messages if m["kind"] == "storm_out"]
+        self.assertEqual(len(storm_rows), 1)
+        self.assertEqual(storm_rows[0]["player_input"], "I storm off in a rage!")
 
     def test_storm_out_with_others_remaining_asks_whether_to_continue(self):
         leaver_id = self._make_character("2", "Leaver")

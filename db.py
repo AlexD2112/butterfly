@@ -297,6 +297,50 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    # Significance flags on individual turns (2026-08-21) - "a small flag gets created on it" for an
+    # in-progress action the app judges important. Reuses council.detect_stakes_signals, the same
+    # FREE, rule-based signal detector single-player's own council-router already relies on - no new
+    # AI call needed per action, just reading debug_events for critical rolls/canon events/big
+    # resource swings that are already being computed anyway.
+    for col_sql in [
+        "ALTER TABLE turns ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE turns ADD COLUMN flag_reason TEXT",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # Rumors (2026-08-21): a summary generated whenever a thread concludes (see
+    # multiplayer.generate_rumor), held unpublished until the next tick compiles every accumulated
+    # rumor into one server-wide rumor_broadcasts entry (multiplayer.compile_and_publish_rumors).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rumors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id INTEGER NOT NULL REFERENCES multiplayer_servers(id),
+            room_id INTEGER NOT NULL REFERENCES rooms(id),
+            location_id INTEGER NOT NULL REFERENCES locations(id),
+            summary TEXT NOT NULL,
+            importance INTEGER NOT NULL,
+            publicity INTEGER NOT NULL,
+            created_at REAL NOT NULL,
+            published_at REAL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rumor_broadcasts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id INTEGER NOT NULL REFERENCES multiplayer_servers(id),
+            content TEXT NOT NULL,
+            rumor_count INTEGER NOT NULL,
+            published_at REAL NOT NULL
+        )
+        """
+    )
+
     _backfill_games(conn)
     conn.commit()
     conn.close()
@@ -692,27 +736,40 @@ def build_npc_sheet_text(npc_row):
 # ==================== room messages (multiplayer's shared log, in `turns`) ====================
 
 def record_room_message(game_id, room_id, location_id, character_id, kind, content, reply_to_turn_id=None,
-                         responder=None, model_key=None, debug_events=None):
+                         responder=None, model_key=None, debug_events=None, flagged=False, flag_reason=None):
     """Records one row in the shared multiplayer log - a player's message/action, or an AI/NPC/GM
     reply to one - reusing `turns` rather than a parallel table (see the games-schema NOTES.md entry).
     visible_to_json is a PERMANENT snapshot of who was present in this location at send time, taken
     once here and never updated afterward - the actual mechanism that keeps someone who arrives later
     from seeing messages sent before they got there, per direction (not inferred from current
-    room_occupancy, which would retroactively leak history to new arrivals)."""
+    room_occupancy, which would retroactively leak history to new arrivals). flagged/flag_reason are
+    the significance markers (see turns' flagged column comment) - set by the caller from
+    council.detect_stakes_signals, a free check, not a new AI call."""
+    # Which field content actually lands in, by kind: player-authored text (message/action/storm_out
+    # - storm_out's final flavor line is still the PLAYER's own words) goes to player_input;
+    # AI/system-voiced text (npc_reply/gm_reply, and thread_concluded's note - narrated BY the game,
+    # not said by the attributed character) goes to narration. Originally only covered
+    # ("message","action") / ("npc_reply","gm_reply") - storm_out and thread_concluded fell into
+    # NEITHER bucket, silently discarding their actual text. Found via a real SSE smoke test (an
+    # empty narration field on a live thread_concluded event), not a code review - see NOTES.md.
+    player_authored_kinds = ("message", "action", "storm_out")
+    ai_or_system_kinds = ("npc_reply", "gm_reply", "thread_concluded")
     present = characters_at_location(location_id)
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO turns (character_id, turn_number, player_input, narration, model_key, "
         "debug_events_json, game_id, room_id, location_id, kind, reply_to_turn_id, responder, "
-        "visible_to_json, created_at) VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "visible_to_json, flagged, flag_reason, created_at) "
+        "VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             character_id,
-            content if kind in ("message", "action") else "",
-            content if kind in ("npc_reply", "gm_reply") else "",
+            content if kind in player_authored_kinds else "",
+            content if kind in ai_or_system_kinds else "",
             model_key,
             json.dumps(debug_events or []),
             game_id, room_id, location_id, kind, reply_to_turn_id, responder,
             json.dumps(present),
+            1 if flagged else 0, flag_reason,
             time.time(),
         ),
     )
@@ -873,6 +930,68 @@ def get_character_owner(character_id):
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def characters_in_server(server_id):
+    """Every character currently present anywhere in a server (any room, any location) - used for
+    server-wide billing (the rumor broadcast) and server-wide SSE subscriptions, not location-scoped
+    like characters_at_location."""
+    conn = get_db()
+    rows = conn.execute("SELECT character_id FROM room_occupancy WHERE server_id = ?", (server_id,)).fetchall()
+    conn.close()
+    return [r["character_id"] for r in rows]
+
+
+# ==================== rumors ====================
+
+def create_rumor(server_id, room_id, location_id, summary, importance, publicity):
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO rumors (server_id, room_id, location_id, summary, importance, publicity, created_at, published_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+        (server_id, room_id, location_id, summary, importance, publicity, time.time()),
+    )
+    conn.commit()
+    rumor_id = cur.lastrowid
+    conn.close()
+    return rumor_id
+
+
+def get_unpublished_rumors(server_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM rumors WHERE server_id = ? AND published_at IS NULL ORDER BY created_at ASC", (server_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def publish_rumor_broadcast(server_id, content, rumor_count):
+    """Marks every currently-unpublished rumor for this server as published (they're now folded into
+    this one broadcast) and records the broadcast itself. Both happen together so a rumor can never
+    be silently left in limbo (published_at NULL forever) or double-counted in a later broadcast."""
+    conn = get_db()
+    now = time.time()
+    conn.execute(
+        "UPDATE rumors SET published_at = ? WHERE server_id = ? AND published_at IS NULL", (now, server_id)
+    )
+    cur = conn.execute(
+        "INSERT INTO rumor_broadcasts (server_id, content, rumor_count, published_at) VALUES (?, ?, ?, ?)",
+        (server_id, content, rumor_count, now),
+    )
+    conn.commit()
+    broadcast_id = cur.lastrowid
+    conn.close()
+    return broadcast_id
+
+
+def list_rumor_broadcasts(server_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM rumor_broadcasts WHERE server_id = ? ORDER BY published_at DESC", (server_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def get_character(character_id, user_id):

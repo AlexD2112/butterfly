@@ -30,9 +30,22 @@ class TestDetectStakesSignals(unittest.TestCase):
         self.assertEqual(len(reasons), 1)
 
     def test_canon_event_firing_is_a_signal(self):
-        debug_events = [{"type": "canon_event", "key": "october_revolution", "status": "fired"}]
+        # Real shape, as engine.run_turn/apply_state_update actually produce it: nested inside a
+        # state_update's `changes`, kind == "canon_event" - NOT a top-level {"type": "canon_event"}
+        # event (that shape was never real; the old version of this test asserted against it anyway,
+        # meaning this exact case silently went untested until fixed 2026-08-21 - see NOTES.md).
+        debug_events = [{"type": "state_update", "changes": [
+            {"kind": "canon_event", "key": "october_revolution", "status": "fired"},
+        ]}]
         reasons = council.detect_stakes_signals(debug_events)
         self.assertIn("october_revolution", reasons[0])
+
+    def test_canon_event_as_a_bare_top_level_event_is_also_still_recognized(self):
+        # Defensive/forward-compat path - see the comment in council.py itself for why this branch
+        # is kept even though nothing currently produces this exact shape.
+        debug_events = [{"type": "canon_event", "key": "civil_war_begins", "status": "fired"}]
+        reasons = council.detect_stakes_signals(debug_events)
+        self.assertIn("civil_war_begins", reasons[0])
 
     def test_resource_crossing_into_extreme_band_is_a_signal(self):
         debug_events = [{"type": "state_update", "changes": [
@@ -58,7 +71,9 @@ class TestDetectStakesSignals(unittest.TestCase):
     def test_multiple_signals_all_collected(self):
         debug_events = [
             {"type": "check", "attribute": "cunning", "degree": "critical_failure"},
-            {"type": "canon_event", "key": "civil_war_begins", "status": "fired"},
+            {"type": "state_update", "changes": [
+                {"kind": "canon_event", "key": "civil_war_begins", "status": "fired"},
+            ]},
         ]
         reasons = council.detect_stakes_signals(debug_events)
         self.assertEqual(len(reasons), 2)

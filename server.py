@@ -14,20 +14,23 @@ Discord" switches the session to a Discord-linked account instead - see discord_
 identities are NOT merged automatically; characters stay with whichever account created them.
 """
 
+import json
 import os
+import queue
 import secrets
 import threading
 from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request, send_from_directory, session, redirect
+from flask import Flask, Response, jsonify, request, send_from_directory, session, redirect
 
 load_dotenv(Path(__file__).parent / ".env")
 
 import db
 import discord_oauth
 import engine
+import live
 import multiplayer
 import pricing
 import providers
@@ -770,21 +773,37 @@ def api_multiplayer_mark_concluded(character_id):
 
     body = request.get_json(force=True) or {}
     storm_out = bool(body.get("storm_out"))
+    model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
 
     if not storm_out:
-        concluded, marks, total = multiplayer.mark_concluded(char, presence["room_id"], presence["location_id"])
-        return jsonify({"concluded": concluded, "marks": marks, "total_present": total})
-
-    model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
-    final_message = (body.get("final_message") or "").strip() or None
-    remaining_before = [c for c in db.characters_at_location(presence["location_id"]) if c != character_id]
-
-    provider, model = None, None
-    if remaining_before:
+        # A provider is resolved here even for a plain mark-concluded now, since conclusion may
+        # trigger rumor generation (multiplayer.generate_rumor) - unlike before this phase, when
+        # marking concluded was pure DB bookkeeping. If unconfigured, conclusion still succeeds;
+        # generate_rumor is just never called for it (see multiplayer._conclude_thread).
+        provider, model = None, None
         try:
             provider, model = providers.get_provider(model_key)
         except providers.ProviderError:
-            provider, model = None, None  # leaving still succeeds; the headcount check just gets skipped
+            provider, model = None, None
+        present_before = db.characters_at_location(presence["location_id"])
+        usage_sink = []
+        concluded, marks, total = multiplayer.mark_concluded(
+            char, presence["room_id"], presence["location_id"], provider=provider, model=model, usage_sink=usage_sink,
+        )
+        if concluded:
+            _bill_ambient_usage(usage_sink, present_before)
+        return jsonify({"concluded": concluded, "marks": marks, "total_present": total})
+    final_message = (body.get("final_message") or "").strip() or None
+    remaining_before = [c for c in db.characters_at_location(presence["location_id"]) if c != character_id]
+
+    # A provider is always worth resolving now, not just when remaining_before is non-empty - even a
+    # zero-remaining storm-out still generates a rumor of the concluded thread (see
+    # multiplayer._conclude_thread), not just the headcount check this used to be the only reason for.
+    provider, model = None, None
+    try:
+        provider, model = providers.get_provider(model_key)
+    except providers.ProviderError:
+        provider, model = None, None  # leaving still succeeds; both the headcount check and rumor generation just get skipped
 
     usage_sink = []
     new_location_id, auto_concluded = multiplayer.storm_out(
@@ -793,6 +812,50 @@ def api_multiplayer_mark_concluded(character_id):
     _bill_ambient_usage(usage_sink, remaining_before)
 
     return jsonify({"new_location_id": new_location_id, "thread_auto_concluded": auto_concluded})
+
+
+@app.route("/api/multiplayer/servers/<int:server_id>/rumors")
+def api_multiplayer_rumors(server_id):
+    if db.get_multiplayer_server(server_id) is None:
+        return jsonify({"error": "Unknown multiplayer server."}), 404
+    return jsonify({"broadcasts": db.list_rumor_broadcasts(server_id)})
+
+
+@app.route("/api/multiplayer/characters/<int:character_id>/stream")
+def api_multiplayer_stream(character_id):
+    """Server-Sent Events - live updates for whichever location/server this character is currently
+    in, per the explicit "see messages live" requirement (not polling). One queue per connection,
+    subscribed under both the location and server (see live.py) so a single generator only ever
+    drains one queue. A heartbeat comment line is sent whenever nothing real has happened for
+    live.HEARTBEAT_TIMEOUT_SECONDS, so proxies/browsers don't treat a quiet connection as dead.
+
+    Known limitation, not solved here: if this character MOVES to a new location while a stream is
+    open, this connection keeps listening on the OLD location - the frontend is expected to close and
+    reopen the stream after a successful move, not something this endpoint handles server-side."""
+    user = current_user()
+    char = db.get_character(character_id, user["id"])
+    if char is None:
+        return jsonify({"error": "Character not found."}), 404
+    presence = db.get_character_location(character_id)
+    if presence is None:
+        return jsonify({"error": "This character isn't in a room yet."}), 400
+
+    location_id = presence["location_id"]
+    server_id = presence["server_id"]
+
+    def event_stream():
+        q = live.subscribe(location_id, server_id)
+        try:
+            while True:
+                try:
+                    event = q.get(timeout=live.HEARTBEAT_TIMEOUT_SECONDS)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+        finally:
+            live.unsubscribe(location_id, server_id, q)
+
+    return Response(event_stream(), mimetype="text/event-stream")
 
 
 if __name__ == "__main__":

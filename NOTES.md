@@ -1,3 +1,116 @@
+# Multiplayer phase 6: rumors, significance flags, and live updates (2026-08-21)
+
+The last major backend piece of the multiplayer build. Two real bugs found and fixed along the way -
+one pre-existing in `council.py` affecting single-player Council Mode, one in my own earlier
+multiplayer work - both found through actually running things for real, not code review. Details
+below; flagging them up front since they're the most important part of this entry.
+
+## Rumors - length scales with importance, detail scales with publicity, per direction
+
+`multiplayer.generate_rumor()` fires from `_conclude_thread()` (mark-concluded, storm-out, and the
+sweep all funnel through it) whenever a provider is available. One structured call judges
+`importance`/`publicity` (1-5 each) and writes the summary in the same call, explicitly instructed to
+calibrate length to importance and detail to publicity - a single call rather than judge-then-generate
+as two calls, since this is already the second or third AI call layered onto some conclusions and
+cost matters. Stored unpublished (`rumors` table) until `multiplayer.compile_and_publish_rumors()` -
+called by `scheduler.fire_tick()` after the sweep - folds everything accumulated since the last tick
+into one cohesive server-wide broadcast (`rumor_broadcasts` table), skipping the call entirely if
+there's nothing to compile. Billed via the same 0.5x-shared/50%-subsidized model as everything
+ambient, split across every player on the server (not one location - the broadcast reaches everyone).
+
+## Significance flags - free, reusing an existing mechanism instead of a new AI call
+
+"A small flag gets created on it" for a significant in-progress action - implemented with ZERO new AI
+calls: `resolve_action` reuses `council.detect_stakes_signals(debug_events)`, the exact same
+rule-based detector single-player's own Council Mode router already relies on (critical rolls, canon
+events, resource label-band crossings, liability gains). `turns` gained `flagged`/`flag_reason`
+columns. No dedicated viewing endpoint was added - flagged rows are already present in the normal
+`location_messages` response, so a frontend can surface them without new plumbing; a real design
+choice, not an oversight.
+
+## Bug #1 found via this work, but pre-existing and affecting single-player too:
+## council.detect_stakes_signals never actually detected canon events
+
+Reusing `detect_stakes_signals` for the flag feature is what surfaced this. The function checked for
+a TOP-LEVEL `{"type": "canon_event"}` debug event - but `engine.run_turn` never produces that shape;
+a fired canon event always arrives NESTED inside a `state_update` event's `changes` list, as
+`{"kind": "canon_event", ...}`, which the function's changes-loop never checked for. Confirmed
+directly (not from memory): ran `apply_state_update` for real and printed its actual output.
+
+**This means Council Mode's judge-router has been blind to canon events firing, for the entire time
+Council Mode has existed** - a canon event was never counted as a "stakes signal" feeding the router's
+judge-panel-size decision, even though critical rolls and resource swings were. The existing test
+(`test_canon_event_firing_is_a_signal`) was itself written against the wrong, never-actually-produced
+shape and had been passing the whole time - a test asserting the function works, against data the
+function never actually receives, is worse than no test at all: it hides exactly this kind of gap.
+Fixed the function (now checks both the real nested shape and kept the top-level check for
+forward-compat), fixed the test to use the real shape, and added a second test explicitly covering the
+kept-for-compat path so its behavior stays intentional and visible rather than silently reverting to
+untested dead code again.
+
+## Live updates (SSE) - the actual "see messages live" requirement
+
+New `live.py`: a tiny in-process pub/sub (location_id/server_id -> a set of `queue.Queue`, one per
+open connection). Every function in `multiplayer.py` that records something player-visible (a
+message, a reply, a conclusion) publishes right after. `server.py`'s new
+`/api/multiplayer/characters/<id>/stream` route subscribes one queue per connection under BOTH its
+location and server (so a single generator only ever drains one queue, not juggles two), yielding a
+heartbeat every 15s when nothing real has happened. In-process only - works because this app is
+already a single-process assumption (no `--workers` flag anywhere), same category of constraint
+already documented for the turn lock and the tick scheduler.
+
+**Known, accepted limitation**: an ungracefully-disconnected client relies on the generator's
+`finally` block eventually running to unsubscribe; no periodic pruning exists. Acceptable at this
+app's current scale, flagged for later if long-idle abandoned connections turn out to matter.
+
+## Bug #2 found via this work: a real, silent content-loss bug in my own earlier code
+
+Found via a real SSE smoke test - not a code review - when a live `thread_concluded` event arrived
+with an EMPTY `narration` field despite `_conclude_thread` clearly passing a note like "The scene
+concludes." `db.record_room_message`'s content-routing only covered `("message", "action")` ->
+`player_input` and `("npc_reply", "gm_reply")` -> `narration` - a routing table written back in an
+earlier phase, before `storm_out` and `thread_concluded` existed as kinds. Both of those NEW kinds
+fell into neither bucket, so their actual text was silently discarded on every single conclusion and
+every storm-out final message since those features shipped - stored as empty strings, kind still
+correct, so nothing crashed and no existing test caught it (none of them checked the actual text
+content, only the `kind` field). Fixed the routing to cover all five real kinds explicitly, and
+added/strengthened tests in `test_room_conclusion.py` that specifically assert the real text field,
+not just presence of the right `kind` - the gap in test depth that let this hide.
+
+## What "verified for real" actually meant this phase - including two false leads I chased and ruled out
+
+Went further than usual here given how much new infrastructure this phase touches. Ran the real
+server and drove a genuine SSE connection with curl - and hit two apparent failures that turned out to
+be MY test methodology, not the implementation, worth recording so the reasoning is visible:
+1. First attempts used `--max-time` windows shorter than the 15s heartbeat and had a subscribe/publish
+   race (triggering the event before confirming the stream had actually subscribed) - looked exactly
+   like a hung/broken endpoint. Ruled this out by testing a minimal isolated Flask+waitress streaming
+   route (confirmed waitress genuinely streams, not buffers) and then re-testing with `--max-time 17`
+   (past the heartbeat) and a proper subscribe-then-wait-then-publish sequence - both showed the real
+   mechanism works correctly. This is what actually surfaced Bug #2 above - the real event WAS
+   delivered live, correctly, with the (until then unnoticed) empty-content bug inside its payload.
+2. Once real event delivery was confirmed working, fixed Bug #2, and reran - a real `thread_concluded`
+   event with the correct note text arrived live over an actual HTTP connection.
+
+Also ran the full logic suite directly against a real (temp) SQLite database throughout - rumor
+storage/generation/compilation, live pub/sub in isolation, and the flag detection fix, all exercised
+with scripted providers, not mocked at the DB layer. 199/199 tests passing (18 new, plus 3 existing
+tests corrected: 2 in `test_council_stakes_signals.py` for the wrong-shape bug, 1 strengthened in
+`test_room_conclusion.py` for the content-routing bug).
+
+## Multiplayer backend: now feature-complete per the original spec
+
+Rooms/locations, NPCs, message judging with reply-threading, multi-character actions with combat
+initiative, room conclusion (mark-concluded/storm-out/daily sweep), the real 0.5x-shared/50%-
+subsidized budget model, rumors, significance flags, and live updates - every piece from the original
+request is now built and tested. **What's NOT built, by design, every phase**: any actual UI. This
+entire arc has been backend/API only - admin server/room/NPC creation, movement, sending
+messages/actions, mark-concluded/storm-out, and now the live stream, all exist as tested HTTP
+endpoints with zero frontend surface. A real chat/combat/conclusion/admin UI in `static/index.html`
+is the natural next piece of work, not attempted here.
+
+---
+
 # Multiplayer phase 5: real scheduled ticks + the deferred daily sweep (2026-08-21)
 
 You said "continue with room-conclusion mechanics" - that phase was already committed

@@ -55,9 +55,11 @@ def run_tick_heartbeat():
 
 
 def fire_tick(server_id):
-    """Advances one server's shared world-clock by one progression_speed unit, then runs the daily
-    conclusion sweep across every occupied location. Billing for the sweep's AI calls goes through
-    the same ambient-cost-split model storm-out already uses (multiplayer.bill_ambient_usage)."""
+    """Advances one server's shared world-clock by one progression_speed unit, runs the daily
+    conclusion sweep across every occupied location (which may itself generate rumors for whatever
+    it concludes), then compiles and publishes any rumors accumulated since the last tick as one
+    server-wide broadcast. Billing for every ambient AI call here goes through the same
+    cost-split model storm-out already uses (multiplayer.bill_ambient_usage)."""
     server = db.get_multiplayer_server(server_id)
     if server is None:
         return
@@ -67,10 +69,16 @@ def fire_tick(server_id):
 
     provider, model = _judge_provider_and_model()
     if provider is None:
-        return  # no configured judge provider - date still advanced, sweep just skipped this tick
+        return  # no configured judge provider - date still advanced, sweep/rumors just skipped this tick
 
     for location_result in multiplayer.sweep_server(provider, model, server_id):
         multiplayer.bill_ambient_usage(location_result["usage_sink"], location_result["present_character_ids"])
+
+    # The broadcast benefits everyone currently on the server, not one location - billed across
+    # everyone present server-wide, same 0.5x-shared/50%-subsidized model as everything ambient.
+    broadcast_usage_sink = []
+    multiplayer.compile_and_publish_rumors(provider, model, server_id, usage_sink=broadcast_usage_sink)
+    multiplayer.bill_ambient_usage(broadcast_usage_sink, db.characters_in_server(server_id))
 
 
 def start_scheduler():

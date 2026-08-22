@@ -28,9 +28,21 @@ Multiplayer orchestration: two mostly-independent pieces sharing this module.
    PLAYER currently at that location has marked it (NPCs don't count - the brief says "players").
    Storming out sends an optional final flavor message, moves the character to their room's default
    location, and - if anyone remains - checks whether the scene should auto-conclude without them
-   (deterministically if literally nobody's left, via a cheap ambient classifier otherwise). The
-   eventual "publish a rumor summary of a concluded thread" feature (a separate later phase, tied to
-   real scheduled ticks) will hook into the same conclusion event this creates - not duplicated here.
+   (deterministically if literally nobody's left, via a cheap ambient classifier otherwise).
+
+4. Rumors + flags (2026-08-21). generate_rumor() fires whenever _conclude_thread() runs (from
+   mark_concluded, storm_out, or the sweep) - a summary whose LENGTH scales with judged importance and
+   whose DETAIL scales with judged publicity, per direction, held unpublished until
+   compile_and_publish_rumors() (called by scheduler.py at each tick) folds every rumor accumulated
+   since the last tick into one cohesive server-wide broadcast. Flags are separate and free: no new AI
+   call - resolve_action() reuses council.detect_stakes_signals (the same rule-based significance
+   detector single-player's own council-router already relies on) to mark an action's turns row when
+   it's mechanically significant (a critical roll, a canon event, a big resource swing).
+
+5. Live updates (SSE) - every function here that records something player-visible (a message, a
+   reply, a conclusion) also calls live.publish_location_event/publish_server_event right after, so
+   an open SSE connection (server.py's stream route) sees it appear without polling. See live.py's
+   own docstring for the pub/sub mechanics and its known limitations.
 
 Mechanics (dice, checks, state changes) still only ever happen inside engine.run_turn's existing
 tool loop - this module never calls systems/_shared/core.py's check/state functions directly, only
@@ -44,6 +56,7 @@ import random
 import council
 import db
 import engine
+import live
 import pricing
 import providers
 from systems._shared import core as shared_core
@@ -193,6 +206,7 @@ def handle_message(provider, model, game_id, room_id, location_id, character_id,
     message_turn_id = db.record_room_message(
         game_id, room_id, location_id, character_id, "message", content, reply_to_turn_id=reply_to_turn_id,
     )
+    live.publish_location_event(location_id, db.get_turn_by_id(message_turn_id))
 
     responder = None
     if reply_to_turn_id:
@@ -226,6 +240,7 @@ def handle_message(provider, model, game_id, room_id, location_id, character_id,
         game_id, room_id, location_id, character_id, reply_kind, reply_text,
         reply_to_turn_id=message_turn_id, responder=responder,
     )
+    live.publish_location_event(location_id, db.get_turn_by_id(reply_turn_id))
 
     if responder != "gm":
         npcs = db.npcs_at_location(location_id)
@@ -422,13 +437,24 @@ def resolve_action(provider, model, model_key, char_row, room_id, location_id, c
         council_mode=False, model_key=model_key,
     )
 
+    # Significance flag - free, no new AI call. Reuses council.detect_stakes_signals, the same
+    # rule-based detector single-player's own council-router already relies on (critical rolls,
+    # canon events, resource label-band crossings, liability gains) - "a small flag gets created on
+    # it," per direction, using a mechanism that already existed rather than a new judge call.
+    stakes_signals = council.detect_stakes_signals(debug_events)
+    flagged = bool(stakes_signals)
+    flag_reason = "; ".join(stakes_signals) if stakes_signals else None
+
     turn_id = db.record_room_message(
-        game_id, room_id, location_id, character_id, "action", content, model_key=model_key, debug_events=debug_events,
+        game_id, room_id, location_id, character_id, "action", content, model_key=model_key,
+        debug_events=debug_events, flagged=flagged, flag_reason=flag_reason,
     )
+    live.publish_location_event(location_id, db.get_turn_by_id(turn_id))
     reply_turn_id = db.record_room_message(
         game_id, room_id, location_id, character_id, "gm_reply", narration,
         reply_to_turn_id=turn_id, responder="gm", model_key=model_key,
     )
+    live.publish_location_event(location_id, db.get_turn_by_id(reply_turn_id))
 
     result = {
         "turn_id": turn_id, "reply_turn_id": reply_turn_id,
@@ -459,19 +485,26 @@ def resolve_action(provider, model, model_key, char_row, room_id, location_id, c
 
 # ==================== room conclusion (mark-concluded / storm-out) ====================
 
-def _conclude_thread(game_id, room_id, location_id, triggered_by_character_id, note="The scene concludes."):
+def _conclude_thread(game_id, room_id, location_id, triggered_by_character_id, note="The scene concludes.",
+                      provider=None, model=None, usage_sink=None):
     """Logs a visible marker and resets conclusion tracking so a fresh thread can start being
     counted at this location. triggered_by_character_id attributes the log row to whoever caused the
     conclusion (the last to mark it, whoever stormed out, or - for the daily sweep, which has no real
     triggering player - just the first present character) - turns.character_id is NOT NULL with a
     real FK, and there's no "system" character to attribute a purely time-driven event to instead.
     That attribution is bookkeeping only; `note` is what a player actually reads, which is why the
-    sweep passes a time-flavored note rather than implying some player caused it."""
-    db.record_room_message(game_id, room_id, location_id, triggered_by_character_id, "thread_concluded", note)
+    sweep passes a time-flavored note rather than implying some player caused it.
+
+    provider/model, if given, trigger rumor generation for the just-concluded thread - optional
+    because not every caller has a resolved provider available (see mark_concluded/storm_out)."""
+    turn_id = db.record_room_message(game_id, room_id, location_id, triggered_by_character_id, "thread_concluded", note)
+    live.publish_location_event(location_id, db.get_turn_by_id(turn_id))
     db.clear_location_conclusions(location_id)
+    if provider is not None:
+        generate_rumor(provider, model, game_id, room_id, location_id, usage_sink=usage_sink)
 
 
-def mark_concluded(char_row, room_id, location_id):
+def mark_concluded(char_row, room_id, location_id, provider=None, model=None, usage_sink=None):
     """Regular (non-storm-out) mark-concluded. Returns (concluded: bool, marks_so_far: int,
     total_present: int). Unanimous means every PLAYER character currently at this location has
     marked it - NPCs aren't counted, per the brief's literal "all players" wording."""
@@ -482,7 +515,7 @@ def mark_concluded(char_row, room_id, location_id):
     present = db.characters_at_location(location_id)
     marks = db.get_location_conclusion_marks(location_id)
     if present and set(present) <= marks:
-        _conclude_thread(game_id, room_id, location_id, character_id)
+        _conclude_thread(game_id, room_id, location_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
         return True, len(present), len(present)
     return False, len(marks & set(present)), len(present)
 
@@ -539,7 +572,8 @@ def storm_out(provider, model, char_row, room_id, location_id, final_message, us
     game_id = char_row["game_id"]
 
     if final_message:
-        db.record_room_message(game_id, room_id, location_id, character_id, "storm_out", final_message)
+        storm_turn_id = db.record_room_message(game_id, room_id, location_id, character_id, "storm_out", final_message)
+        live.publish_location_event(location_id, db.get_turn_by_id(storm_turn_id))
 
     db.clear_character_conclusion_mark(location_id, character_id)
 
@@ -550,12 +584,12 @@ def storm_out(provider, model, char_row, room_id, location_id, final_message, us
     remaining = [c for c in db.characters_at_location(location_id) if c != character_id]
     auto_concluded = False
     if not remaining:
-        _conclude_thread(game_id, room_id, location_id, character_id)
+        _conclude_thread(game_id, room_id, location_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
         auto_concluded = True
     elif provider is not None:
         continues = detect_thread_should_continue(provider, model, location_id, len(remaining), usage_sink=usage_sink)
         if not continues:
-            _conclude_thread(game_id, room_id, location_id, character_id)
+            _conclude_thread(game_id, room_id, location_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
             auto_concluded = True
     # else: no provider available - skip the check, thread stays open (fail-safe default).
 
@@ -672,12 +706,117 @@ def sweep_server(provider, model, server_id):
         usage_sink = []
         should_conclude = detect_location_should_conclude(provider, model, location_id, usage_sink=usage_sink)
         if should_conclude:
+            # provider/model passed through so this conclusion generates a rumor too, same as
+            # mark-concluded/storm-out - its cost lands in the same usage_sink the caller
+            # (scheduler.fire_tick) already bills for this location's sweep decision.
             _conclude_thread(
                 game["id"], location["room_id"], location_id, present[0],
                 note="Time passes, and the scene quietly concludes.",
+                provider=provider, model=model, usage_sink=usage_sink,
             )
         results.append({
             "location_id": location_id, "usage_sink": usage_sink,
             "present_character_ids": present, "concluded": should_conclude,
         })
     return results
+
+
+# ==================== rumors ====================
+
+def generate_rumor(provider, model, game_id, room_id, location_id, usage_sink=None):
+    """Generates a rumor summary of a just-concluded thread, stored unpublished until the next tick's
+    broadcast (see compile_and_publish_rumors). Per direction: summary LENGTH scales with judged
+    importance, DETAIL scales with judged publicity (a shouted public brawl spreads with real detail;
+    something done in secret barely spreads at all, and vaguely). A single call handles both the
+    importance/publicity judgment and the summary itself, rather than two separate calls - the model
+    is capable of following a length/detail rubric within one structured response, and this is
+    already the third AI call layered onto some conclusions (headcount/sweep check, then this) so
+    keeping it to one call matters for cost, not just simplicity.
+
+    Silently does nothing (no rumor stored) if there's no real activity at the location to summarize,
+    or the call fails to return usable structured output - an unnecessary or missing rumor is a much
+    smaller problem than a call that crashes a conclusion."""
+    context = _recent_location_context(location_id, limit=30)
+    if context == "(no prior activity at this location)":
+        return None
+    system_prompt = f"""A scene/thread at this location just concluded. Write a brief rumor summary
+of what happened, suitable for spreading through the wider server as gossip/news.
+
+# WHAT HAPPENED
+{context}
+
+Judge two things first, then write the summary calibrated to them:
+- importance (1-5): how significant this was - 1 for trivial background chatter, 5 for something
+  genuinely momentous. LOW importance should produce a very short, throwaway line (a single terse
+  sentence is fine, or even just "nothing worth repeating"). HIGH importance should produce a fuller
+  summary with real substance.
+- publicity (1-5): how public/witnessed this was - 1 for something done in total secrecy, 5 for
+  something loud and witnessed by many. LOW publicity should produce vague, secondhand, uncertain
+  details (rumors distort what wasn't directly witnessed). HIGH publicity should produce concrete,
+  specific, confidently-reported detail.
+
+Submit via submit_rumor."""
+    tool_specs = [
+        {
+            "name": "submit_rumor",
+            "description": "Submit the rumor summary and its importance/publicity judgment.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "importance": {"type": "integer", "minimum": 1, "maximum": 5},
+                    "publicity": {"type": "integer", "minimum": 1, "maximum": 5},
+                    "summary": {"type": "string"},
+                },
+                "required": ["importance", "publicity", "summary"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Submit the rumor now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="submit_rumor")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return None
+    data = result.tool_calls[0]["input"]
+    summary = (data.get("summary") or "").strip()
+    if not summary:
+        return None
+    server_id = db.get_room(room_id)["server_id"]
+    return db.create_rumor(
+        server_id, room_id, location_id, summary,
+        data.get("importance", 1), data.get("publicity", 1),
+    )
+
+
+def compile_and_publish_rumors(provider, model, server_id, usage_sink=None):
+    """Called by scheduler.py at each tick - compiles every rumor accumulated since the last tick
+    into one cohesive server-wide broadcast and publishes it. No-op (no AI call, nothing published)
+    if there's nothing unpublished to compile - a quiet tick shouldn't manufacture news."""
+    unpublished = db.get_unpublished_rumors(server_id)
+    if not unpublished:
+        return None
+    rumor_lines = "\n".join(
+        f"- (importance {r['importance']}/5, publicity {r['publicity']}/5): {r['summary']}" for r in unpublished
+    )
+    system_prompt = f"""Compile the following individual rumors/events from across the server into
+one cohesive news/rumor broadcast - a few short paragraphs of in-world gossip/news, weaving the
+individual items together into something that reads like a period-appropriate grapevine report, not
+a bulleted list. More important/public items should get more prominent, detailed treatment; minor or
+secretive ones should stay as a brief aside, or be dropped if they don't fit naturally.
+
+# RUMORS SINCE THE LAST TICK
+{rumor_lines}
+
+Write only the broadcast text, nothing else."""
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Write the broadcast now.")
+    result = provider.call(model, system_prompt, [], conversation)
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    content = "\n".join(result.text_parts).strip()
+    if not content:
+        return None
+    broadcast_id = db.publish_rumor_broadcast(server_id, content, len(unpublished))
+    live.publish_server_event(server_id, {"type": "rumor_broadcast", "id": broadcast_id, "content": content})
+    return broadcast_id

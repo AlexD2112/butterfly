@@ -130,6 +130,12 @@ def detect_stakes_signals(debug_events):
     for ev in debug_events:
         if ev.get("type") == "check" and ev.get("degree") in ("critical_success", "critical_failure"):
             reasons.append(f"critical {ev['degree'].replace('_', ' ')} on {ev.get('attribute')}")
+        # Kept for defensiveness/forward-compat, but engine.run_turn never actually produces this
+        # shape - real canon events arrive nested inside a state_update's `changes` (kind ==
+        # "canon_event"), handled in the loop below. Found and fixed 2026-08-21: this top-level
+        # check was dead code since the day it was written, meaning canon events were NEVER
+        # detected as stakes signals for Council Mode's judge-router the entire time it's existed -
+        # see NOTES.md.
         if ev.get("type") == "canon_event":
             reasons.append(f"canon event fired: {ev.get('key')}")
         if ev.get("type") in ("state_update", "level_up"):
@@ -145,6 +151,8 @@ def detect_stakes_signals(debug_events):
                             reasons.append(f"{c['key']} shifted from {before_label} to {after_label}")
                 elif c.get("kind") == "liability_gained":
                     reasons.append(f"liability gained: {c.get('name')}")
+                elif c.get("kind") == "canon_event":
+                    reasons.append(f"canon event fired: {c.get('key')}")
     return reasons
 
 
