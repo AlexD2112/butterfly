@@ -213,6 +213,8 @@
   .mp-item-title { font-weight: bold; font-size: 13.5px; }
   .mp-item-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
   .mp-empty { font-size: 12.5px; color: var(--muted); font-style: italic; }
+  .danger-btn { color: var(--bad); border-color: var(--bad); margin-left: 6px; }
+  .danger-btn:hover { background: var(--bad); color: #fff; }
   .mp-form { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
   .mp-form.open { display: block; }
   .mp-form .field-row { margin: 6px 0; }
@@ -1285,6 +1287,7 @@ async function loadMpServerList() {
   const res = await fetch('/api/multiplayer/servers');
   const data = await res.json();
   MP_SERVERS = data.servers;
+  const isAdmin = CURRENT_USER && CURRENT_USER.is_admin;
   const el = document.getElementById('mp-server-list');
   el.innerHTML = MP_SERVERS.length === 0 ? '<div class="mp-empty">No servers yet.</div>' : MP_SERVERS.map(s => `
     <div class="mp-list-item">
@@ -1292,15 +1295,38 @@ async function loadMpServerList() {
         <div class="mp-item-title">${escapeHtml(s.name)}</div>
         <div class="mp-item-desc">${escapeHtml(settingLabel(s.setting_key))} &middot; current date ${escapeHtml(s.current_date || '?')} &middot; time advances by ${escapeHtml(s.progression_speed)} every ${s.progression_rate_hours}h</div>
       </div>
-      <button data-enter="${s.id}">Enter</button>
+      <span>
+        <button data-enter="${s.id}">Enter</button>
+        ${isAdmin ? `<button data-delete-server="${s.id}" class="danger-btn" title="Permanently delete this server and everything in it">Delete</button>` : ''}
+      </span>
     </div>
   `).join('');
   el.querySelectorAll('[data-enter]').forEach(btn => {
     btn.addEventListener('click', () => enterMpServerLobby(parseInt(btn.dataset.enter, 10)));
   });
-  const isAdmin = CURRENT_USER && CURRENT_USER.is_admin;
+  el.querySelectorAll('[data-delete-server]').forEach(btn => {
+    btn.addEventListener('click', () => deleteMpServer(parseInt(btn.dataset.deleteServer, 10)));
+  });
   document.getElementById('mp-create-server-toggle').style.display = isAdmin ? '' : 'none';
   document.getElementById('mp-admin-unlock-btn').style.display = isAdmin ? 'none' : '';
+}
+
+// Irreversible - see db.delete_multiplayer_server's docstring for exactly what this cascades
+// through (rooms, locations, messages/actions, characters created for it, combat state, rumors...).
+// One clear confirm() naming the server, matching the admin-unlock/storm-out pattern elsewhere in
+// this app rather than a heavier multi-step or type-to-confirm flow - see NOTES.md.
+async function deleteMpServer(serverId) {
+  const server = MP_SERVERS.find(s => s.id === serverId);
+  const name = server ? server.name : `server #${serverId}`;
+  const confirmed = window.confirm(
+    `Permanently delete "${name}"? This deletes every room, location, message, and character created for it. This cannot be undone.`
+  );
+  if (!confirmed) return;
+  const res = await fetch(`/api/admin/multiplayer_servers/${serverId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.error) { setStatus(data.error); return; }
+  setStatus(`"${name}" deleted.`);
+  await loadMpServerList();
 }
 
 document.getElementById('mp-admin-unlock-btn').addEventListener('click', unlockAdmin);

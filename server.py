@@ -535,6 +535,22 @@ def api_admin_create_server():
     return jsonify({"server_id": server_id})
 
 
+@app.route("/api/admin/multiplayer_servers/<int:server_id>", methods=["DELETE"])
+def api_admin_delete_server(server_id):
+    """Irreversible - see db.delete_multiplayer_server's docstring for exactly what this cascades
+    through. The frontend confirms with the admin before ever sending this request; this route
+    itself doesn't ask for a second confirmation (e.g. re-typing the server name) - the admin gate
+    plus one clear confirm dialog is proportionate for a hobby-scale app with no real access control
+    stakes yet (see ADMIN_UNLOCK_CODE's own docstring), not a reason to build more ceremony."""
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_multiplayer_server(server_id) is None:
+        return jsonify({"error": "Unknown multiplayer server."}), 404
+    db.delete_multiplayer_server(server_id)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/admin/multiplayer_servers/<int:server_id>/rooms", methods=["POST"])
 def api_admin_create_room(server_id):
     user, err = _require_admin()

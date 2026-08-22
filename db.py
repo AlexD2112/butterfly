@@ -521,6 +521,73 @@ def create_multiplayer_server(name, setting_key, system_key, progression_speed, 
     return server_id
 
 
+def delete_multiplayer_server(server_id):
+    """Hard-deletes a multiplayer server and everything scoped to it: combat state, conclusion
+    marks, room occupancy, rumors/broadcasts, NPCs, every turn (message/action/reply) recorded
+    against this server's game, every character created for it, its locations, its rooms, its one
+    games row, and finally the server row itself. Irreversible by design, not a soft-delete - see
+    server.py's admin route for the confirmation this is gated behind, and NOTES.md for why a real
+    undo system wasn't built for this.
+
+    Deletion order matters for correctness here, not just hygiene: every connection runs with
+    `PRAGMA foreign_keys = ON` (see get_db), so children must go before parents or SQLite raises an
+    integrity error rather than silently leaving orphans. usage_events (the budget ledger) is
+    deliberately NOT deleted - its character_id is nulled out instead, preserving the actual spend
+    history (still summed by user_id for budget checks) rather than erasing it just because the
+    character that generated it is gone.
+
+    Single-player data can't be touched by this: everything here is scoped by this server's own id,
+    its room ids, or its one games row (multiplayer_server_id = server_id) - a single-player game's
+    multiplayer_server_id is always NULL, so it never matches."""
+    conn = get_db()
+    game_row = conn.execute("SELECT id FROM games WHERE multiplayer_server_id = ?", (server_id,)).fetchone()
+    game_id = game_row["id"] if game_row else None
+    room_ids = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE server_id = ?", (server_id,)).fetchall()]
+    character_ids = (
+        [r["id"] for r in conn.execute("SELECT id FROM characters WHERE game_id = ?", (game_id,)).fetchall()]
+        if game_id is not None else []
+    )
+
+    if room_ids:
+        placeholders = ",".join("?" * len(room_ids))
+        conn.execute(
+            f"DELETE FROM combat_participants WHERE encounter_id IN "
+            f"(SELECT id FROM combat_encounters WHERE room_id IN ({placeholders}))",
+            room_ids,
+        )
+        conn.execute(f"DELETE FROM combat_encounters WHERE room_id IN ({placeholders})", room_ids)
+        conn.execute(
+            f"DELETE FROM location_conclusions WHERE location_id IN "
+            f"(SELECT id FROM locations WHERE room_id IN ({placeholders}))",
+            room_ids,
+        )
+
+    conn.execute("DELETE FROM room_occupancy WHERE server_id = ?", (server_id,))
+    conn.execute("DELETE FROM rumors WHERE server_id = ?", (server_id,))
+    conn.execute("DELETE FROM rumor_broadcasts WHERE server_id = ?", (server_id,))
+
+    if character_ids:
+        placeholders = ",".join("?" * len(character_ids))
+        conn.execute(f"UPDATE usage_events SET character_id = NULL WHERE character_id IN ({placeholders})", character_ids)
+
+    if game_id is not None:
+        conn.execute("DELETE FROM npcs WHERE game_id = ?", (game_id,))
+        conn.execute("DELETE FROM turns WHERE game_id = ?", (game_id,))
+        conn.execute("DELETE FROM characters WHERE game_id = ?", (game_id,))
+
+    if room_ids:
+        placeholders = ",".join("?" * len(room_ids))
+        conn.execute(f"DELETE FROM locations WHERE room_id IN ({placeholders})", room_ids)
+    conn.execute("DELETE FROM rooms WHERE server_id = ?", (server_id,))
+
+    if game_id is not None:
+        conn.execute("DELETE FROM games WHERE id = ?", (game_id,))
+    conn.execute("DELETE FROM multiplayer_servers WHERE id = ?", (server_id,))
+
+    conn.commit()
+    conn.close()
+
+
 def get_multiplayer_server(server_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM multiplayer_servers WHERE id = ?", (server_id,)).fetchone()

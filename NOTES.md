@@ -1,3 +1,60 @@
+# Admin delete for multiplayer servers (2026-08-22)
+
+Admins could create multiplayer servers but never remove one - dead/test servers just accumulated
+forever. Real hard delete, gated behind the same admin check as creation, with one confirm() dialog
+in the UI before it fires.
+
+## The cascade, and why order matters here specifically
+
+Every `db.get_db()` connection runs with `PRAGMA foreign_keys = ON` (confirmed by reading it, not
+assumed) - so this isn't just tidiness, deleting a parent row while a child still references it
+raises a real integrity error. `db.delete_multiplayer_server` deletes children before parents:
+combat_participants -> combat_encounters -> location_conclusions -> room_occupancy -> rumors ->
+rumor_broadcasts -> (usage_events.character_id nulled, not deleted - see below) -> npcs -> turns ->
+characters -> locations -> rooms -> games -> the server row itself. `turns.reply_to_turn_id` is
+self-referential (a reply points at the message it replied to); tested this specific case directly
+(a message + a reply to it, both deleted in the same bulk `DELETE FROM turns WHERE game_id = ?`) to
+confirm SQLite's FK checking doesn't choke on a self-referencing row disappearing in the same
+statement as what it referenced - it doesn't, but this was verified empirically, not assumed from
+memory of how SQLite's constraint timing works.
+
+**usage_events (the budget ledger) is not deleted** - its `character_id` gets set to NULL instead.
+Budget totals are summed by `user_id`, never `character_id`, so the real spend history survives
+losing the server that generated it, rather than someone's actual billed usage silently vanishing
+because a server got cleaned up. Everything else scoped to the server is a genuine hard delete, not
+a soft-delete/undo system - didn't build one; wasn't asked for, and undoing a delete that already
+cascaded through a dozen tables isn't "trivial" by any reasonable reading of that word.
+
+Single-player data is structurally unreachable by this: every delete is scoped by this server's own
+id, its room ids, or its one `games` row (`multiplayer_server_id = server_id`) - a single-player
+game's `multiplayer_server_id` is always NULL. Tested directly: built an unrelated single-player
+character with a real turn alongside a full multiplayer server, deleted the server, confirmed the
+single-player character and its turn were completely untouched.
+
+## Confirmation, not a heavier flow
+
+One `window.confirm()` naming the server before the request ever fires, matching the
+admin-unlock/storm-out pattern already used elsewhere in this app - not a type-the-name-to-confirm
+flow. `ADMIN_UNLOCK_CODE`'s own docstring already establishes this app isn't carrying real access-
+control stakes yet; a second confirmation step would be ceremony without a matching risk to justify
+it. The route itself (`DELETE /api/admin/multiplayer_servers/<id>`) doesn't ask again either -
+the admin gate plus one clear dialog is the whole safety net, by design.
+
+## Verification
+
+New `tests/test_delete_multiplayer_server.py`: one test builds a fully-populated server (2 locations,
+an NPC, 2 characters, a message+reply pair, a combat encounter with both a character and an NPC
+participant, a conclusion mark, a rumor and a published broadcast, a usage_events row) and asserts
+every piece is gone except the usage_events row, which survives with `character_id` NULL; a second
+confirms deleting an unknown server id is a harmless no-op; route-level tests cover the 403 for a
+non-admin, 404 for an unknown server, and that a deleted server actually disappears from
+`GET /api/multiplayer/servers` afterward. Also verified live in the browser against a throwaway copy
+(not the real server) - admin sees the Delete button, a non-admin doesn't, cancelling the confirm
+dialog leaves the server untouched, confirming it removes the server and the list refreshes
+immediately. Full suite: 214/214 (5 new).
+
+---
+
 # Fourth overdescription pass - the landing text itself, plus a naming diagnosis (2026-08-22)
 
 Direct follow-up: even the exact verbatim text from the previous pass was, on reflection, still
