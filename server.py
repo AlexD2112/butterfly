@@ -594,6 +594,79 @@ def api_multiplayer_locations(room_id):
     return jsonify({"locations": db.list_locations(room_id)})
 
 
+@app.route("/api/multiplayer/servers/<int:server_id>/my_characters")
+def api_multiplayer_my_characters(server_id):
+    """Which of the CURRENT user's characters already belong to this server's game - lets the
+    frontend offer "resume as X" instead of always funneling a returning player through character
+    creation again. Deliberately just id/name, not full state (get_game_characters returns every
+    player's characters server-side; this filters to the caller's own and strips it down to what a
+    picker needs)."""
+    user = current_user()
+    game = db.get_game_for_server(server_id)
+    if game is None:
+        return jsonify({"error": "Unknown multiplayer server."}), 404
+    mine = [c for c in db.get_game_characters(game["id"]) if c["user_id"] == user["id"]]
+    return jsonify({"characters": [{"id": c["id"], "name": c["name"]} for c in mine]})
+
+
+@app.route("/api/multiplayer/locations/<int:location_id>/detail")
+def api_multiplayer_location_detail(location_id):
+    """Everything a location's UI needs in one call: who's here (players + NPCs), whether a fight is
+    active and whose turn it is, and how conclusion-marking currently stands. Unauthenticated like the
+    other browsing routes (servers/rooms/locations lists) - "who's in this location right now" isn't
+    treated as private, same as walking into a room and seeing who's there."""
+    location = db.get_location(location_id)
+    if location is None:
+        return jsonify({"error": "Unknown location."}), 404
+    room = db.get_room(location["room_id"])
+
+    occupant_ids = db.characters_at_location(location_id)
+    occupants = []
+    for cid in occupant_ids:
+        c = db.get_character_unchecked(cid)
+        if c:
+            occupants.append({"character_id": cid, "name": c["name"]})
+
+    npcs = [{"id": n["id"], "key": n["key"], "name": n["name"]} for n in db.npcs_at_location(location_id)]
+
+    def _participant_name(p):
+        if p["character_id"]:
+            c = db.get_character_unchecked(p["character_id"])
+            return c["name"] if c else f"character #{p['character_id']}"
+        return p["npc_key"]
+
+    combat = None
+    encounter = db.get_active_combat_encounter(location_id)
+    if encounter:
+        participants = [
+            {
+                "character_id": p["character_id"], "npc_key": p["npc_key"], "name": _participant_name(p),
+                "initiative_roll": p["initiative_roll"], "turn_order_index": p["turn_order_index"],
+            }
+            for p in db.get_combat_participants(encounter["id"])
+        ]
+        current_actor = db.get_current_combat_actor(encounter["id"])
+        combat = {
+            "encounter_id": encounter["id"],
+            "current_turn_index": encounter["current_turn_index"],
+            "participants": participants,
+            "current_actor_character_id": current_actor["character_id"] if current_actor else None,
+            "current_actor_name": _participant_name(current_actor) if current_actor else None,
+        }
+
+    marked = db.get_location_conclusion_marks(location_id)
+    return jsonify(
+        {
+            "location": location,
+            "room": room,
+            "occupants": occupants,
+            "npcs": npcs,
+            "combat": combat,
+            "conclusion": {"marked_character_ids": sorted(marked), "total_present": len(occupant_ids)},
+        }
+    )
+
+
 @app.route("/api/multiplayer/characters/<int:character_id>/move", methods=["POST"])
 def api_multiplayer_move(character_id):
     user = current_user()

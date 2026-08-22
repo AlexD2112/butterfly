@@ -789,9 +789,18 @@ def get_turn_by_id(turn_id):
 def get_room_messages(location_id, viewer_character_id):
     """Every row at this location visible to viewer_character_id, filtered by each row's own
     permanent visible_to_json snapshot - NOT by current room_occupancy. That's the whole point: a
-    character who just arrived doesn't retroactively gain access to what was said before they did."""
+    character who just arrived doesn't retroactively gain access to what was said before they did.
+
+    Each row also carries character_name - a LEFT JOIN against characters, resolved fresh on every
+    read rather than stored on the turn itself, so a display name always reflects the character's
+    current name (not a snapshot) even though it can outlive the character having left the location -
+    unlike visible_to_json, "who said this" isn't something that should ever change or go stale."""
     conn = get_db()
-    rows = conn.execute("SELECT * FROM turns WHERE location_id = ? ORDER BY id ASC", (location_id,)).fetchall()
+    rows = conn.execute(
+        "SELECT t.*, c.name AS character_name FROM turns t LEFT JOIN characters c ON c.id = t.character_id "
+        "WHERE t.location_id = ? ORDER BY t.id ASC",
+        (location_id,),
+    ).fetchall()
     conn.close()
     out = []
     for r in rows:

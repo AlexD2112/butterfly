@@ -190,6 +190,51 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self.assertIsNone(data["reply_turn_id"])  # FakeProvider always says no one responds
         self.assertIn("budget", data)
 
+    def test_location_detail_reports_occupants_and_no_combat(self):
+        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+        location_id = move_res.get_json()["location_id"]
+
+        res = self.client.get(f"/api/multiplayer/locations/{location_id}/detail")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["location"]["id"], location_id)
+        self.assertEqual([o["character_id"] for o in data["occupants"]], [character_id])
+        self.assertTrue(data["occupants"][0]["name"])  # premade's real in-state name, whatever it is
+        self.assertIsNone(data["combat"])
+        self.assertEqual(data["conclusion"], {"marked_character_ids": [], "total_present": 1})
+
+    def test_location_detail_unknown_location_404s(self):
+        res = self.client.get("/api/multiplayer/locations/999999/detail")
+        self.assertEqual(res.status_code, 404)
+
+    def test_my_characters_only_returns_the_current_users_characters_for_that_server(self):
+        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        self._login_as_discord_user("3", "PlayerB")
+        self.client.post(
+            "/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id},
+        )
+
+        self._login_as_discord_user("2", "PlayerA")
+        res = self.client.get(f"/api/multiplayer/servers/{server_id}/my_characters")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual([c["id"] for c in data["characters"]], [character_id])
+
+    def test_location_messages_include_the_sender_display_name(self):
+        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+        location_id = move_res.get_json()["location_id"]
+        expected_name = db.get_character_unchecked(character_id)["name"]
+        with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
+            self.client.post(
+                f"/api/multiplayer/characters/{character_id}/send",
+                json={"kind": "message", "content": "Hello there.", "model_key": "luna"},
+            )
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/location_messages")
+        messages = res.get_json()["messages"]
+        self.assertTrue(any(m["character_name"] == expected_name for m in messages))
+
 
 if __name__ == "__main__":
     unittest.main()
