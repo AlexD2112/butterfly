@@ -780,8 +780,15 @@ def record_room_message(game_id, room_id, location_id, character_id, kind, conte
 
 
 def get_turn_by_id(turn_id):
+    """Same character_name join as get_room_messages - this is what live.py's SSE events are built
+    from (see multiplayer.py's publish_location_event call sites), so a live-streamed row needs the
+    same display name a polled/reloaded one would have."""
     conn = get_db()
-    row = conn.execute("SELECT * FROM turns WHERE id = ?", (turn_id,)).fetchone()
+    row = conn.execute(
+        "SELECT t.*, c.name AS character_name FROM turns t LEFT JOIN characters c ON c.id = t.character_id "
+        "WHERE t.id = ?",
+        (turn_id,),
+    ).fetchone()
     conn.close()
     return dict(row) if row else None
 
