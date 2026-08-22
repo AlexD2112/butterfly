@@ -1,9 +1,10 @@
-# Butterfly — AI-Narrated Historical RPGs
+# Butterfly — Change History
 
-An LLM-driven RPG engine, separate from the Dendrynexus game in the rest of this repo. Design
-philosophy: the model narrates, roleplays NPCs, and makes judgment calls; the application rolls
-dice and validates every mechanical state change - nothing that compounds over a campaign (XP,
-leveling, resource clamping, feat/liability eligibility) is left to the model's discretion.
+A historical RPG engine, separate from the Dendrynexus game in the rest of this repo. Design
+philosophy: a game master narrates every scene, roleplays every NPC, and makes the fictional
+judgment calls; the application rolls the dice and validates every mechanical state change -
+nothing that compounds over a campaign (XP, leveling, resource clamping, feat/liability
+eligibility) is left to improvisation.
 
 Three layers, each swappable independently:
 - A **system** is a ruleset - attributes, skills, dice, feats, leveling. Lives under

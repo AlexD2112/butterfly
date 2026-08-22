@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Butterfly: AI-Narrated Historical RPGs</title>
+<title>Butterfly — Change History</title>
 <style>
   :root {
     --bg: #14161a; --panel: #1c1f26; --panel-2: #232732; --border: #333844;
@@ -194,7 +194,7 @@
 <div class="menu-screen active" id="screen-landing">
   <div class="eyebrow">Butterfly</div>
   <h1 class="landing-title">Change history.</h1>
-  <div class="subtitle">An AI-narrated historical RPG — the model narrates and voices everyone you meet; the app rolls every die and owns every outcome.</div>
+  <div class="subtitle">A historical RPG where a game master narrates every scene and voices everyone you meet — the dice decide the risks, and every consequence sticks.</div>
   <p class="landing-pitch">Step into Trotsky's Petrograd, Alfred's Britannia, Caesar's Rome, or Bohemond's First Crusade. Play the setting's signature character or build your own, then push events somewhere history never went — every departure from the record gets logged as it happens.</p>
   <div id="user-status" class="user-chip"></div>
   <div id="landing-budget" class="budget-chip"></div>
@@ -208,7 +208,7 @@
 <div class="menu-screen" id="screen-start">
   <div class="menu-back-row"><button class="menu-back" data-back="screen-landing">&larr; Back</button></div>
   <div class="eyebrow">Butterfly</div>
-  <h1>AI-Narrated Historical RPGs</h1>
+  <h1>Begin a Campaign</h1>
   <div class="subtitle">Choose how you want to begin.</div>
   <div class="menu-options" style="margin-top:18px;">
     <button class="menu-option" id="opt-preset">
@@ -217,7 +217,7 @@
     </button>
     <button class="menu-option" id="opt-custom" disabled>
       <div class="opt-title">Custom</div>
-      <div class="opt-desc coming-later">Build your own setting and world — will be added later.</div>
+      <div class="opt-desc coming-later">Build your own setting and world — coming later.</div>
     </button>
   </div>
 </div>
@@ -239,8 +239,8 @@
   <div class="subtitle">How much mechanical structure do you want under the narration?</div>
   <div class="menu-options">
     <button class="menu-option" id="mode-freeform" disabled>
-      <div class="opt-title">Freeform AI</div>
-      <div class="opt-desc coming-later">The AI narrates and resolves everything on its own — no dice, no attributes. Coming later.</div>
+      <div class="opt-title">Freeform</div>
+      <div class="opt-desc coming-later">No dice, no attributes — pure narrated roleplay, resolved entirely by the game master's judgment. Coming later.</div>
     </button>
     <button class="menu-option" id="mode-attributes" disabled>
       <div class="opt-title">Attributes &amp; Feats</div>
@@ -279,7 +279,7 @@
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
-      <span title="Every turn is reviewed by a multi-judge council before you see it - not optional right now, see the Mechanics panel for what the council did each turn.">Council Mode: always on</span>
+      <span title="Every turn is reviewed by a panel of specialist judges before you see it - see the Mechanics panel below each turn for what they found.">Council Mode: always on</span>
       <button id="sheet-toggle-btn" title="Character sheet">Character Sheet <span class="dot"></span></button>
     </div>
   </header>
@@ -326,7 +326,7 @@ function budgetStatusClass(budget) {
 
 function formatBudget(budget) {
   if (!budget) return '';
-  if (budget.remaining_usd <= 0) return `Out of usage budget ($${budget.budget_usd.toFixed(2)} used) — this account can't take further AI turns.`;
+  if (budget.remaining_usd <= 0) return `Out of budget ($${budget.budget_usd.toFixed(2)} used) — this account can't send further turns.`;
   return `$${budget.remaining_usd.toFixed(3)} of $${budget.budget_usd.toFixed(2)} usage budget remaining`;
 }
 
@@ -339,7 +339,7 @@ function renderBudget(budget) {
   // deployment-wide, so a per-account budget can't mean anything for them) - show a clear call to
   // action instead of a dollar figure, and lock the input bar the same way exhausted budget does.
   if (CURRENT_USER && CURRENT_USER.is_local) {
-    const text = 'Log in with Discord to unlock AI turns.';
+    const text = 'Log in with Discord to send turns.';
     if (landingEl) { landingEl.textContent = text; landingEl.className = 'budget-chip low'; }
     if (headerEl) { headerEl.textContent = text; headerEl.className = 'low'; }
     if (inputbar) inputbar.classList.add('exhausted');
@@ -359,7 +359,7 @@ async function loadMe() {
   CURRENT_USER = await res.json();
   const el = document.getElementById('user-status');
   if (CURRENT_USER.is_local) {
-    let html = `Playing as a local profile on this browser.`;
+    let html = `Not logged in.`;
     if (CURRENT_USER.discord_login_available) {
       html += `<br><button class="discord-btn" id="discord-login-btn">Login with Discord</button>`;
     }
@@ -858,7 +858,7 @@ async function sendTurn() {
   if (!text || !CURRENT_CHARACTER_ID) return;
   inputBox.value = '';
   sendBtn.disabled = true;
-  setStatus('Thinking…');
+  setStatus('Resolving…');
   try {
     const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/turn`, {
       method: 'POST',
@@ -867,7 +867,7 @@ async function sendTurn() {
     });
     const data = await res.json();
     if (res.status === 403 && data.discord_login_required) {
-      appendTurn(text, `[Log in with Discord to send AI turns — see the start menu or landing page.]`, []);
+      appendTurn(text, `[Log in with Discord to send turns — see the start menu or landing page.]`, []);
       setStatus('Discord login required.');
       renderBudget(null);
     } else if (res.status === 503 && data.local_model_offline) {
@@ -876,7 +876,7 @@ async function sendTurn() {
       inputBox.value = text;  // give the input back rather than losing what they typed
       loadModels();  // refresh so the now-known-offline option shows disabled immediately
     } else if (res.status === 402) {
-      appendTurn(text, `[Out of usage budget — this account can't take further AI turns.]`, []);
+      appendTurn(text, `[Out of budget — this account can't send further turns.]`, []);
       setStatus('Out of budget.');
       renderBudget(data.budget);
     } else if (data.error) {

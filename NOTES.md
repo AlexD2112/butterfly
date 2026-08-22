@@ -1,3 +1,50 @@
+# De-AI-ified the UI chrome (2026-08-21)
+
+You approved a full sweep after the earlier diagnose-only pass, with explicit instruction to leave
+the actual narration/story content alone (already good, not the target) and focus on menus/UI
+chrome/labels - using my own judgment on what "looks AI-made" beyond the 4 things I'd already found.
+
+**What I changed, all in `static/index.html` plus README's title/opening paragraph:**
+- Browser tab title and README title: "AI-Narrated Historical RPGs" → reused the landing page's own
+  already-good tagline, "Butterfly — Change History," instead of a second, more generic descriptive
+  title existing alongside it.
+- Landing page subtitle: rewrote away from mechanism-explaining ("the model narrates... the app
+  rolls...") to player-facing framing ("a game master narrates every scene... the dice decide the
+  risks"). Same honest meaning, told from the player's point of view instead of the implementation's.
+- The in-app start-menu heading duplicated "AI-Narrated Historical RPGs" verbatim right next to the
+  landing page's actual branded tagline - replaced with "Begin a Campaign," a heading that fits
+  what that screen actually does instead of re-explaining the whole product a second time.
+- "Freeform AI" → "Freeform" (also more ACCURATE, not just less AI-labeled: every mode is
+  AI-narrated, so singling out this one as "AI" implied the others weren't). Its description dropped
+  "The AI narrates and resolves everything on its own" for "pure narrated roleplay, resolved
+  entirely by the game master's judgment."
+- Standardized the "coming later" trailing text across the three not-yet-built options (was
+  inconsistently "will be added later." on one, "Coming later." on the other two).
+- Council Mode's tooltip dropped "not optional right now" - an oddly confessional, dev-note-sounding
+  phrase for a shipped feature's own UI text - and reworded around what it does for the player.
+- The turn-loading status text, "Thinking…" - the single most recognizable "built with an LLM API"
+  convention (identical to ChatGPT/Claude.ai's own loading state) - replaced with "Resolving…,"
+  which also ties into vocabulary the game already uses ("resolution check" in the rules text).
+- "AI turns" / "usage budget... AI turns" phrasing in four places (the budget chip, the local-user
+  budget prompt, and two inline turn-result messages) simplified to plain "turns" - in this app
+  "turn" never means anything else, so the "AI" qualifier was never adding information.
+- `loadMe()`'s local-profile status text, "Playing as a local profile on this browser" (internal
+  jargon a player has no reason to know), simplified to "Not logged in."
+
+**Deliberately NOT touched**: `council.py`'s own narration-quality system (already actively
+engineered against AI-generic prose, see its BANNED_WORDS list), README's later technical sections
+(Setup, Deploying, Model switching, the OpenAI/Anthropic integration notes) - those are legitimate
+developer documentation where naming the actual providers/mechanism is correct and expected, not an
+"AI-wrapper" tell in the sense this request meant.
+
+**Verified for real**: ran the actual dev server (not just read the diff) and drove a real click-
+through - landing → Begin → a setting → the gameplay-mode screen - confirming every changed string
+renders correctly in the live DOM (not just present in source) and the page throws zero console
+errors across the flow. 103/103 backend tests still passing (unaffected - this was a pure
+frontend/README text change, no Python logic touched).
+
+---
+
 # Full turn transcripts, saved and viewable (2026-08-21)
 
 You asked whether there was any way to view a full playthrough - there wasn't, really (see the
