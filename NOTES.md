@@ -1,3 +1,67 @@
+# Saved-game history: single-player resume, and a multiplayer room-peek feature (2026-08-22)
+
+Two independent fixes, prompted by a direct question: "can players get their existing chatlogs back
+when they reopen a saved game?" Checked the actual code before answering - single-player: no, resuming
+showed a blank log with one status line, even though `db.get_turns()` had the full history sitting
+right there (only `view_transcript.py`, a local CLI script, ever called it). Multiplayer: yes, but only
+for the character's current location, since `location_messages` already existed and was already wired
+into the resume flow.
+
+## Fix 1: single-player resume replays history into the log
+
+New route, `GET /api/character/<id>/turns` - a thin, ownership-checked wrapper around
+`db.get_turns()`, which already returned exactly what was needed (`player_input`/`narration`/
+`debug_events_json` per turn, oldest first). `loadCharacterState`'s resume branch (previously just one
+`setStatus(...)` call) now fetches this and replays each turn through the existing `appendTurn()` -
+same rendering single-player already uses for live turns, no new rendering code needed. A character
+with zero recorded turns just shows an empty log, which is correct (nothing has happened yet).
+
+## Fix 2: multiplayer - peek at another location in your current room, without moving there
+
+The user's original ask, verbatim, was "let multiplayer navigate between viewing different rooms in
+their current location" - backwards relative to the schema (a location is INSIDE a room, not the
+reverse; you can't have multiple rooms in one location). Read it as room/location swapped: peek at
+other LOCATIONS within the ROOM you're already in. Flagged this reading back before building, per
+explicit instruction to sanity-check before sinking real time into it, given the go-ahead in the same
+message.
+
+New route, `GET /api/multiplayer/characters/<id>/peek/<location_id>` - restricted to locations in the
+character's CURRENT room only (peeking into a different room entirely wasn't asked for and isn't what
+"in their current room" means). Deliberately reuses `get_room_messages` UNCHANGED rather than
+special-casing a "peek mode" - the existing `visible_to_json` privacy rule (a character only sees
+messages sent while they were actually present) applies exactly as it does for their real location, so
+a location they've never visited correctly comes back empty rather than leaking conversations they
+weren't part of. This isn't a workaround for privacy; it's the same rule, just queryable for a location
+other than the one you're currently in.
+
+Frontend: a "Peek at…" dropdown next to "Move to…" in the location bar, opening a separate panel (own
+DOM, own log element) showing that location's live occupancy/combat state (via the existing, already-
+public `/detail` endpoint - "who's here" isn't private) plus whatever messages the character is
+privileged to see there. Deliberately NOT live via SSE - one-shot fetch plus a manual Refresh button,
+to keep it a lightweight read-only peek rather than a second real-time view to maintain. Never touches
+`MP_LOCATION_ID`/`MP_ROOM_ID`, never affects sending - purely additive to the character's actual
+presence. The per-turn rendering logic (speaker/body/flag/mechanics) was extracted into a shared
+`buildMpTurnInnerHtml()` so the peek panel and the live log render identically without duplicating that
+logic; only what happens around it (dedup tracking, the reply button, which log element it lands in)
+differs between the two callers.
+
+## Verification
+
+Both fixes tested for real, not just via unit tests, against a throwaway copy of the app (own port, own
+SQLite file, real API keys) - same reasoning as phase 7's verification: the live local-hosted instance
+was already running against the real database. Single-player: created a character, sent one real turn,
+returned to the menu, resumed, confirmed the full exchange replayed into the log. Multiplayer peek:
+built a room with two locations, sent a message in one as one character, moved back to the other,
+peeked at the first and saw the message plus live (empty) occupancy; then peeked at it as a SECOND
+character who had never been there and confirmed occupancy still showed correctly but messages came
+back empty with no error - the privacy rule holding through the actual UI, not just the route tests.
+Also confirmed peek content never leaks into the main chat log (separate DOM, separate state) and that
+closing the panel resets cleanly. Backend suite: 209/209 (6 new tests: 3 for
+`/character/<id>/turns` including an ownership-leak check, 3 for `/peek/<location_id>` covering the
+same-room happy path, the never-visited-empty path, and the different-room rejection).
+
+---
+
 # Multiplayer phase 7: the frontend (2026-08-21)
 
 Everything through phase 6 was backend-only - tested API endpoints, zero UI. This phase builds the

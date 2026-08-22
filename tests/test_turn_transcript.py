@@ -138,5 +138,60 @@ class TestServerRecordsTurnsOnSuccess(unittest.TestCase):
         self.assertEqual(db.get_turns(character_id), [])
 
 
+class TestCharacterTurnsRoute(unittest.TestCase):
+    """The /api/character/<id>/turns route added so a resumed character's history can be replayed
+    into the frontend's log instead of showing a blank screen with just a status line."""
+
+    def setUp(self):
+        self._tmpdir = TemporaryDirectory()
+        self._orig_db_file = db.DB_FILE
+        db.DB_FILE = Path(self._tmpdir.name) / "test_butterfly.db"
+        db.init_db()
+        server.app.config["TESTING"] = True
+        self.client = server.app.test_client()
+
+    def tearDown(self):
+        db.DB_FILE = self._orig_db_file
+        self._tmpdir.cleanup()
+
+    def _login(self, discord_id, username):
+        user = db.get_or_create_discord_user(discord_id, username, None)
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = user["id"]
+        return user
+
+    def test_returns_recorded_turns_in_order_with_parseable_debug_events(self):
+        self._login("1", "Owner")
+        character_id = self.client.post(
+            "/api/characters", json={"type": "premade", "setting_key": "petrograd_1917"},
+        ).get_json()["character_id"]
+        db.record_turn(character_id, 0, "first", "narration one", "luna", [{"type": "check"}])
+        db.record_turn(character_id, 1, "second", "narration two", "luna", [])
+
+        res = self.client.get(f"/api/character/{character_id}/turns")
+        self.assertEqual(res.status_code, 200)
+        turns = res.get_json()["turns"]
+        self.assertEqual([t["player_input"] for t in turns], ["first", "second"])
+        self.assertEqual(turns[0]["narration"], "narration one")
+        import json
+        self.assertEqual(json.loads(turns[0]["debug_events_json"]), [{"type": "check"}])
+
+    def test_unknown_character_404s(self):
+        self._login("1", "Owner")
+        res = self.client.get("/api/character/999999/turns")
+        self.assertEqual(res.status_code, 404)
+
+    def test_another_users_character_404s_not_leaks(self):
+        self._login("1", "Owner")
+        character_id = self.client.post(
+            "/api/characters", json={"type": "premade", "setting_key": "petrograd_1917"},
+        ).get_json()["character_id"]
+        db.record_turn(character_id, 0, "private turn", "private narration", "luna", [])
+
+        self._login("2", "SomeoneElse")
+        res = self.client.get(f"/api/character/{character_id}/turns")
+        self.assertEqual(res.status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -235,6 +235,82 @@ class TestMultiplayerRoutes(unittest.TestCase):
         messages = res.get_json()["messages"]
         self.assertTrue(any(m["character_name"] == expected_name for m in messages))
 
+    def test_peek_shows_messages_from_a_different_location_in_the_same_room(self):
+        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        main_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+        main_location_id = main_res.get_json()["location_id"]
+
+        self._login_as_discord_user("1", "Admin", is_admin=True)
+        second_location_id = self.client.post(
+            f"/api/admin/rooms/{room_id}/locations", json={"name": "Second Spot"}
+        ).get_json()["location_id"]
+
+        self._login_as_discord_user("2", "PlayerA")
+        self.client.post(
+            f"/api/multiplayer/characters/{character_id}/move",
+            json={"room_id": room_id, "location_id": second_location_id},
+        )
+        with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
+            self.client.post(
+                f"/api/multiplayer/characters/{character_id}/send",
+                json={"kind": "message", "content": "Message from the second spot.", "model_key": "luna"},
+            )
+        # Move back to Main - not physically at the second location any more when peeking.
+        self.client.post(
+            f"/api/multiplayer/characters/{character_id}/move",
+            json={"room_id": room_id, "location_id": main_location_id},
+        )
+
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{second_location_id}")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["location_id"], second_location_id)
+        self.assertTrue(any(m["player_input"] == "Message from the second spot." for m in data["messages"]))
+
+    def test_peek_at_a_never_visited_location_is_empty_not_an_error(self):
+        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+
+        self._login_as_discord_user("1", "Admin", is_admin=True)
+        second_location_id = self.client.post(
+            f"/api/admin/rooms/{room_id}/locations", json={"name": "Second Spot"}
+        ).get_json()["location_id"]
+        # A different character sends a message there - PlayerA's character was never present.
+        other_char_id = self.client.post(
+            "/api/characters",
+            json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id},
+        ).get_json()["character_id"]
+        self.client.post(
+            f"/api/multiplayer/characters/{other_char_id}/move",
+            json={"room_id": room_id, "location_id": second_location_id},
+        )
+        with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
+            self.client.post(
+                f"/api/multiplayer/characters/{other_char_id}/send",
+                json={"kind": "message", "content": "Secret chat.", "model_key": "luna"},
+            )
+
+        self._login_as_discord_user("2", "PlayerA")
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{second_location_id}")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json()["messages"], [])
+
+    def test_peek_at_a_location_in_a_different_room_is_rejected(self):
+        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+
+        self._login_as_discord_user("1", "Admin", is_admin=True)
+        other_room_id = self.client.post(
+            f"/api/admin/multiplayer_servers/{server_id}/rooms", json={"name": "Room B"}
+        ).get_json()["room_id"]
+        other_room_location_id = self.client.get(
+            f"/api/multiplayer/rooms/{other_room_id}/locations"
+        ).get_json()["locations"][0]["id"]
+
+        self._login_as_discord_user("2", "PlayerA")
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{other_room_location_id}")
+        self.assertEqual(res.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

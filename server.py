@@ -338,6 +338,20 @@ def api_character_opening_scene(character_id):
     return jsonify({"text": engine.load_text(row["setting_key"], "opening_scene.md")})
 
 
+@app.route("/api/character/<int:character_id>/turns")
+def api_character_turns(character_id):
+    """The full recorded history for a single-player character - db.get_turns() already existed and
+    already had everything needed for this (player_input/narration/debug_events_json per turn,
+    oldest first), but until now the only thing that ever called it was view_transcript.py, a local
+    CLI script. This is what lets the frontend replay a resumed character's past turns into the log
+    instead of showing a blank screen with just a status line - see NOTES.md."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    return jsonify({"turns": db.get_turns(character_id)})
+
+
 @app.route("/api/character/<int:character_id>/turn", methods=["POST"])
 def api_character_turn(character_id):
     user = current_user()
@@ -706,6 +720,34 @@ def api_multiplayer_location_messages(character_id):
         return jsonify({"error": "This character isn't in a room yet."}), 400
     messages = db.get_room_messages(presence["location_id"], character_id)
     return jsonify({"messages": messages, "room_id": presence["room_id"], "location_id": presence["location_id"]})
+
+
+@app.route("/api/multiplayer/characters/<int:character_id>/peek/<int:location_id>")
+def api_multiplayer_peek_location(character_id, location_id):
+    """Read-only visibility into another location in the character's CURRENT room, without actually
+    moving them there - lets a player check what's happening elsewhere in the room before deciding
+    whether to go. Deliberately restricted to the current room only (not any location server-wide):
+    "peek at the room next door" is the feature asked for, not "see into any location anywhere."
+
+    Reuses get_room_messages unchanged, so the peeked location's existing visible_to_json privacy
+    guarantee applies exactly as it does everywhere else - a character who's never actually been
+    present at that location gets back an empty list, same as if they'd fetched location_messages for
+    it as their real location. This is not a bypass; it's the same rule, just queryable for a location
+    other than your current one."""
+    user = current_user()
+    char = db.get_character(character_id, user["id"])
+    if char is None:
+        return jsonify({"error": "Character not found."}), 404
+    presence = db.get_character_location(character_id)
+    if presence is None:
+        return jsonify({"error": "This character isn't in a room yet."}), 400
+    target = db.get_location(location_id)
+    if target is None:
+        return jsonify({"error": "Unknown location."}), 404
+    if target["room_id"] != presence["room_id"]:
+        return jsonify({"error": "You can only peek at locations in your current room."}), 400
+    messages = db.get_room_messages(location_id, character_id)
+    return jsonify({"messages": messages, "room_id": target["room_id"], "location_id": location_id})
 
 
 @app.route("/api/multiplayer/characters/<int:character_id>/send", methods=["POST"])

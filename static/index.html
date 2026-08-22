@@ -230,7 +230,7 @@
   .admin-only-badge { font-size: 10px; text-transform: uppercase; color: var(--accent-2); letter-spacing: 0.5px; }
 
   /* ---------- multiplayer: in-room chat screen ---------- */
-  #mp-app { display: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto 1fr auto; height: 100vh; }
+  #mp-app { display: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto 1fr auto; height: 100vh; }
   #mp-app.active { display: grid; }
   #mp-app header { grid-column: 1; }
   #mp-locbar { grid-column: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
@@ -244,6 +244,18 @@
   #mp-combatbar .ci-order { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
   #mp-combatbar .ci-chip { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); }
   #mp-combatbar .ci-chip.current { border-color: var(--bad); color: var(--text); background: rgba(181,72,47,0.25); }
+
+  /* Read-only "peek at another location in this room" panel - a separate view, not the live log, so
+     it never mixes into the room's own chat feed or its reply-threading state (see NOTES.md). */
+  #mp-peek-panel { grid-column: 1; display: none; max-height: 38vh; overflow-y: auto; padding: 10px 24px;
+    background: var(--panel-2); border-bottom: 2px solid var(--accent-2); font-family: var(--font-ui); }
+  #mp-peek-panel.active { display: block; }
+  #mp-peek-panel .mp-peek-header { display: flex; justify-content: space-between; align-items: center;
+    font-size: 12.5px; }
+  #mp-peek-title { color: var(--accent-2); font-weight: bold; }
+  #mp-peek-header button { font-size: 11.5px; padding: 3px 8px; }
+  #mp-peek-occupants { font-size: 11.5px; color: var(--muted); margin: 4px 0 8px; }
+  #mp-peek-log .mp-turn { font-size: 13px; }
   #mp-log { grid-column: 1; min-width: 0; overflow-y: auto; padding: 20px 24px 100px; line-height: 1.6;
     display: flex; flex-direction: column; align-items: center; }
   .mp-turn { width: 100%; max-width: var(--content-width); min-width: 0; margin-bottom: 16px; font-family: var(--font-ui); font-size: 14px; }
@@ -476,9 +488,21 @@
   <div id="mp-locbar">
     <span class="mp-loc-title" id="mp-loc-title">—</span>
     <select id="mp-loc-move-select"></select>
+    <select id="mp-loc-peek-select" title="Look at another location in this room, without moving there"></select>
     <button id="mp-mark-concluded-btn">Mark Scene Concluded</button>
     <button id="mp-storm-out-btn">Storm Out</button>
     <span id="mp-occupants"></span>
+  </div>
+  <div id="mp-peek-panel">
+    <div class="mp-peek-header">
+      <span id="mp-peek-title"></span>
+      <span>
+        <button id="mp-peek-refresh-btn">Refresh</button>
+        <button id="mp-peek-close-btn">&times; Close</button>
+      </span>
+    </div>
+    <div id="mp-peek-occupants"></div>
+    <div id="mp-peek-log"></div>
   </div>
   <div id="mp-combatbar">
     <div id="mp-combat-status"></div>
@@ -1149,6 +1173,16 @@ async function loadCharacterState(isNew) {
     appendTurn(null, openingData.text, []);
     setStatus('New campaign. Type your first action below.');
   } else {
+    // Replay everything recorded so far, oldest first, so a resumed character shows its actual
+    // history instead of a blank log with just a status line - db.get_turns already had everything
+    // needed for this (it's what view_transcript.py has used all along); this just reuses it.
+    const turnsRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/turns`);
+    const turnsData = await turnsRes.json();
+    (turnsData.turns || []).forEach(t => {
+      let debugEvents = [];
+      try { debugEvents = t.debug_events_json ? JSON.parse(t.debug_events_json) : []; } catch (e) { debugEvents = []; }
+      appendTurn(t.player_input, t.narration, debugEvents);
+    });
     setStatus(`Resumed at turn ${data.state.turn_number}, ${data.state.date}.`);
   }
 }
@@ -1228,6 +1262,8 @@ let MP_NPC_NAME_BY_KEY = {};         // npc key -> display name, refreshed by re
                                       // npcs.key, e.g. "old_sailor"), not its display name, so this is
                                       // how an npc_reply's speaker line shows "Old Sailor Ivan" instead.
 let MP_EVENTSOURCE = null;
+let MP_PEEK_LOCATION_ID = null;      // set while the read-only peek panel is open on another
+                                      // location in the current room; null when it's closed
 
 const mpLogEl = document.getElementById('mp-log');
 const mpModelSelect = document.getElementById('mp-model-select');
@@ -1535,6 +1571,8 @@ async function enterMpLocation(roomId, locationId) {
   MP_RENDERED_TURN_IDS = new Set();
   MP_TURN_BY_ID = {};
   MP_REPLY_TO = null;
+  MP_PEEK_LOCATION_ID = null;  // any open peek panel referred to the OLD room's locations
+  document.getElementById('mp-peek-panel').classList.remove('active');
   closeMpEventSource();
 
   document.querySelectorAll('.menu-screen').forEach(el => el.classList.remove('active'));
@@ -1582,10 +1620,15 @@ async function refreshMpLocationDetail() {
 
   const locsRes = await fetch(`/api/multiplayer/rooms/${MP_ROOM_ID}/locations`);
   const locsData = await locsRes.json();
+  const otherLocations = locsData.locations.filter(l => l.id !== MP_LOCATION_ID);
   const moveSelect = document.getElementById('mp-loc-move-select');
   moveSelect.innerHTML = `<option value="">Move to…</option>` +
-    locsData.locations.filter(l => l.id !== MP_LOCATION_ID)
-      .map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+    otherLocations.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+  const peekSelect = document.getElementById('mp-loc-peek-select');
+  const peekValue = peekSelect.value;
+  peekSelect.innerHTML = `<option value="">Peek at…</option>` +
+    otherLocations.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+  peekSelect.value = otherLocations.some(l => String(l.id) === peekValue) ? peekValue : '';
 
   renderMpCombatBar(data.combat);
 
@@ -1634,11 +1677,13 @@ function resolveResponderName(responder) {
   return MP_NPC_NAME_BY_KEY[responder] || responder;
 }
 
-function appendMpTurn(row) {
-  if (MP_RENDERED_TURN_IDS.has(row.id)) return;
-  MP_RENDERED_TURN_IDS.add(row.id);
-  MP_TURN_BY_ID[row.id] = row;
-
+// Shared by appendMpTurn (the live/replayed log) and appendPeekTurn (the read-only peek panel - see
+// "peek at other locations in your room" below) - the actual speaker/body/flag/mechanics rendering is
+// identical either way; only what happens AROUND it differs (dedup tracking, reply buttons, which
+// element it's appended to). replyLookup is a plain {id: row} map the caller controls, so the peek
+// panel can resolve "replying to..." context within its own small batch without touching
+// MP_TURN_BY_ID (which is scoped to the live log's own history, not whatever's currently peeked).
+function buildMpTurnInnerHtml(row, replyLookup, includeReplyButton) {
   let speaker = '';
   let body = '';
   if (row.kind === 'message' || row.kind === 'action') {
@@ -1659,8 +1704,8 @@ function appendMpTurn(row) {
   }
 
   let replyContext = '';
-  if (row.reply_to_turn_id && MP_TURN_BY_ID[row.reply_to_turn_id]) {
-    const prior = MP_TURN_BY_ID[row.reply_to_turn_id];
+  if (row.reply_to_turn_id && replyLookup[row.reply_to_turn_id]) {
+    const prior = replyLookup[row.reply_to_turn_id];
     const priorText = (prior.player_input || prior.narration || '').slice(0, 80);
     replyContext = `<div class="mp-reply-context">↳ replying to: ${escapeHtml(priorText)}${priorText.length >= 80 ? '…' : ''}</div>`;
   }
@@ -1669,16 +1714,27 @@ function appendMpTurn(row) {
   let debugEvents = [];
   try { debugEvents = row.debug_events_json ? JSON.parse(row.debug_events_json) : []; } catch (e) { debugEvents = []; }
   const mechanics = renderMechanics(debugEvents);
-  const canReply = ['message', 'action', 'npc_reply', 'gm_reply'].includes(row.kind);
+  const canReply = includeReplyButton && ['message', 'action', 'npc_reply', 'gm_reply'].includes(row.kind);
   const replyBtn = canReply ? `<button class="mp-reply-btn" data-reply-to="${row.id}">Reply</button>` : '';
 
-  const div = document.createElement('div');
-  div.className = `mp-turn kind-${row.kind}`;
-  div.innerHTML =
+  const html =
     (speaker ? `<div class="mp-speaker">${escapeHtml(speaker)}${flag}</div>` : flag) +
     replyContext +
     `<div class="mp-body">${escapeHtml(body)}</div>` +
     mechanics + replyBtn;
+  return { html, body, debugEvents };
+}
+
+function appendMpTurn(row) {
+  if (MP_RENDERED_TURN_IDS.has(row.id)) return;
+  MP_RENDERED_TURN_IDS.add(row.id);
+  MP_TURN_BY_ID[row.id] = row;
+
+  const { html, body, debugEvents } = buildMpTurnInnerHtml(row, MP_TURN_BY_ID, true);
+
+  const div = document.createElement('div');
+  div.className = `mp-turn kind-${row.kind}`;
+  div.innerHTML = html;
   mpLogEl.appendChild(div);
   mpLogEl.scrollTop = mpLogEl.scrollHeight;
 
@@ -1689,6 +1745,75 @@ function appendMpTurn(row) {
     document.getElementById('mp-sheet-toggle-btn').classList.add('has-update');
   }
 }
+
+function appendPeekTurn(row, containerEl, replyLookup) {
+  const { html } = buildMpTurnInnerHtml(row, replyLookup, false);
+  const div = document.createElement('div');
+  div.className = `mp-turn kind-${row.kind}`;
+  div.innerHTML = html;
+  containerEl.appendChild(div);
+}
+
+// ---------------- peek: look at another location in the current room without moving there ----------------
+// Read-only and one-shot (fetched on open/refresh, not live via SSE) - deliberately not a second
+// real-time view. It never touches MP_LOCATION_ID/MP_ROOM_ID, never affects sending, and reuses
+// /peek/<location_id> (server-side restricted to the character's current room, and privacy-scoped by
+// the same visible_to_json rule as everywhere else - see server.py's docstring on that route).
+async function openPeek(locationId) {
+  MP_PEEK_LOCATION_ID = locationId;
+  document.getElementById('mp-peek-panel').classList.add('active');
+  await refreshPeek();
+}
+
+async function refreshPeek() {
+  if (MP_PEEK_LOCATION_ID == null) return;
+  const locationId = MP_PEEK_LOCATION_ID;
+  const [detailRes, msgRes] = await Promise.all([
+    fetch(`/api/multiplayer/locations/${locationId}/detail`),
+    fetch(`/api/multiplayer/characters/${MP_CHARACTER_ID}/peek/${locationId}`),
+  ]);
+  const detail = await detailRes.json();
+  const msgData = await msgRes.json();
+  if (msgData.error) {
+    setStatus(msgData.error);
+    closePeek();
+    return;
+  }
+
+  document.getElementById('mp-peek-title').textContent = `Peeking: ${detail.location.name}`;
+  const names = detail.occupants.map(o => o.name);
+  const npcNames = detail.npcs.map(n => n.name);
+  let occLine = `Here: ${names.join(', ') || 'no one'}${npcNames.length ? ' · NPCs: ' + npcNames.join(', ') : ''}`;
+  if (detail.combat) {
+    occLine += ` · combat active (${escapeHtml(detail.combat.current_actor_name || 'someone')}'s turn)`;
+  }
+  document.getElementById('mp-peek-occupants').textContent = occLine;
+
+  const peekLogEl = document.getElementById('mp-peek-log');
+  peekLogEl.innerHTML = '';
+  const messages = msgData.messages || [];
+  if (messages.length === 0) {
+    peekLogEl.innerHTML = '<div class="mp-empty">Nothing you witnessed here yet.</div>';
+  } else {
+    const replyLookup = {};
+    messages.forEach(row => { replyLookup[row.id] = row; });
+    messages.forEach(row => appendPeekTurn(row, peekLogEl, replyLookup));
+  }
+}
+
+function closePeek() {
+  MP_PEEK_LOCATION_ID = null;
+  document.getElementById('mp-peek-panel').classList.remove('active');
+  document.getElementById('mp-loc-peek-select').value = '';
+}
+
+document.getElementById('mp-loc-peek-select').addEventListener('change', (e) => {
+  const locId = e.target.value;
+  if (!locId) { closePeek(); return; }
+  openPeek(parseInt(locId, 10));
+});
+document.getElementById('mp-peek-close-btn').addEventListener('click', closePeek);
+document.getElementById('mp-peek-refresh-btn').addEventListener('click', refreshPeek);
 
 function setMpReplyTo(turnId, bodyText) {
   MP_REPLY_TO = turnId;
