@@ -170,7 +170,21 @@
   .xp-bar-wrap { background: var(--panel-2); border-radius: 3px; height: 8px; margin: 4px 0 2px; overflow: hidden; }
   .xp-bar-fill { height: 100%; background: var(--ok); }
   .level-up-banner { background: var(--accent); color: #fff; border-radius: 4px; padding: 6px 8px;
-    font-size: 11.5px; margin: 6px 0; text-align: center; }
+    font-size: 11.5px; margin: 6px 0; text-align: center; display: block; width: 100%;
+    border: none; font-family: var(--font-ui); cursor: pointer; }
+  .level-up-banner:hover { filter: brightness(1.1); }
+  #level-up-picker { display: none; }
+  #level-up-picker.open { display: block; margin: 6px 0; padding: 8px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--panel-2); font-size: 12px; }
+  #level-up-picker h4 { margin: 0 0 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  .lup-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .lup-tabs button { flex: 1; font-size: 11.5px; padding: 4px; }
+  .lup-tabs button.active { background: var(--accent); color: #fff; }
+  .lup-skill-row, .lup-feat-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+  .lup-skill-row input[type=checkbox]:disabled + span, .lup-feat-row input[type=radio]:disabled + span { opacity: 0.4; }
+  .lup-attr-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+  .lup-attr-row button { padding: 2px 8px; }
+  .lup-error { color: var(--bad); font-size: 11.5px; margin: 6px 0; }
   .skill-group { margin-bottom: 6px; }
   .skill-group-title { font-size: 11px; text-transform: uppercase; color: var(--muted); margin: 6px 0 2px; }
   .skill-row .tier-untrained { color: var(--muted); }
@@ -546,6 +560,11 @@ let SELECTED_SETTING = null;
 let CREATION_SCHEMA = null;
 let CREATION_SKILL_TIERS = {};
 let CURRENT_CHARACTER_ID = null;
+// Whichever character the sidebar is currently showing - single-player's CURRENT_CHARACTER_ID or
+// multiplayer's MP_CHARACTER_ID, set by loadCharacterState/loadCharacterStateMp right before each
+// calls renderSidebar. The level-up picker (openLevelUpPicker) targets this rather than either
+// context-specific variable directly, since the sidebar is one shared component used from both.
+let SHEET_CHARACTER_ID = null;
 // Multiplayer context - null whenever the creation flow (premade/custom) was entered from single-
 // player. When set, createPremadeAndLaunch/submitCreation attach it to the POST and launch into the
 // multiplayer chat screen instead of single-player's #app - the two creation forms themselves are
@@ -979,7 +998,9 @@ function renderSidebar(state) {
   const xpNeeded = 100 + (c.level - 1) * 50;
   const xpPct = Math.max(0, Math.min(100, Math.round(100 * c.xp / xpNeeded)));
   const levelUpBanner = c.level_up_pending
-    ? `<div class="level-up-banner">Level-up available — choose skill / feat / attribute</div>` : '';
+    ? `<button type="button" class="level-up-banner" id="level-up-banner-btn">Level-up available — click to choose skill / feat / attribute</button>
+       <div id="level-up-picker"></div>`
+    : '<div id="level-up-picker"></div>';
 
   const attrRows = Object.entries(c.attributes)
     .map(([k, v]) => `<div class="attr-row"><span>${k}</span><span>${v} (${fmtMod(attrMod(v))})</span></div>`)
@@ -1059,6 +1080,166 @@ function renderSidebar(state) {
     ${section('Canon Events', canonRows || '<div class="card-desc">None yet.</div>', false)}
     ${section('Divergence Log', divergenceEntries, false)}
   `;
+
+  const levelUpBtn = document.getElementById('level-up-banner-btn');
+  if (levelUpBtn) levelUpBtn.addEventListener('click', toggleLevelUpPicker);
+}
+
+// ---------------- level-up picker: click the sidebar banner instead of describing it in chat ----------------
+// Calls apply_level_up directly (system.apply_level_up, no AI involved) - see server.py's route
+// docstring for why: the old conversational-only path had no code-level guarantee the model's
+// propose_level_up call matched what the player actually asked for. This coexists with that
+// conversational path rather than replacing it - a player can still just say what they want in a
+// message/action and trust the GM to call propose_level_up, if they'd rather roleplay it.
+let LEVEL_UP_TAB = 'skill';
+let LEVEL_UP_OPTIONS = null;
+let LEVEL_UP_SELECTED_SKILLS = [];
+let LEVEL_UP_SELECTED_FEAT = null;
+let LEVEL_UP_ATTR_POINTS = {};
+
+async function toggleLevelUpPicker() {
+  const el = document.getElementById('level-up-picker');
+  if (!el) return;
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    el.innerHTML = '';
+    return;
+  }
+  if (!SHEET_CHARACTER_ID) return;
+  const res = await fetch(`/api/character/${SHEET_CHARACTER_ID}/level_up_options`);
+  const data = await res.json();
+  if (!data.pending) { el.classList.remove('open'); el.innerHTML = ''; return; }
+  LEVEL_UP_OPTIONS = data;
+  LEVEL_UP_TAB = 'skill';
+  LEVEL_UP_SELECTED_SKILLS = [];
+  LEVEL_UP_SELECTED_FEAT = null;
+  LEVEL_UP_ATTR_POINTS = {};
+  el.classList.add('open');
+  renderLevelUpPicker();
+}
+
+function renderLevelUpPicker(errorText) {
+  const el = document.getElementById('level-up-picker');
+  if (!el || !LEVEL_UP_OPTIONS) return;
+  const d = LEVEL_UP_OPTIONS;
+
+  const tabs = ['skill', 'feat', 'attribute'].map(t =>
+    `<button type="button" class="${t === LEVEL_UP_TAB ? 'active' : ''}" data-lup-tab="${t}">${t[0].toUpperCase()}${t.slice(1)}</button>`
+  ).join('');
+
+  let body = '';
+  if (LEVEL_UP_TAB === 'skill') {
+    body = d.skills.map(s => {
+      const maxed = s.tier >= 2;
+      const checked = LEVEL_UP_SELECTED_SKILLS.includes(s.skill);
+      return `<label class="lup-skill-row">
+        <input type="checkbox" data-lup-skill="${s.skill}" data-lup-attr="${s.attribute}" ${checked ? 'checked' : ''} ${maxed ? 'disabled' : ''}>
+        <span>${s.skill.replace(/_/g, ' ')} (${TIER_LABELS[s.tier]})</span>
+      </label>`;
+    }).join('') + `<div class="card-desc" style="margin-top:6px;">Pick up to 2 - one step each.</div>`;
+  } else if (LEVEL_UP_TAB === 'feat') {
+    body = d.feats.length === 0 ? '<div class="card-desc">No feats available at your level yet.</div>' : d.feats.map(f =>
+      `<label class="lup-feat-row" style="align-items:flex-start;">
+        <input type="radio" name="lup-feat" data-lup-feat="${f.id}" ${LEVEL_UP_SELECTED_FEAT === f.id ? 'checked' : ''}>
+        <span><strong>${escapeHtml(f.name)}</strong><br><span class="card-desc">${escapeHtml(f.description || '')}</span></span>
+      </label>`
+    ).join('');
+  } else {
+    const totalSpent = Object.values(LEVEL_UP_ATTR_POINTS).reduce((a, b) => a + b, 0);
+    body = Object.entries(d.attributes).map(([attr, val]) => {
+      const pts = LEVEL_UP_ATTR_POINTS[attr] || 0;
+      return `<div class="lup-attr-row">
+        <span>${attr} (${val}${pts ? ` +${pts}` : ''})</span>
+        <span>
+          <button type="button" data-lup-attr-dec="${attr}" ${pts <= 0 ? 'disabled' : ''}>−</button>
+          <button type="button" data-lup-attr-inc="${attr}" ${totalSpent >= 3 ? 'disabled' : ''}>+</button>
+        </span>
+      </div>`;
+    }).join('') + `<div class="card-desc" style="margin-top:6px;">${totalSpent}/3 points assigned.</div>`;
+  }
+
+  el.innerHTML = `
+    <h4>Level ${d.level} - spend your level-up</h4>
+    <div class="lup-tabs">${tabs}</div>
+    <div id="lup-body">${body}</div>
+    ${errorText ? `<div class="lup-error">${escapeHtml(errorText)}</div>` : ''}
+    <div style="margin-top:8px;display:flex;gap:6px;">
+      <button type="button" class="submit-btn" id="lup-apply-btn">Apply</button>
+      <button type="button" id="lup-cancel-btn">Cancel</button>
+    </div>
+  `;
+
+  el.querySelectorAll('[data-lup-tab]').forEach(btn => {
+    btn.addEventListener('click', () => { LEVEL_UP_TAB = btn.dataset.lupTab; renderLevelUpPicker(); });
+  });
+  el.querySelectorAll('[data-lup-skill]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const skill = cb.dataset.lupSkill;
+      if (cb.checked) {
+        if (LEVEL_UP_SELECTED_SKILLS.length >= 2) { cb.checked = false; return; }
+        LEVEL_UP_SELECTED_SKILLS.push(skill);
+      } else {
+        LEVEL_UP_SELECTED_SKILLS = LEVEL_UP_SELECTED_SKILLS.filter(s => s !== skill);
+      }
+    });
+  });
+  el.querySelectorAll('[data-lup-feat]').forEach(rb => {
+    rb.addEventListener('change', () => { LEVEL_UP_SELECTED_FEAT = rb.dataset.lupFeat; });
+  });
+  el.querySelectorAll('[data-lup-attr-inc]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const attr = btn.dataset.lupAttrInc;
+      LEVEL_UP_ATTR_POINTS[attr] = (LEVEL_UP_ATTR_POINTS[attr] || 0) + 1;
+      renderLevelUpPicker();
+    });
+  });
+  el.querySelectorAll('[data-lup-attr-dec]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const attr = btn.dataset.lupAttrDec;
+      LEVEL_UP_ATTR_POINTS[attr] = Math.max(0, (LEVEL_UP_ATTR_POINTS[attr] || 0) - 1);
+      renderLevelUpPicker();
+    });
+  });
+  document.getElementById('lup-apply-btn').addEventListener('click', submitLevelUpChoice);
+  document.getElementById('lup-cancel-btn').addEventListener('click', () => {
+    el.classList.remove('open');
+    el.innerHTML = '';
+  });
+}
+
+async function submitLevelUpChoice() {
+  let body;
+  if (LEVEL_UP_TAB === 'skill') {
+    if (LEVEL_UP_SELECTED_SKILLS.length === 0) { renderLevelUpPicker('Pick at least one skill.'); return; }
+    const skillUpgrades = LEVEL_UP_SELECTED_SKILLS.map(skill => {
+      const s = LEVEL_UP_OPTIONS.skills.find(x => x.skill === skill);
+      return { skill, attribute: s.attribute };
+    });
+    body = { choice: 'skill', skill_upgrades: skillUpgrades, reasoning: 'Chosen via level-up picker.' };
+  } else if (LEVEL_UP_TAB === 'feat') {
+    if (!LEVEL_UP_SELECTED_FEAT) { renderLevelUpPicker('Pick a feat.'); return; }
+    body = { choice: 'feat', feat_id: LEVEL_UP_SELECTED_FEAT, reasoning: 'Chosen via level-up picker.' };
+  } else {
+    const total = Object.values(LEVEL_UP_ATTR_POINTS).reduce((a, b) => a + b, 0);
+    if (total === 0) { renderLevelUpPicker('Assign at least one point.'); return; }
+    body = { choice: 'attribute', attribute_points: LEVEL_UP_ATTR_POINTS, reasoning: 'Chosen via level-up picker.' };
+  }
+
+  const res = await fetch(`/api/character/${SHEET_CHARACTER_ID}/apply_level_up`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.error) { renderLevelUpPicker(data.error); return; }
+  if (!data.applied) {
+    const rejection = (data.changes || []).find(c => c.reason);
+    renderLevelUpPicker(rejection ? rejection.reason : 'That choice had no effect - try a different one.');
+    return;
+  }
+  const el = document.getElementById('level-up-picker');
+  if (el) { el.classList.remove('open'); el.innerHTML = ''; }
+  renderSidebar(data.state);
+  setStatus('Level-up applied.');
 }
 
 function pcLabel(v) {
@@ -1168,6 +1349,7 @@ async function loadModels(selectEl) {
 async function loadCharacterState(isNew) {
   const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/state`);
   const data = await res.json();
+  SHEET_CHARACTER_ID = CURRENT_CHARACTER_ID;
   renderSidebar(data.state);
   if (isNew) {
     const openingRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/opening_scene`);
@@ -1749,6 +1931,7 @@ async function loadCharacterStateMp() {
   const res = await fetch(`/api/character/${MP_CHARACTER_ID}/state`);
   const data = await res.json();
   MP_CHARACTER_NAME = data.state.character.name;
+  SHEET_CHARACTER_ID = MP_CHARACTER_ID;
   renderSidebar(data.state);
 }
 
@@ -1844,6 +2027,8 @@ function buildMpTurnInnerHtml(row, replyLookup, includeReplyButton) {
     body = `${row.character_name || 'A character'} storms out.${row.player_input ? ' “' + row.player_input + '”' : ''}`;
   } else if (row.kind === 'thread_concluded') {
     body = `— ${row.narration} —`;
+  } else if (row.kind === 'level_up') {
+    body = `🎉 ${row.narration}`;
   } else {
     body = row.narration || row.player_input || '';
   }

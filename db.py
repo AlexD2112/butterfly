@@ -1127,13 +1127,13 @@ def record_subspace_message(game_id, location_id, subspace_id, character_id, kin
     council.detect_stakes_signals, a free check, not a new AI call."""
     # Which field content actually lands in, by kind: player-authored text (message/action/storm_out
     # - storm_out's final flavor line is still the PLAYER's own words) goes to player_input;
-    # AI/system-voiced text (npc_reply/gm_reply, and thread_concluded's note - narrated BY the game,
-    # not said by the attributed character) goes to narration. Originally only covered
-    # ("message","action") / ("npc_reply","gm_reply") - storm_out and thread_concluded fell into
-    # NEITHER bucket, silently discarding their actual text. Found via a real SSE smoke test (an
-    # empty narration field on a live thread_concluded event), not a code review - see NOTES.md.
+    # AI/system-voiced text (npc_reply/gm_reply, thread_concluded's note, and level_up's announcement
+    # - all narrated BY the game, not said by the attributed character) goes to narration. Originally
+    # only covered ("message","action") / ("npc_reply","gm_reply") - storm_out and thread_concluded
+    # fell into NEITHER bucket, silently discarding their actual text. Found via a real SSE smoke test
+    # (an empty narration field on a live thread_concluded event), not a code review - see NOTES.md.
     player_authored_kinds = ("message", "action", "storm_out")
-    ai_or_system_kinds = ("npc_reply", "gm_reply", "thread_concluded")
+    ai_or_system_kinds = ("npc_reply", "gm_reply", "thread_concluded", "level_up")
     present = characters_at_subspace(subspace_id)
     conn = get_db()
     cur = conn.execute(

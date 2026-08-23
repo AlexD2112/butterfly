@@ -329,6 +329,80 @@ def api_character_state(character_id):
     return jsonify({"state": engine.build_state_digest(row["state"]), "setting_key": row["setting_key"], "system_key": row["system_key"]})
 
 
+@app.route("/api/character/<int:character_id>/level_up_options")
+def api_character_level_up_options(character_id):
+    """What a pending level-up can actually be spent on right now - eligible skills (with current
+    tier, so the frontend can grey out ones already at Expertise), eligible feats (owned/min_level/
+    prerequisite already filtered server-side, not left to the frontend to get right), and current
+    attribute values. Single-player and multiplayer both use this (character rows aren't otherwise
+    partitioned by context - see /state above)."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    character = row["state"]["character"]
+    if not character.get("level_up_pending"):
+        return jsonify({"pending": False})
+
+    system = engine.get_system(row["system_key"])
+    skills = [
+        {"skill": name, "attribute": entry["attribute"], "tier": entry["tier"]}
+        for name, entry in (character.get("skills") or {}).items()
+    ]
+    existing_feat_ids = {f.get("id") for f in character.get("feats", [])}
+    feats = []
+    for feat_id, entry in system.FEAT_CATALOG.items():
+        if feat_id in existing_feat_ids or entry.get("min_level", 1) > character["level"]:
+            continue
+        prereq = entry.get("prerequisite_skill")
+        if prereq:
+            have = (character.get("skills") or {}).get(prereq["skill"])
+            if (have["tier"] if have else 0) < prereq["min_tier"]:
+                continue
+        feats.append({"id": feat_id, "name": entry["name"], "description": entry["description"]})
+
+    return jsonify({
+        "pending": True, "level": character["level"],
+        "skills": skills, "feats": feats, "attributes": character["attributes"],
+    })
+
+
+@app.route("/api/character/<int:character_id>/apply_level_up", methods=["POST"])
+def api_character_apply_level_up(character_id):
+    """Applies a level-up choice DIRECTLY - system.apply_level_up, no AI call, no narration - the
+    same validated logic engine.run_turn's tool loop already uses for a conversational
+    propose_level_up, just reached from a UI click instead of the model interpreting chat text (see
+    NOTES.md for why: the old path had no code-level guarantee the model's choice matched what the
+    player actually asked for)."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    state = row["state"]
+    if not state["character"].get("level_up_pending"):
+        return jsonify({"error": "No level-up is pending."}), 400
+
+    body = request.get_json(force=True) or {}
+    system = engine.get_system(row["system_key"])
+    changes = system.apply_level_up(state, body)
+    db.save_character_state(character_id, user["id"], state)
+    applied = not state["character"]["level_up_pending"]
+
+    # Announce a completed level-up in the shared multiplayer log if this character has a presence
+    # there - level reached only, never which skill/feat/attribute was picked (per direction).
+    # Single-player characters have no presence row, so this is a silent no-op for them.
+    if applied:
+        presence = db.get_character_presence(character_id)
+        if presence is not None:
+            turn_id = db.record_subspace_message(
+                row["game_id"], presence["location_id"], presence["subspace_id"], character_id, "level_up",
+                f"{state['character']['name']} reached level {state['character']['level']}.",
+            )
+            live.publish_subspace_event(presence["subspace_id"], db.get_turn_by_id(turn_id))
+
+    return jsonify({"changes": changes, "applied": applied, "state": engine.build_state_digest(state)})
+
+
 @app.route("/api/character/<int:character_id>/opening_scene")
 def api_character_opening_scene(character_id):
     user = current_user()

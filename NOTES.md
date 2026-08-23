@@ -1,3 +1,48 @@
+# Clickable level-up picker (2026-08-23)
+
+Second-priority ask for the night, after multiplayer launch-readiness was solid (see below) - a real
+player asked how to actually choose their level-up rewards and the honest answer was "entirely by
+describing it in chat and trusting the GM to interpret you correctly, no code-level guarantee it
+matches what you asked." Built a real UI instead: the sidebar's level-up banner is now clickable,
+opening an inline Skill/Feat/Attribute picker that calls `system.apply_level_up` directly through two
+new routes - no AI call, no narration, no interpretation gap.
+
+**Coexists with the conversational path, doesn't replace it** - a player who'd rather roleplay their
+growth into a level-up can still just say so in a message/action and trust the GM to call
+`propose_level_up`, same as before. This is a faster, guaranteed-accurate alternative, not a
+replacement.
+
+**New routes**, both single-player and multiplayer (character rows aren't otherwise partitioned by
+context - `/state` already worked this way):
+- `GET /api/character/<id>/level_up_options` - `{"pending": false}` if nothing's pending, else the
+  real eligible choices: every skill with its current tier (frontend greys out anything already at
+  Expertise), every feat from that system's catalog the character doesn't already have and actually
+  qualifies for (`min_level` and `prerequisite_skill` checked server-side, not left to the frontend to
+  get right), and current attribute values.
+- `POST /api/character/<id>/apply_level_up` - takes the exact same body shape `propose_level_up`
+  always has (`choice`/`skill_upgrades`/`feat_id`/`attribute_points`), calls
+  `system.apply_level_up` directly, saves the state, and returns whether it actually applied (a
+  rejected choice - e.g. a maxed skill, an unmet prerequisite slipping through - leaves
+  `level_up_pending` true and reports why, same as the conversational path already handled).
+
+**Multiplayer visibility**: applying a level-up for a character with a multiplayer presence drops a
+"Trotsky reached level 4"-style note into the shared subspace log (new `turns.kind = "level_up"`,
+rendered with a 🎉 prefix) - level reached only, never which skill/feat/attribute was picked, per
+direction. Single-player characters have no presence row, so this is a silent no-op for them - checked
+explicitly with its own test rather than assumed.
+
+Verified live in the browser against a throwaway character (not a fake one - a real premade Trotsky
+sheet with `level_up_pending` forced true for testing): opened the picker, confirmed already-Expertise
+skills render disabled, picked an untrained skill, applied it, watched the banner disappear and the
+skill's tier persist correctly via a fresh `/state` fetch; separately re-armed at level 5 and confirmed
+the Feat tab correctly gates on `min_level`/prerequisite (a level-1 test earlier had already confirmed
+the exclusion side of that logic at the route level) and the Attribute tab's stepper renders for all
+six attributes. 15 new tests (`tests/test_level_up_ui.py`) cover the routes directly, including feat
+eligibility filtering, attribute clamping at `MAX_ATTRIBUTE`, the already-at-Expertise rejection case,
+ownership checks, and the multiplayer announcement's content (present, level-only, no specifics).
+
+---
+
 # Multiplayer launch-readiness push: dynamic Locations, admin cleanup tools, real-model classifier testing (2026-08-23)
 
 Explicit priority for the night: get multiplayer to a state you could actually confidently launch,
