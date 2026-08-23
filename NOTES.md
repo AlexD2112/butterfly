@@ -79,8 +79,46 @@ dynamic-space-creation/target-subspace tests, 5 admin-route tests).
 
 ## d) Honest launch-readiness assessment
 
-[Written after the actual end-to-end walkthrough - see the entry immediately below this one, added
-once that pass was complete, not backdated into this summary.]
+Deployed this round's work (no schema migration needed - purely additive over the existing schema, so
+lower-risk than the previous rename cutover) and walked through it as an admin on the REAL production
+site (not a throwaway copy): created a real test server ("Launch Readiness Check - DELETE ME"),
+confirmed it auto-seeded "Starting Point" with a default "Main" subspace with zero manual admin setup,
+confirmed the lobby UI renders the Rename/Delete/Merge controls correctly for both Locations and
+Subspaces, exercised the routes directly (rename/list), then deleted the test server via the existing
+admin-delete route to leave production clean. The pre-existing real server ("Butterfly- EA Test 1")
+was untouched throughout.
+
+**What's genuinely verified**: server auto-seed, the full admin cleanup toolkit (rename/delete/merge)
+at both the route level (automated tests) and rendered correctly in the real UI, the dynamic-space
+classifier's actual decision quality against a real model (not just mocks - see (c) above, including a
+real bug found and fixed), and that tonight's code is live and correctly serving requests on
+localhost, the tunnel, and the public URL.
+
+**What's honestly NOT verified, and why**: the full authenticated real-player path - actually sending
+a message/action through a real Discord login, watching a dynamic Subspace/Location get created live
+via SSE, budget getting charged - was not exercised end-to-end tonight. I have no way to complete a
+real Discord OAuth flow programmatically without impersonating a real user, which I won't do. What
+this leaves untested is specifically the INTEGRATION of tonight's changes with the Discord-auth +
+billing + SSE stack, not the changes themselves - the classifier was tested for real (via a scripted
+character on a scratch DB, calling the exact same `resolve_action`/`detect_new_space` code path a real
+player's action would hit), and the HTTP/admin layer was tested for real on production. The admin
+Rename/Merge buttons use `window.prompt()`, which browser automation can't drive on a live page - I
+verified their underlying routes directly instead (both via `fetch()` on production and via the
+automated route tests), which exercises the identical server-side logic; I did not literally click
+through a native prompt dialog on the live site. Also not tested: two players independently triggering
+dynamic creation within moments of each other (a plausible near-duplicate race, not prevented outright
+- the merge tool is the designed answer to it after the fact, not a lock). And five scripted test
+actions, however real the model call, can't stand in for the range of phrasing real players will
+actually throw at this classifier at genuine scale.
+
+**Go/no-go: go**, with eyes open about the above. This is a materially stronger position than before
+tonight, when the biggest honest gap was "the classifier has never been exercised for real and there's
+no way to fix a bad result short of nuking the server" - both of those are now closed. What remains
+untested is the kind of integration gap that's inherent to what an agent can verify without real user
+credentials, not a sign of something broken, and it's the same category of gap every previous
+"safe restart and verify" cycle this session has had. Worth you personally sending a few real actions
+once you're up, specifically ones that might plausibly cross a Location boundary, to see the dynamic
+classifier's real behavior with your own eyes before pointing other players at it.
 
 ---
 
