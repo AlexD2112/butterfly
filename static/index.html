@@ -224,14 +224,14 @@
     padding: 6px 8px; font-family: var(--font-ui); font-size: 13px; }
   .mp-form textarea { resize: vertical; min-height: 44px; }
   .mp-form-error { color: var(--bad); font-size: 12px; margin: 6px 0; }
-  .mp-room-locations { margin-top: 8px; padding-left: 8px; border-left: 2px solid var(--border); }
+  .mp-location-subspaces { margin-top: 8px; padding-left: 8px; border-left: 2px solid var(--border); }
   .mp-loc-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12.5px; }
   .rumor-entry { font-size: 12.5px; padding: 8px 0; border-bottom: 1px dotted var(--border); line-height: 1.5; }
   .rumor-entry:last-child { border-bottom: none; }
   .rumor-date { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; }
   .admin-only-badge { font-size: 10px; text-transform: uppercase; color: var(--accent-2); letter-spacing: 0.5px; }
 
-  /* ---------- multiplayer: in-room chat screen ---------- */
+  /* ---------- multiplayer: in-subspace chat screen ---------- */
   #mp-app { display: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto 1fr auto; height: 100vh; }
   #mp-app.active { display: grid; }
   #mp-app header { grid-column: 1; }
@@ -247,8 +247,8 @@
   #mp-combatbar .ci-chip { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); }
   #mp-combatbar .ci-chip.current { border-color: var(--bad); color: var(--text); background: rgba(181,72,47,0.25); }
 
-  /* Read-only "peek at another location in this room" panel - a separate view, not the live log, so
-     it never mixes into the room's own chat feed or its reply-threading state (see NOTES.md). */
+  /* Read-only "peek at another subspace in this location" panel - a separate view, not the live log, so
+     it never mixes into the subspace's own chat feed or its reply-threading state (see NOTES.md). */
   #mp-peek-panel { grid-column: 1; display: none; max-height: 38vh; overflow-y: auto; padding: 10px 24px;
     background: var(--panel-2); border-bottom: 2px solid var(--accent-2); font-family: var(--font-ui); }
   #mp-peek-panel.active { display: block; }
@@ -381,7 +381,7 @@
   <div class="menu-back-row"><button class="menu-back" data-back="screen-start">&larr; Back</button></div>
   <div class="eyebrow">Multiplayer</div>
   <h1>Choose a Server</h1>
-  <div class="subtitle">Each server is its own shared world, with its own rooms and pace of time.</div>
+  <div class="subtitle">Each server is its own shared world, with its own locations and pace of time.</div>
   <div class="mp-wrap">
     <div class="mp-section">
       <h3>Servers
@@ -405,7 +405,7 @@
   </div>
 </div>
 
-<!-- Screen M2: multiplayer server lobby (characters, rooms, rumors, admin controls) -->
+<!-- Screen M2: multiplayer server lobby (characters, locations, rumors, admin controls) -->
 <div class="menu-screen" id="screen-mp-lobby">
   <div class="menu-back-row"><button class="menu-back" data-back="screen-mp-servers">&larr; Back</button></div>
   <div class="eyebrow" id="mp-lobby-eyebrow">Server</div>
@@ -417,13 +417,13 @@
       <div id="mp-my-characters"></div>
     </div>
     <div class="mp-section">
-      <h3>Rooms <button class="mp-toggle-btn" id="mp-create-room-toggle" style="display:none;">+ Create Room</button></h3>
-      <div id="mp-room-list"></div>
-      <div class="mp-form" id="mp-create-room-form">
-        <div class="field-row"><label>Name</label><input type="text" id="mpr-name" placeholder="Room name"></div>
-        <div class="field-row"><label>Description</label><textarea id="mpr-desc" placeholder="Optional"></textarea></div>
-        <div class="mp-form-error" id="mpr-error"></div>
-        <button class="submit-btn" id="mpr-submit">Create Room</button>
+      <h3>Locations <button class="mp-toggle-btn" id="mp-create-location-toggle" style="display:none;">+ Create Location</button></h3>
+      <div id="mp-location-list"></div>
+      <div class="mp-form" id="mp-create-location-form">
+        <div class="field-row"><label>Name</label><input type="text" id="mpl-name" placeholder="Location name"></div>
+        <div class="field-row"><label>Description</label><textarea id="mpl-desc" placeholder="Optional"></textarea></div>
+        <div class="mp-form-error" id="mpl-error"></div>
+        <button class="submit-btn" id="mpl-submit">Create Location</button>
       </div>
     </div>
     <div class="mp-section">
@@ -472,7 +472,7 @@
   </div>
 </div>
 
-<!-- Screen 7: multiplayer in-room chat -->
+<!-- Screen 7: multiplayer in-subspace chat -->
 <div id="mp-app">
   <header>
     <div class="header-left">
@@ -481,7 +481,7 @@
     </div>
     <div class="controls">
       <span id="mp-header-budget"></span>
-      <button id="mp-leave-room-btn" title="Back to the server lobby (does not erase your save)">&larr; Lobby</button>
+      <button id="mp-leave-location-btn" title="Back to the server lobby (does not erase your save)">&larr; Lobby</button>
       <label for="mp-model-select">Model:</label>
       <select id="mp-model-select"></select>
       <button id="mp-sheet-toggle-btn" title="Character sheet">Character Sheet <span class="dot"></span></button>
@@ -489,8 +489,8 @@
   </header>
   <div id="mp-locbar">
     <span class="mp-loc-title" id="mp-loc-title">—</span>
-    <select id="mp-loc-move-select"></select>
-    <select id="mp-loc-peek-select" title="See another location in this room without moving there"></select>
+    <select id="mp-subspace-move-select"></select>
+    <select id="mp-subspace-peek-select" title="See another subspace in this location without moving there"></select>
     <button id="mp-mark-concluded-btn">Mark Scene Concluded</button>
     <button id="mp-storm-out-btn">Storm Out</button>
     <span id="mp-occupants"></span>
@@ -931,8 +931,8 @@ async function unlockAdmin() {
     if (mpAdminBtn) mpAdminBtn.style.display = 'none';
     const createServerToggle = document.getElementById('mp-create-server-toggle');
     if (createServerToggle) createServerToggle.style.display = '';
-    const createRoomToggle = document.getElementById('mp-create-room-toggle');
-    if (createRoomToggle && MP_SELECTED_SERVER) createRoomToggle.style.display = '';
+    const createLocationToggle = document.getElementById('mp-create-location-toggle');
+    if (createLocationToggle && MP_SELECTED_SERVER) createLocationToggle.style.display = '';
   } else {
     setStatus(data.error || 'Incorrect admin code.');
   }
@@ -1251,21 +1251,21 @@ let MP_SERVERS = [];
 let MP_SELECTED_SERVER = null;       // the full server row (incl. game_id) for whichever server the lobby is showing
 let MP_CHARACTER_ID = null;
 let MP_CHARACTER_NAME = null;
-let MP_ROOM_ID = null;
 let MP_LOCATION_ID = null;
+let MP_SUBSPACE_ID = null;
 let MP_KIND = 'message';             // 'message' | 'action' - which the next send() call will be
 let MP_REPLY_TO = null;              // turn_id being replied to, or null
 let MP_RENDERED_TURN_IDS = new Set();// dedup guard - a turn can arrive via both a direct fetch response
                                       // AND the SSE echo of that same event, or via SSE-triggered
                                       // refetches overlapping an in-flight one; render each id once.
 let MP_TURN_BY_ID = {};              // id -> turn row, for rendering "replying to: ..." context lines
-let MP_NPC_NAME_BY_KEY = {};         // npc key -> display name, refreshed by refreshMpLocationDetail -
+let MP_NPC_NAME_BY_KEY = {};         // npc key -> display name, refreshed by refreshMpSubspaceDetail -
                                       // a turn's "responder" column stores the NPC's key (matching
                                       // npcs.key, e.g. "old_sailor"), not its display name, so this is
                                       // how an npc_reply's speaker line shows "Old Sailor Ivan" instead.
 let MP_EVENTSOURCE = null;
-let MP_PEEK_LOCATION_ID = null;      // set while the read-only peek panel is open on another
-                                      // location in the current room; null when it's closed
+let MP_PEEK_SUBSPACE_ID = null;      // set while the read-only peek panel is open on another
+                                      // subspace in the current location; null when it's closed
 
 const mpLogEl = document.getElementById('mp-log');
 const mpModelSelect = document.getElementById('mp-model-select');
@@ -1312,14 +1312,14 @@ async function loadMpServerList() {
 }
 
 // Irreversible - see db.delete_multiplayer_server's docstring for exactly what this cascades
-// through (rooms, locations, messages/actions, characters created for it, combat state, rumors...).
+// through (locations, subspaces, messages/actions, characters created for it, combat state, rumors...).
 // One clear confirm() naming the server, matching the admin-unlock/storm-out pattern elsewhere in
 // this app rather than a heavier multi-step or type-to-confirm flow - see NOTES.md.
 async function deleteMpServer(serverId) {
   const server = MP_SERVERS.find(s => s.id === serverId);
   const name = server ? server.name : `server #${serverId}`;
   const confirmed = window.confirm(
-    `Permanently delete "${name}"? This deletes every room, location, message, and character created for it. This cannot be undone.`
+    `Permanently delete "${name}"? This deletes every location, subspace, message, and character created for it. This cannot be undone.`
   );
   if (!confirmed) return;
   const res = await fetch(`/api/admin/multiplayer_servers/${serverId}`, { method: 'DELETE' });
@@ -1375,8 +1375,8 @@ async function enterMpServerLobby(serverId) {
 }
 
 async function loadMpLobbyContent() {
-  await Promise.all([loadMpMyCharacters(), loadMpRoomList(), loadMpRumors()]);
-  document.getElementById('mp-create-room-toggle').style.display =
+  await Promise.all([loadMpMyCharacters(), loadMpLocationList(), loadMpRumors()]);
+  document.getElementById('mp-create-location-toggle').style.display =
     (CURRENT_USER && CURRENT_USER.is_admin) ? '' : 'none';
 }
 
@@ -1418,138 +1418,138 @@ document.getElementById('mp-new-character-btn').addEventListener('click', () => 
 
 // Called by createPremadeAndLaunch/submitCreation (see the shared single-player creation functions
 // above) once a multiplayer character is actually created - lands back in the lobby with the new
-// character pre-selected, ready for the player to pick a room.
+// character pre-selected, ready for the player to pick a location.
 async function launchMpLobbyPostCreate(characterId, name) {
   MP_CHARACTER_ID = characterId;
   MP_CHARACTER_NAME = name;
   await loadMpLobbyContent();
   showScreen('screen-mp-lobby');
-  setStatus(`${name} is ready — choose a room below to enter.`);
+  setStatus(`${name} is ready — choose a location below to enter.`);
 }
 
-async function loadMpRoomList() {
-  const res = await fetch(`/api/multiplayer/servers/${MP_SELECTED_SERVER.id}/rooms`);
+async function loadMpLocationList() {
+  const res = await fetch(`/api/multiplayer/servers/${MP_SELECTED_SERVER.id}/locations`);
   const data = await res.json();
-  const el = document.getElementById('mp-room-list');
+  const el = document.getElementById('mp-location-list');
   const isAdmin = CURRENT_USER && CURRENT_USER.is_admin;
-  if (data.rooms.length === 0) {
-    el.innerHTML = '<div class="mp-empty">No rooms yet.</div>';
+  if (data.locations.length === 0) {
+    el.innerHTML = '<div class="mp-empty">No locations yet.</div>';
     return;
   }
-  el.innerHTML = data.rooms.map(r => `
+  el.innerHTML = data.locations.map(l => `
     <div class="mp-list-item" style="flex-direction:column;align-items:stretch;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div class="mp-item-title">${escapeHtml(r.name)}</div>
-          ${r.description ? `<div class="mp-item-desc">${escapeHtml(r.description)}</div>` : ''}
+          <div class="mp-item-title">${escapeHtml(l.name)}</div>
+          ${l.description ? `<div class="mp-item-desc">${escapeHtml(l.description)}</div>` : ''}
         </div>
-        <button data-enter-room="${r.id}">Enter</button>
+        <button data-enter-location="${l.id}">Enter</button>
       </div>
-      <div class="mp-room-locations" id="mp-room-locs-${r.id}"></div>
+      <div class="mp-location-subspaces" id="mp-location-subspaces-${l.id}"></div>
       ${isAdmin ? `
         <div style="margin-top:6px;display:flex;gap:6px;">
-          <button type="button" class="mp-toggle-btn" data-add-loc="${r.id}">+ Location</button>
-          <button type="button" class="mp-toggle-btn" data-add-npc="${r.id}">+ NPC</button>
+          <button type="button" class="mp-toggle-btn" data-add-sub="${l.id}">+ Subspace</button>
+          <button type="button" class="mp-toggle-btn" data-add-npc="${l.id}">+ NPC</button>
         </div>
-        <div class="mp-form" id="mp-add-loc-form-${r.id}">
-          <div class="field-row"><input type="text" placeholder="Location name" id="mp-loc-name-${r.id}"></div>
-          <button class="submit-btn" data-submit-loc="${r.id}">Add Location</button>
+        <div class="mp-form" id="mp-add-sub-form-${l.id}">
+          <div class="field-row"><input type="text" placeholder="Subspace name" id="mp-sub-name-${l.id}"></div>
+          <button class="submit-btn" data-submit-sub="${l.id}">Add Subspace</button>
         </div>
-        <div class="mp-form" id="mp-add-npc-form-${r.id}">
-          <div class="field-row"><input type="text" placeholder="Key (e.g. old_sailor)" id="mp-npc-key-${r.id}"></div>
-          <div class="field-row"><input type="text" placeholder="Name" id="mp-npc-name-${r.id}"></div>
-          <div class="field-row"><textarea placeholder="Personality" id="mp-npc-personality-${r.id}"></textarea></div>
-          <div class="field-row"><select id="mp-npc-loc-${r.id}"></select></div>
-          <div class="mp-form-error" id="mp-npc-error-${r.id}"></div>
-          <button class="submit-btn" data-submit-npc="${r.id}">Add NPC</button>
+        <div class="mp-form" id="mp-add-npc-form-${l.id}">
+          <div class="field-row"><input type="text" placeholder="Key (e.g. old_sailor)" id="mp-npc-key-${l.id}"></div>
+          <div class="field-row"><input type="text" placeholder="Name" id="mp-npc-name-${l.id}"></div>
+          <div class="field-row"><textarea placeholder="Personality" id="mp-npc-personality-${l.id}"></textarea></div>
+          <div class="field-row"><select id="mp-npc-sub-${l.id}"></select></div>
+          <div class="mp-form-error" id="mp-npc-error-${l.id}"></div>
+          <button class="submit-btn" data-submit-npc="${l.id}">Add NPC</button>
         </div>
       ` : ''}
     </div>
   `).join('');
 
-  for (const r of data.rooms) await loadMpRoomLocationsInline(r.id);
+  for (const l of data.locations) await loadMpLocationSubspacesInline(l.id);
 
-  el.querySelectorAll('[data-enter-room]').forEach(btn => {
-    btn.addEventListener('click', () => onEnterRoomClicked(parseInt(btn.dataset.enterRoom, 10)));
+  el.querySelectorAll('[data-enter-location]').forEach(btn => {
+    btn.addEventListener('click', () => onEnterLocationClicked(parseInt(btn.dataset.enterLocation, 10)));
   });
-  el.querySelectorAll('[data-add-loc]').forEach(btn => {
-    btn.addEventListener('click', () => document.getElementById(`mp-add-loc-form-${btn.dataset.addLoc}`).classList.toggle('open'));
+  el.querySelectorAll('[data-add-sub]').forEach(btn => {
+    btn.addEventListener('click', () => document.getElementById(`mp-add-sub-form-${btn.dataset.addSub}`).classList.toggle('open'));
   });
   el.querySelectorAll('[data-add-npc]').forEach(btn => {
     btn.addEventListener('click', () => document.getElementById(`mp-add-npc-form-${btn.dataset.addNpc}`).classList.toggle('open'));
   });
-  el.querySelectorAll('[data-submit-loc]').forEach(btn => {
-    btn.addEventListener('click', () => submitAddLocation(parseInt(btn.dataset.submitLoc, 10)));
+  el.querySelectorAll('[data-submit-sub]').forEach(btn => {
+    btn.addEventListener('click', () => submitAddSubspace(parseInt(btn.dataset.submitSub, 10)));
   });
   el.querySelectorAll('[data-submit-npc]').forEach(btn => {
     btn.addEventListener('click', () => submitAddNpc(parseInt(btn.dataset.submitNpc, 10)));
   });
 }
 
-async function loadMpRoomLocationsInline(roomId) {
-  const res = await fetch(`/api/multiplayer/rooms/${roomId}/locations`);
+async function loadMpLocationSubspacesInline(locationId) {
+  const res = await fetch(`/api/multiplayer/locations/${locationId}/subspaces`);
   const data = await res.json();
-  const el = document.getElementById(`mp-room-locs-${roomId}`);
+  const el = document.getElementById(`mp-location-subspaces-${locationId}`);
   if (!el) return;
-  el.innerHTML = data.locations.map(l => `<div class="mp-loc-row"><span>${escapeHtml(l.name)}</span></div>`).join('');
-  const npcSelect = document.getElementById(`mp-npc-loc-${roomId}`);
-  if (npcSelect) npcSelect.innerHTML = data.locations.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+  el.innerHTML = data.subspaces.map(s => `<div class="mp-loc-row"><span>${escapeHtml(s.name)}</span></div>`).join('');
+  const npcSelect = document.getElementById(`mp-npc-sub-${locationId}`);
+  if (npcSelect) npcSelect.innerHTML = data.subspaces.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
 }
 
-async function submitAddLocation(roomId) {
-  const nameInput = document.getElementById(`mp-loc-name-${roomId}`);
+async function submitAddSubspace(locationId) {
+  const nameInput = document.getElementById(`mp-sub-name-${locationId}`);
   const name = nameInput.value.trim();
   if (!name) return;
-  await fetch(`/api/admin/rooms/${roomId}/locations`, {
+  await fetch(`/api/admin/locations/${locationId}/subspaces`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
   nameInput.value = '';
-  document.getElementById(`mp-add-loc-form-${roomId}`).classList.remove('open');
-  await loadMpRoomLocationsInline(roomId);
+  document.getElementById(`mp-add-sub-form-${locationId}`).classList.remove('open');
+  await loadMpLocationSubspacesInline(locationId);
 }
 
-async function submitAddNpc(roomId) {
-  const key = document.getElementById(`mp-npc-key-${roomId}`).value.trim();
-  const name = document.getElementById(`mp-npc-name-${roomId}`).value.trim();
-  const personality = document.getElementById(`mp-npc-personality-${roomId}`).value.trim();
-  const locSelect = document.getElementById(`mp-npc-loc-${roomId}`);
-  const locationId = locSelect.value ? parseInt(locSelect.value, 10) : null;
-  const errEl = document.getElementById(`mp-npc-error-${roomId}`);
+async function submitAddNpc(locationId) {
+  const key = document.getElementById(`mp-npc-key-${locationId}`).value.trim();
+  const name = document.getElementById(`mp-npc-name-${locationId}`).value.trim();
+  const personality = document.getElementById(`mp-npc-personality-${locationId}`).value.trim();
+  const subSelect = document.getElementById(`mp-npc-sub-${locationId}`);
+  const subspaceId = subSelect.value ? parseInt(subSelect.value, 10) : null;
+  const errEl = document.getElementById(`mp-npc-error-${locationId}`);
   errEl.textContent = '';
   if (!key || !name) { errEl.textContent = 'Key and name are required.'; return; }
   const res = await fetch('/api/admin/npcs', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ game_id: MP_SELECTED_SERVER.game_id, key, name, personality, room_id: roomId, location_id: locationId }),
+    body: JSON.stringify({ game_id: MP_SELECTED_SERVER.game_id, key, name, personality, location_id: locationId, subspace_id: subspaceId }),
   });
   const data = await res.json();
   if (data.error) { errEl.textContent = data.error; return; }
-  document.getElementById(`mp-npc-key-${roomId}`).value = '';
-  document.getElementById(`mp-npc-name-${roomId}`).value = '';
-  document.getElementById(`mp-npc-personality-${roomId}`).value = '';
-  document.getElementById(`mp-add-npc-form-${roomId}`).classList.remove('open');
+  document.getElementById(`mp-npc-key-${locationId}`).value = '';
+  document.getElementById(`mp-npc-name-${locationId}`).value = '';
+  document.getElementById(`mp-npc-personality-${locationId}`).value = '';
+  document.getElementById(`mp-add-npc-form-${locationId}`).classList.remove('open');
 }
 
-document.getElementById('mp-create-room-toggle').addEventListener('click', () => {
-  document.getElementById('mp-create-room-form').classList.toggle('open');
+document.getElementById('mp-create-location-toggle').addEventListener('click', () => {
+  document.getElementById('mp-create-location-form').classList.toggle('open');
 });
 
-document.getElementById('mpr-submit').addEventListener('click', async () => {
-  const name = document.getElementById('mpr-name').value.trim();
-  const description = document.getElementById('mpr-desc').value.trim();
-  const errEl = document.getElementById('mpr-error');
+document.getElementById('mpl-submit').addEventListener('click', async () => {
+  const name = document.getElementById('mpl-name').value.trim();
+  const description = document.getElementById('mpl-desc').value.trim();
+  const errEl = document.getElementById('mpl-error');
   errEl.textContent = '';
-  if (!name) { errEl.textContent = 'A room name is required.'; return; }
-  const res = await fetch(`/api/admin/multiplayer_servers/${MP_SELECTED_SERVER.id}/rooms`, {
+  if (!name) { errEl.textContent = 'A location name is required.'; return; }
+  const res = await fetch(`/api/admin/multiplayer_servers/${MP_SELECTED_SERVER.id}/locations`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, description }),
   });
   const data = await res.json();
   if (data.error) { errEl.textContent = data.error; return; }
-  document.getElementById('mpr-name').value = '';
-  document.getElementById('mpr-desc').value = '';
-  document.getElementById('mp-create-room-form').classList.remove('open');
-  await loadMpRoomList();
+  document.getElementById('mpl-name').value = '';
+  document.getElementById('mpl-desc').value = '';
+  document.getElementById('mp-create-location-form').classList.remove('open');
+  await loadMpLocationList();
 });
 
 async function loadMpRumors() {
@@ -1564,40 +1564,41 @@ async function loadMpRumors() {
   `).join('');
 }
 
-// A character with no room yet just gets selected (pending a room pick below); one that's already
-// somewhere resumes straight into that location - location_messages doubles as the presence check
-// (400 "isn't in a room yet" vs 200 with room_id/location_id) rather than adding a dedicated endpoint.
+// A character with no location yet just gets selected (pending a location pick below); one that's
+// already somewhere resumes straight into that subspace - subspace_messages doubles as the presence
+// check (400 "isn't in a location yet" vs 200 with location_id/subspace_id) rather than adding a
+// dedicated endpoint.
 async function enterMpCharacter(characterId, name) {
   MP_CHARACTER_ID = characterId;
   MP_CHARACTER_NAME = name;
-  const res = await fetch(`/api/multiplayer/characters/${characterId}/location_messages`);
+  const res = await fetch(`/api/multiplayer/characters/${characterId}/subspace_messages`);
   if (res.status === 200) {
     const data = await res.json();
-    await enterMpLocation(data.room_id, data.location_id);
+    await enterMpSubspace(data.location_id, data.subspace_id);
   } else {
-    setStatus(`${name} selected — choose a room below to enter.`);
+    setStatus(`${name} selected — choose a location below to enter.`);
   }
 }
 
-async function onEnterRoomClicked(roomId) {
+async function onEnterLocationClicked(locationId) {
   if (!MP_CHARACTER_ID) { setStatus('Pick one of your characters above first.'); return; }
   const res = await fetch(`/api/multiplayer/characters/${MP_CHARACTER_ID}/move`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room_id: roomId }),
+    body: JSON.stringify({ location_id: locationId }),
   });
   const data = await res.json();
   if (data.error) { setStatus(data.error); return; }
-  await enterMpLocation(data.room_id, data.location_id);
+  await enterMpSubspace(data.location_id, data.subspace_id);
 }
 
-// ---------------- screen 7: the multiplayer chat/action room ----------------
-async function enterMpLocation(roomId, locationId) {
-  MP_ROOM_ID = roomId;
+// ---------------- screen 7: the multiplayer chat/action subspace ----------------
+async function enterMpSubspace(locationId, subspaceId) {
   MP_LOCATION_ID = locationId;
+  MP_SUBSPACE_ID = subspaceId;
   MP_RENDERED_TURN_IDS = new Set();
   MP_TURN_BY_ID = {};
   MP_REPLY_TO = null;
-  MP_PEEK_LOCATION_ID = null;  // any open peek panel referred to the OLD room's locations
+  MP_PEEK_SUBSPACE_ID = null;  // any open peek panel referred to the OLD location's subspaces
   document.getElementById('mp-peek-panel').classList.remove('active');
   closeMpEventSource();
 
@@ -1614,7 +1615,7 @@ async function enterMpLocation(roomId, locationId) {
 
   await loadModels(mpModelSelect);
   await loadCharacterStateMp();
-  await refreshMpLocationDetail();
+  await refreshMpSubspaceDetail();
   await loadMpMessages();
   openMpEventSource();
 }
@@ -1633,10 +1634,10 @@ async function loadCharacterStateMp() {
   renderSidebar(data.state);
 }
 
-async function refreshMpLocationDetail() {
-  const res = await fetch(`/api/multiplayer/locations/${MP_LOCATION_ID}/detail`);
+async function refreshMpSubspaceDetail() {
+  const res = await fetch(`/api/multiplayer/subspaces/${MP_SUBSPACE_ID}/detail`);
   const data = await res.json();
-  document.getElementById('mp-loc-title').textContent = `${data.room.name} — ${data.location.name}`;
+  document.getElementById('mp-loc-title').textContent = `${data.location.name} — ${data.subspace.name}`;
   const names = data.occupants.map(o => o.name);
   const npcNames = data.npcs.map(n => n.name);
   MP_NPC_NAME_BY_KEY = {};
@@ -1644,17 +1645,17 @@ async function refreshMpLocationDetail() {
   document.getElementById('mp-occupants').textContent =
     `Here: ${names.join(', ') || 'no one'}${npcNames.length ? ' · NPCs: ' + npcNames.join(', ') : ''}`;
 
-  const locsRes = await fetch(`/api/multiplayer/rooms/${MP_ROOM_ID}/locations`);
-  const locsData = await locsRes.json();
-  const otherLocations = locsData.locations.filter(l => l.id !== MP_LOCATION_ID);
-  const moveSelect = document.getElementById('mp-loc-move-select');
+  const subsRes = await fetch(`/api/multiplayer/locations/${MP_LOCATION_ID}/subspaces`);
+  const subsData = await subsRes.json();
+  const otherSubspaces = subsData.subspaces.filter(s => s.id !== MP_SUBSPACE_ID);
+  const moveSelect = document.getElementById('mp-subspace-move-select');
   moveSelect.innerHTML = `<option value="">Move to…</option>` +
-    otherLocations.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
-  const peekSelect = document.getElementById('mp-loc-peek-select');
+    otherSubspaces.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  const peekSelect = document.getElementById('mp-subspace-peek-select');
   const peekValue = peekSelect.value;
   peekSelect.innerHTML = `<option value="">Peek at…</option>` +
-    otherLocations.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
-  peekSelect.value = otherLocations.some(l => String(l.id) === peekValue) ? peekValue : '';
+    otherSubspaces.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  peekSelect.value = otherSubspaces.some(s => String(s.id) === peekValue) ? peekValue : '';
 
   renderMpCombatBar(data.combat);
 
@@ -1692,7 +1693,7 @@ function renderMpCombatBar(combat) {
 }
 
 async function loadMpMessages() {
-  const res = await fetch(`/api/multiplayer/characters/${MP_CHARACTER_ID}/location_messages`);
+  const res = await fetch(`/api/multiplayer/characters/${MP_CHARACTER_ID}/subspace_messages`);
   const data = await res.json();
   (data.messages || []).forEach(appendMpTurn);
 }
@@ -1704,7 +1705,7 @@ function resolveResponderName(responder) {
 }
 
 // Shared by appendMpTurn (the live/replayed log) and appendPeekTurn (the read-only peek panel - see
-// "peek at other locations in your room" below) - the actual speaker/body/flag/mechanics rendering is
+// "peek at other subspaces in your location" below) - the actual speaker/body/flag/mechanics rendering is
 // identical either way; only what happens AROUND it differs (dedup tracking, reply buttons, which
 // element it's appended to). replyLookup is a plain {id: row} map the caller controls, so the peek
 // panel can resolve "replying to..." context within its own small batch without touching
@@ -1780,23 +1781,23 @@ function appendPeekTurn(row, containerEl, replyLookup) {
   containerEl.appendChild(div);
 }
 
-// ---------------- peek: look at another location in the current room without moving there ----------------
+// ---------------- peek: look at another subspace in the current location without moving there ----------------
 // Read-only and one-shot (fetched on open/refresh, not live via SSE) - deliberately not a second
-// real-time view. It never touches MP_LOCATION_ID/MP_ROOM_ID, never affects sending, and reuses
-// /peek/<location_id> (server-side restricted to the character's current room, and privacy-scoped by
-// the same visible_to_json rule as everywhere else - see server.py's docstring on that route).
-async function openPeek(locationId) {
-  MP_PEEK_LOCATION_ID = locationId;
+// real-time view. It never touches MP_SUBSPACE_ID/MP_LOCATION_ID, never affects sending, and reuses
+// /peek/<subspace_id> (server-side restricted to the character's current location, and privacy-scoped
+// by the same visible_to_json rule as everywhere else - see server.py's docstring on that route).
+async function openPeek(subspaceId) {
+  MP_PEEK_SUBSPACE_ID = subspaceId;
   document.getElementById('mp-peek-panel').classList.add('active');
   await refreshPeek();
 }
 
 async function refreshPeek() {
-  if (MP_PEEK_LOCATION_ID == null) return;
-  const locationId = MP_PEEK_LOCATION_ID;
+  if (MP_PEEK_SUBSPACE_ID == null) return;
+  const subspaceId = MP_PEEK_SUBSPACE_ID;
   const [detailRes, msgRes] = await Promise.all([
-    fetch(`/api/multiplayer/locations/${locationId}/detail`),
-    fetch(`/api/multiplayer/characters/${MP_CHARACTER_ID}/peek/${locationId}`),
+    fetch(`/api/multiplayer/subspaces/${subspaceId}/detail`),
+    fetch(`/api/multiplayer/characters/${MP_CHARACTER_ID}/peek/${subspaceId}`),
   ]);
   const detail = await detailRes.json();
   const msgData = await msgRes.json();
@@ -1806,7 +1807,7 @@ async function refreshPeek() {
     return;
   }
 
-  document.getElementById('mp-peek-title').textContent = `Peeking: ${detail.location.name}`;
+  document.getElementById('mp-peek-title').textContent = `Peeking: ${detail.subspace.name}`;
   const names = detail.occupants.map(o => o.name);
   const npcNames = detail.npcs.map(n => n.name);
   let occLine = `Here: ${names.join(', ') || 'no one'}${npcNames.length ? ' · NPCs: ' + npcNames.join(', ') : ''}`;
@@ -1828,15 +1829,15 @@ async function refreshPeek() {
 }
 
 function closePeek() {
-  MP_PEEK_LOCATION_ID = null;
+  MP_PEEK_SUBSPACE_ID = null;
   document.getElementById('mp-peek-panel').classList.remove('active');
-  document.getElementById('mp-loc-peek-select').value = '';
+  document.getElementById('mp-subspace-peek-select').value = '';
 }
 
-document.getElementById('mp-loc-peek-select').addEventListener('change', (e) => {
-  const locId = e.target.value;
-  if (!locId) { closePeek(); return; }
-  openPeek(parseInt(locId, 10));
+document.getElementById('mp-subspace-peek-select').addEventListener('change', (e) => {
+  const subId = e.target.value;
+  if (!subId) { closePeek(); return; }
+  openPeek(parseInt(subId, 10));
 });
 document.getElementById('mp-peek-close-btn').addEventListener('click', closePeek);
 document.getElementById('mp-peek-refresh-btn').addEventListener('click', refreshPeek);
@@ -1891,7 +1892,7 @@ async function sendMpMessage() {
     } else if (res.status === 409) {
       setStatus(data.error || "It isn't your turn.");
       mpInputBox.value = text;
-      await refreshMpLocationDetail();
+      await refreshMpSubspaceDetail();
     } else if (res.status === 402) {
       setStatus('Out of budget.');
       renderBudget(data.budget);
@@ -1902,9 +1903,19 @@ async function sendMpMessage() {
       MP_REPLY_TO = null;
       updateMpReplyChip();
       renderBudget(data.budget);
-      await loadMpMessages();
-      await refreshMpLocationDetail();
-      setStatus('');
+      // An action can spawn a new subspace or move the character into an existing one it matched by
+      // name (see multiplayer.detect_new_subspace) - either way, follow them there: reload
+      // location/subspace detail and reopen the SSE stream on the new subspace, per server.py's note
+      // on api_multiplayer_send.
+      const movedSubspaceId = data.new_subspace_id || data.moved_to_subspace_id;
+      if (movedSubspaceId && movedSubspaceId !== MP_SUBSPACE_ID) {
+        await enterMpSubspace(MP_LOCATION_ID, movedSubspaceId);
+        setStatus(data.new_subspace_id ? 'A new space opened up — you moved there.' : 'You moved to a nearby space.');
+      } else {
+        await loadMpMessages();
+        await refreshMpSubspaceDetail();
+        setStatus('');
+      }
     }
   } catch (e) {
     setStatus(`Request failed: ${e}`);
@@ -1918,7 +1929,7 @@ mpInputBox.addEventListener('keydown', (e) => {
 });
 
 // SSE is used as a lightweight "something changed here, go refetch" signal rather than the sole
-// render path - loadMpMessages/refreshMpLocationDetail are idempotent (dedup'd by turn id, or just a
+// render path - loadMpMessages/refreshMpSubspaceDetail are idempotent (dedup'd by turn id, or just a
 // full reread of current state), so this is robust to a missed event, a duplicate one, or an event
 // arriving before the connection is even fully established. Simpler and more robust than trying to
 // render each SSE payload directly, at this app's scale.
@@ -1933,7 +1944,7 @@ function openMpEventSource() {
       return;
     }
     loadMpMessages();
-    refreshMpLocationDetail();
+    refreshMpSubspaceDetail();
   };
 }
 
@@ -1949,20 +1960,20 @@ function appendMpRumorNotice(event) {
   mpLogEl.scrollTop = mpLogEl.scrollHeight;
 }
 
-document.getElementById('mp-loc-move-select').addEventListener('change', async (e) => {
-  const newLocId = e.target.value;
-  if (!newLocId) return;
+document.getElementById('mp-subspace-move-select').addEventListener('change', async (e) => {
+  const newSubId = e.target.value;
+  if (!newSubId) return;
   e.target.value = '';
   const res = await fetch(`/api/multiplayer/characters/${MP_CHARACTER_ID}/move`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room_id: MP_ROOM_ID, location_id: parseInt(newLocId, 10) }),
+    body: JSON.stringify({ location_id: MP_LOCATION_ID, subspace_id: parseInt(newSubId, 10) }),
   });
   const data = await res.json();
   if (data.error) { setStatus(data.error); return; }
-  await enterMpLocation(data.room_id, data.location_id);
+  await enterMpSubspace(data.location_id, data.subspace_id);
 });
 
-document.getElementById('mp-leave-room-btn').addEventListener('click', () => {
+document.getElementById('mp-leave-location-btn').addEventListener('click', () => {
   closeMpEventSource();
   document.getElementById('mp-app').classList.remove('active');
   showScreen('screen-mp-lobby');
@@ -1978,7 +1989,7 @@ document.getElementById('mp-mark-concluded-btn').addEventListener('click', async
   if (data.error) { setStatus(data.error); return; }
   setStatus(data.concluded ? 'Scene concluded.' : `Marked (${data.marks}/${data.total_present}).`);
   await loadMpMessages();
-  await refreshMpLocationDetail();
+  await refreshMpSubspaceDetail();
 });
 
 document.getElementById('mp-storm-out-btn').addEventListener('click', async () => {
@@ -1990,7 +2001,7 @@ document.getElementById('mp-storm-out-btn').addEventListener('click', async () =
   });
   const data = await res.json();
   if (data.error) { setStatus(data.error); return; }
-  await enterMpLocation(MP_ROOM_ID, data.new_location_id);
+  await enterMpSubspace(MP_LOCATION_ID, data.new_subspace_id);
 });
 
 document.getElementById('mp-sheet-toggle-btn').addEventListener('click', () => {

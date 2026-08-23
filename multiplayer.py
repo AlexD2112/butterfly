@@ -1,7 +1,7 @@
 """
 Multiplayer orchestration: two mostly-independent pieces sharing this module.
 
-1. Message judging - deciding whether an AI response to a player's room message is warranted at
+1. Message judging - deciding whether an AI response to a player's subspace message is warranted at
    all, and if so, in whose voice: a specific present NPC, or the GM. See NOTES.md (2026-08-21) for
    the corrected design this implements: a real yes/no gate first, THEN pick a responder - not "the
    AI always responds," which was an earlier, wrong reading of the brief.
@@ -20,15 +20,17 @@ Multiplayer orchestration: two mostly-independent pieces sharing this module.
    classifier decides whether it ignited a fight and who else is now involved (initiative rolled by
    the app - system._shared.core.attribute_modifier + a d20, never trusted to the model); while an
    encounter is active, an action from a listed participant is rejected outright if it isn't their
-   turn - "no free-for-all resolution," enforced in code, not by asking nicely.
+   turn - "no free-for-all resolution," enforced in code, not by asking nicely. A resolved action is
+   also where detect_new_subspace (2026-08-22, see below) checks for organic world growth.
 
-3. Room conclusion - mark_concluded()/storm_out(). "Thread" is scoped per-LOCATION, not per-room
-   (locations are the actual sub-conversation unit built for message visibility - see NOTES.md's
-   rooms/locations entry), so conclusion tracking is per-location too. A thread concludes once every
-   PLAYER currently at that location has marked it (NPCs don't count - the brief says "players").
-   Storming out sends an optional final flavor message, moves the character to their room's default
-   location, and - if anyone remains - checks whether the scene should auto-conclude without them
-   (deterministically if literally nobody's left, via a cheap ambient classifier otherwise).
+3. Subspace conclusion - mark_concluded()/storm_out(). "Thread" is scoped per-SUBSPACE, not per-
+   location (subspaces are the actual sub-conversation unit built for message visibility - see
+   NOTES.md's location/subspace rename entry), so conclusion tracking is per-subspace too. A thread
+   concludes once every PLAYER currently at that subspace has marked it (NPCs don't count - the brief
+   says "players"). Storming out sends an optional final flavor message, moves the character to their
+   location's default subspace, and - if anyone remains - checks whether the scene should
+   auto-conclude without them (deterministically if literally nobody's left, via a cheap ambient
+   classifier otherwise).
 
 4. Rumors + flags (2026-08-21). generate_rumor() fires whenever _conclude_thread() runs (from
    mark_concluded, storm_out, or the sweep) - a summary whose LENGTH scales with judged importance and
@@ -40,9 +42,21 @@ Multiplayer orchestration: two mostly-independent pieces sharing this module.
    it's mechanically significant (a critical roll, a canon event, a big resource swing).
 
 5. Live updates (SSE) - every function here that records something player-visible (a message, a
-   reply, a conclusion) also calls live.publish_location_event/publish_server_event right after, so
+   reply, a conclusion) also calls live.publish_subspace_event/publish_server_event right after, so
    an open SSE connection (server.py's stream route) sees it appear without polling. See live.py's
    own docstring for the pub/sub mechanics and its known limitations.
+
+6. Dynamic subspace creation (2026-08-22) - detect_new_subspace() runs after a resolved ACTION (never
+   a message - those are dialogue, not movement) and decides whether the narration describes arriving
+   somewhere genuinely new and distinct within the character's current LOCATION. Deliberately scoped
+   to a cheap prompt (the player's action text + the resulting narration + the names of subspaces
+   already there, NOT the full game/location context) and instructed to be conservative - biased
+   toward "no" unless the signal is unambiguous, so a passing glance or a minor beat in the same space
+   doesn't spawn a new subspace. Only ever creates a SUBSPACE nested under the character's current
+   LOCATION, never a whole new top-level Location - that stays admin-only, keeping the overall map
+   shape under admin control while the texture inside each location can grow through play. A
+   dynamically-created subspace is immediately visible/movable-to for everyone at that location, same
+   as an admin-created one - no separate discovery mechanic (see NOTES.md for that decision).
 
 Mechanics (dice, checks, state changes) still only ever happen inside engine.run_turn's existing
 tool loop - this module never calls systems/_shared/core.py's check/state functions directly, only
@@ -72,12 +86,12 @@ class CombatTurnError(Exception):
 JUDGE_MODEL_KEY = council.JUDGE_MODEL_KEY
 
 
-def _recent_location_context(location_id, limit=8):
-    """A short plain-text rendering of the most recent activity at a location, for the judge/reply
+def _recent_subspace_context(subspace_id, limit=8):
+    """A short plain-text rendering of the most recent activity at a subspace, for the judge/reply
     prompts - deliberately small (chat context, not a full transcript)."""
     conn = db.get_db()
     rows = conn.execute(
-        "SELECT * FROM turns WHERE location_id = ? ORDER BY id DESC LIMIT ?", (location_id, limit)
+        "SELECT * FROM turns WHERE subspace_id = ? ORDER BY id DESC LIMIT ?", (subspace_id, limit)
     ).fetchall()
     conn.close()
     lines = []
@@ -86,30 +100,30 @@ def _recent_location_context(location_id, limit=8):
             lines.append(f"[player #{r['character_id']}]: {r['player_input']}")
         elif r["kind"] in ("npc_reply", "gm_reply"):
             lines.append(f"[{r['responder']}]: {r['narration']}")
-    return "\n".join(lines) if lines else "(no prior activity at this location)"
+    return "\n".join(lines) if lines else "(no prior activity at this subspace)"
 
 
 def _npc_roster_text(npcs):
     if not npcs:
-        return "(no NPCs currently present at this location)"
+        return "(no NPCs currently present at this subspace)"
     return "\n".join(f"- {n['key']}: {db.build_npc_sheet_text(n)}" for n in npcs)
 
 
-def judge_responder(provider, model, location_id, content, usage_sink=None):
+def judge_responder(provider, model, subspace_id, content, usage_sink=None):
     """The real yes/no gate for a fresh (non-reply) message: does anyone respond, and if so, a
     present NPC's key or "gm". Returns (responds: bool, responder: str|None, reasoning: str|None).
     Fails safe to (False, None, None) on a missing/malformed response, or if the model names an NPC
     that isn't actually present - silence is the safer default than inventing an unwanted or
     impossible response."""
-    npcs = db.npcs_at_location(location_id)
+    npcs = db.npcs_at_subspace(subspace_id)
     system_prompt = f"""You are deciding whether anyone responds to a player's message in a
 multiplayer scene, and if so, who.
 
-# NPCS PRESENT AT THIS LOCATION
+# NPCS PRESENT AT THIS SUBSPACE
 {_npc_roster_text(npcs)}
 
 # RECENT ACTIVITY HERE
-{_recent_location_context(location_id)}
+{_recent_subspace_context(subspace_id)}
 
 # THE NEW MESSAGE
 {content}
@@ -153,10 +167,10 @@ with responder="gm". Submit your decision via decide_response."""
     return True, responder, decision.get("reasoning")
 
 
-def generate_reply(provider, model, location_id, responder, content, usage_sink=None):
+def generate_reply(provider, model, subspace_id, responder, content, usage_sink=None):
     """Generates the actual reply text once a responder is already decided (via judge_responder, or
     a reply-threading shortcut). responder is "gm" or a present NPC's key."""
-    context = _recent_location_context(location_id)
+    context = _recent_subspace_context(subspace_id)
     if responder == "gm":
         system_prompt = f"""You are the game master narrating a small ambient beat in a multiplayer
 scene - a reaction, an environmental detail, a passing NPC's glance - in response to what a player
@@ -171,7 +185,7 @@ mechanical state changes - this is pure narration.
 
 Write only the narration, nothing else."""
     else:
-        npcs = db.npcs_at_location(location_id)
+        npcs = db.npcs_at_subspace(subspace_id)
         npc = next((n for n in npcs if n["key"] == responder), None)
         sheet = db.build_npc_sheet_text(npc) if npc else responder
         system_prompt = f"""You are roleplaying {responder} in a multiplayer scene, responding
@@ -197,16 +211,16 @@ Write only your in-character response, nothing else."""
     return text or None
 
 
-def handle_message(provider, model, game_id, room_id, location_id, character_id, content,
+def handle_message(provider, model, game_id, location_id, subspace_id, character_id, content,
                     reply_to_turn_id=None, usage_sink=None):
     """The full flow for a "message"-kind send: record it, decide (via reply-threading shortcuts or
     the judge) whether/who responds, generate that reply if any, record it, and update NPC memory if
     an NPC replied. Returns (message_turn_id, reply_turn_id_or_None, responder_or_None) - responder
     is None whenever nobody responds, which is a real, expected outcome now, not a failure."""
-    message_turn_id = db.record_room_message(
-        game_id, room_id, location_id, character_id, "message", content, reply_to_turn_id=reply_to_turn_id,
+    message_turn_id = db.record_subspace_message(
+        game_id, location_id, subspace_id, character_id, "message", content, reply_to_turn_id=reply_to_turn_id,
     )
-    live.publish_location_event(location_id, db.get_turn_by_id(message_turn_id))
+    live.publish_subspace_event(subspace_id, db.get_turn_by_id(message_turn_id))
 
     responder = None
     if reply_to_turn_id:
@@ -223,7 +237,7 @@ def handle_message(provider, model, game_id, room_id, location_id, character_id,
             # back to whatever the sender is already using rather than failing the whole message.
             judge_provider, judge_model = provider, model
         responds, judged_responder, _reasoning = judge_responder(
-            judge_provider, judge_model, location_id, content, usage_sink=usage_sink,
+            judge_provider, judge_model, subspace_id, content, usage_sink=usage_sink,
         )
         if responds:
             responder = judged_responder
@@ -231,19 +245,19 @@ def handle_message(provider, model, game_id, room_id, location_id, character_id,
     if responder is None:
         return message_turn_id, None, None
 
-    reply_text = generate_reply(provider, model, location_id, responder, content, usage_sink=usage_sink)
+    reply_text = generate_reply(provider, model, subspace_id, responder, content, usage_sink=usage_sink)
     if not reply_text:
         return message_turn_id, None, None
 
     reply_kind = "gm_reply" if responder == "gm" else "npc_reply"
-    reply_turn_id = db.record_room_message(
-        game_id, room_id, location_id, character_id, reply_kind, reply_text,
+    reply_turn_id = db.record_subspace_message(
+        game_id, location_id, subspace_id, character_id, reply_kind, reply_text,
         reply_to_turn_id=message_turn_id, responder=responder,
     )
-    live.publish_location_event(location_id, db.get_turn_by_id(reply_turn_id))
+    live.publish_subspace_event(subspace_id, db.get_turn_by_id(reply_turn_id))
 
     if responder != "gm":
-        npcs = db.npcs_at_location(location_id)
+        npcs = db.npcs_at_subspace(subspace_id)
         npc = next((n for n in npcs if n["key"] == responder), None)
         if npc:
             db.add_npc_memory(npc["id"], f'Responded to a message: "{content[:120]}" -> "{reply_text[:120]}"')
@@ -277,14 +291,14 @@ def _combat_actor_label(participant):
     return f"character #{participant['character_id']}"
 
 
-def detect_combat_start(provider, model, location_id, narration, acting_character_id, usage_sink=None):
+def detect_combat_start(provider, model, subspace_id, narration, acting_character_id, usage_sink=None):
     """After a free (non-combat) action resolves, ask a cheap judge whether it ignited a fight, and
     if so which OTHER present characters/NPCs are now involved. Returns a list of participant
     descriptors ({"character_id": id} or {"npc_key": key}) NOT including the acting character - the
     caller always adds them separately, since anyone whose action starts a fight is unquestionably in
     it. Empty list means no combat, including the trivial case where nobody else is even present."""
-    present_chars = [c for c in db.characters_at_location(location_id) if c != acting_character_id]
-    present_npcs = db.npcs_at_location(location_id)
+    present_chars = [c for c in db.characters_at_subspace(subspace_id) if c != acting_character_id]
+    present_npcs = db.npcs_at_subspace(subspace_id)
     if not present_chars and not present_npcs:
         return []
 
@@ -378,7 +392,7 @@ Submit via decide_combat_status."""
     return bool(result.tool_calls[0]["input"].get("ended"))
 
 
-def _start_combat(room_id, location_id, acting_character_row, other_participants):
+def _start_combat(location_id, subspace_id, acting_character_row, other_participants):
     """Rolls initiative for the acting character plus every newly-detected participant, seats them in
     descending order, and starts the rotation at whoever comes right after the acting character -
     they already just acted (that's what triggered this), so the next real turn belongs to someone
@@ -398,25 +412,112 @@ def _start_combat(room_id, location_id, acting_character_row, other_participants
     acting_index = next(i for i, r in enumerate(rolled) if r.get("character_id") == acting_character_id)
     start_turn_index = (acting_index + 1) % len(rolled) if len(rolled) > 1 else 0
 
-    return db.create_combat_encounter(room_id, location_id, rolled, start_turn_index=start_turn_index)
+    return db.create_combat_encounter(location_id, subspace_id, rolled, start_turn_index=start_turn_index)
 
 
-def resolve_action(provider, model, model_key, char_row, room_id, location_id, content, conversation,
+def detect_new_subspace(provider, model, action_content, narration, existing_subspace_names, usage_sink=None):
+    """After a resolved action, decide whether the character has arrived somewhere genuinely new and
+    distinct within their current location - and if a new place, propose a short name for it, or if
+    it matches one of the already-existing subspaces there, say which one instead of inventing a
+    near-duplicate. Deliberately a NARROW prompt (just the player's action text + the resulting
+    narration + the existing subspace names at this location, not the full game/location/occupant
+    context) - kept cheap since this runs on every action, not gated behind a free pre-filter.
+
+    Deliberately conservative: only proposes a new subspace when the narration clearly, unambiguously
+    describes the character now being in a distinct, separate sub-area - not just looking somewhere,
+    mentioning a place in passing, or a minor beat in the same space. When in doubt, this should say
+    no - a missed subspace is a much smaller problem than the world fragmenting into junk locations
+    from every minor narrative beat.
+
+    Returns {"new_subspace_name": str} if a genuinely new subspace should be created, or
+    {"matched_existing_name": str} if it matches one already listed, or None if neither (nothing
+    warrants a subspace at all). Fails safe to None on a missing/malformed response."""
+    system_prompt = f"""A player's action was just resolved in a multiplayer scene. Decide whether it
+describes the character arriving somewhere genuinely new and distinct within their current location -
+a separate sub-area worth tracking on its own, not just a different way of describing where they
+already were.
+
+# SUBSPACES THAT ALREADY EXIST HERE
+{", ".join(existing_subspace_names) if existing_subspace_names else "(none yet)"}
+
+# THE PLAYER'S ACTION
+{action_content}
+
+# WHAT ACTUALLY HAPPENED
+{narration}
+
+Be conservative. Only decide a new subspace is warranted if the narration clearly and unambiguously
+describes the character now being in a distinct, separate sub-area - climbing down into a cellar,
+stepping through a door into another room, moving to a genuinely separate part of the scene. A
+glance, a mention in passing, or continuing to act in the same space is NOT a new subspace. If it's
+unclear either way, decide no new subspace.
+
+If it does warrant one, also check whether it actually matches one of the subspaces already listed
+above (e.g. someone else already found "The Cellar" and this is the same place) rather than a truly
+new one - reuse the existing name in that case instead of inventing a near-duplicate.
+
+Submit via decide_subspace."""
+    tool_specs = [
+        {
+            "name": "decide_subspace",
+            "description": "Decide whether this action warrants a new or existing subspace.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "warrants_subspace": {"type": "boolean"},
+                    "matches_existing": {
+                        "type": "boolean",
+                        "description": "True if this matches one of the existing subspaces listed above.",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "A short name for the new subspace, or the exact existing name it matches.",
+                    },
+                    "reasoning": {"type": "string"},
+                },
+                "required": ["warrants_subspace", "reasoning"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Decide now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_subspace")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return None
+    decision = result.tool_calls[0]["input"]
+    if not decision.get("warrants_subspace"):
+        return None
+    name = (decision.get("name") or "").strip()
+    if not name:
+        return None
+    if decision.get("matches_existing"):
+        return {"matched_existing_name": name}
+    return {"new_subspace_name": name}
+
+
+def resolve_action(provider, model, model_key, char_row, location_id, subspace_id, content, conversation,
                     usage_sink=None, budget_ok=None):
     """Resolves a multiplayer "action" - the mechanical resolution ALWAYS goes through
     engine.run_turn unchanged (dice/state stay app-owned via the same trusted, tested path
-    single-player uses). This function's only job is what happens around that call: turn-order
-    enforcement if the acting character is a combat participant, and combat start/end detection
-    afterward. Raises CombatTurnError instead of resolving anything if it isn't the character's turn.
+    single-player uses). This function's job is what happens around that call: turn-order enforcement
+    if the acting character is a combat participant, combat start/end detection afterward, and (new,
+    2026-08-22) checking whether the action warrants spawning/moving into a new subspace. Raises
+    CombatTurnError instead of resolving anything if it isn't the character's turn.
 
-    Returns a dict: {"turn_id", "reply_turn_id", "narration", "debug_events", "combat_encounter_id"}
-    - combat_encounter_id is set whenever this action happened during (or just started) an active
-    encounter, else None.
+    Returns a dict: {"turn_id", "reply_turn_id", "narration", "debug_events", "combat_encounter_id",
+    "new_subspace_id", "moved_to_subspace_id"} - combat_encounter_id is set whenever this action
+    happened during (or just started) an active encounter, else None; new_subspace_id is set only
+    when this action's resolution just created a brand new subspace; moved_to_subspace_id is set
+    whenever the character's subspace changed as a result of this action (whether the subspace was
+    newly created or already existed) - the caller (server.py) uses this to tell the frontend it
+    needs to reload location detail for wherever the character actually ended up.
     """
     character_id = char_row["id"]
     game_id = char_row["game_id"]
 
-    encounter = db.get_active_combat_encounter(location_id)
+    encounter = db.get_active_combat_encounter(subspace_id)
     if encounter:
         participant_char_ids = {p["character_id"] for p in db.get_combat_participants(encounter["id"]) if p["character_id"]}
         if character_id in participant_char_ids:
@@ -432,8 +533,8 @@ def resolve_action(provider, model, model_key, char_row, room_id, location_id, c
         provider, model, state, char_row["setting_key"], char_row["system_key"], conversation, content,
         usage_sink=usage_sink, budget_ok=budget_ok,
         # Council Mode is single-player-shaped (one narration, one player) - layering it onto a
-        # multiplayer room's shared action log is a separate design question, not tackled here, so
-        # it's explicitly off for this path rather than silently half-applied.
+        # multiplayer subspace's shared action log is a separate design question, not tackled here,
+        # so it's explicitly off for this path rather than silently half-applied.
         council_mode=False, model_key=model_key,
     )
 
@@ -445,20 +546,21 @@ def resolve_action(provider, model, model_key, char_row, room_id, location_id, c
     flagged = bool(stakes_signals)
     flag_reason = "; ".join(stakes_signals) if stakes_signals else None
 
-    turn_id = db.record_room_message(
-        game_id, room_id, location_id, character_id, "action", content, model_key=model_key,
+    turn_id = db.record_subspace_message(
+        game_id, location_id, subspace_id, character_id, "action", content, model_key=model_key,
         debug_events=debug_events, flagged=flagged, flag_reason=flag_reason,
     )
-    live.publish_location_event(location_id, db.get_turn_by_id(turn_id))
-    reply_turn_id = db.record_room_message(
-        game_id, room_id, location_id, character_id, "gm_reply", narration,
+    live.publish_subspace_event(subspace_id, db.get_turn_by_id(turn_id))
+    reply_turn_id = db.record_subspace_message(
+        game_id, location_id, subspace_id, character_id, "gm_reply", narration,
         reply_to_turn_id=turn_id, responder="gm", model_key=model_key,
     )
-    live.publish_location_event(location_id, db.get_turn_by_id(reply_turn_id))
+    live.publish_subspace_event(subspace_id, db.get_turn_by_id(reply_turn_id))
 
     result = {
         "turn_id": turn_id, "reply_turn_id": reply_turn_id,
         "narration": narration, "debug_events": debug_events, "combat_encounter_id": None,
+        "new_subspace_id": None, "moved_to_subspace_id": None,
     }
 
     if encounter:
@@ -475,20 +577,52 @@ def resolve_action(provider, model, model_key, char_row, room_id, location_id, c
             # continues untouched.
             result["combat_encounter_id"] = encounter["id"]
     else:
-        new_participants = detect_combat_start(provider, model, location_id, narration, character_id, usage_sink=usage_sink)
+        new_participants = detect_combat_start(provider, model, subspace_id, narration, character_id, usage_sink=usage_sink)
         if new_participants:
-            encounter_id = _start_combat(room_id, location_id, char_row, new_participants)
+            encounter_id = _start_combat(location_id, subspace_id, char_row, new_participants)
             result["combat_encounter_id"] = encounter_id
+
+    # Dynamic subspace creation (2026-08-22) - only checked for a free (non-combat) action, since a
+    # fight in progress isn't the moment the world should be growing new geography, and only when a
+    # judge provider actually resolved (same graceful-skip pattern as everywhere else in this module).
+    if not result["combat_encounter_id"]:
+        try:
+            judge_provider, judge_model = providers.get_provider(JUDGE_MODEL_KEY)
+        except providers.ProviderError:
+            judge_provider, judge_model = None, None
+        if judge_provider is not None:
+            existing_names = [s["name"] for s in db.list_subspaces(location_id)]
+            decision = detect_new_subspace(
+                judge_provider, judge_model, content, narration, existing_names, usage_sink=usage_sink,
+            )
+            if decision:
+                # char_row (from db.get_character) has no server_id of its own - characters aren't
+                # scoped to a server directly, only via game_id - so this is always resolved from the
+                # location, not read off the character.
+                server_id = db.get_location(location_id)["server_id"]
+                if "new_subspace_name" in decision:
+                    new_subspace_id = db.create_subspace(
+                        location_id, decision["new_subspace_name"], origin="dynamic",
+                        created_by_character_id=character_id,
+                    )
+                    result["new_subspace_id"] = new_subspace_id
+                    result["moved_to_subspace_id"] = new_subspace_id
+                    db.move_character(character_id, server_id, location_id, new_subspace_id)
+                else:
+                    matched = db.find_subspace_by_name(location_id, decision["matched_existing_name"])
+                    if matched and matched["id"] != subspace_id:
+                        result["moved_to_subspace_id"] = matched["id"]
+                        db.move_character(character_id, server_id, location_id, matched["id"])
 
     return result
 
 
-# ==================== room conclusion (mark-concluded / storm-out) ====================
+# ==================== subspace conclusion (mark-concluded / storm-out) ====================
 
-def _conclude_thread(game_id, room_id, location_id, triggered_by_character_id, note="The scene concludes.",
+def _conclude_thread(game_id, location_id, subspace_id, triggered_by_character_id, note="The scene concludes.",
                       provider=None, model=None, usage_sink=None):
     """Logs a visible marker and resets conclusion tracking so a fresh thread can start being
-    counted at this location. triggered_by_character_id attributes the log row to whoever caused the
+    counted at this subspace. triggered_by_character_id attributes the log row to whoever caused the
     conclusion (the last to mark it, whoever stormed out, or - for the daily sweep, which has no real
     triggering player - just the first present character) - turns.character_id is NOT NULL with a
     real FK, and there's no "system" character to attribute a purely time-driven event to instead.
@@ -497,36 +631,36 @@ def _conclude_thread(game_id, room_id, location_id, triggered_by_character_id, n
 
     provider/model, if given, trigger rumor generation for the just-concluded thread - optional
     because not every caller has a resolved provider available (see mark_concluded/storm_out)."""
-    turn_id = db.record_room_message(game_id, room_id, location_id, triggered_by_character_id, "thread_concluded", note)
-    live.publish_location_event(location_id, db.get_turn_by_id(turn_id))
-    db.clear_location_conclusions(location_id)
+    turn_id = db.record_subspace_message(game_id, location_id, subspace_id, triggered_by_character_id, "thread_concluded", note)
+    live.publish_subspace_event(subspace_id, db.get_turn_by_id(turn_id))
+    db.clear_subspace_conclusions(subspace_id)
     if provider is not None:
-        generate_rumor(provider, model, game_id, room_id, location_id, usage_sink=usage_sink)
+        generate_rumor(provider, model, game_id, location_id, subspace_id, usage_sink=usage_sink)
 
 
-def mark_concluded(char_row, room_id, location_id, provider=None, model=None, usage_sink=None):
+def mark_concluded(char_row, location_id, subspace_id, provider=None, model=None, usage_sink=None):
     """Regular (non-storm-out) mark-concluded. Returns (concluded: bool, marks_so_far: int,
-    total_present: int). Unanimous means every PLAYER character currently at this location has
+    total_present: int). Unanimous means every PLAYER character currently at this subspace has
     marked it - NPCs aren't counted, per the brief's literal "all players" wording."""
     character_id = char_row["id"]
     game_id = char_row["game_id"]
-    db.mark_location_concluded_by(location_id, character_id)
+    db.mark_subspace_concluded_by(subspace_id, character_id)
 
-    present = db.characters_at_location(location_id)
-    marks = db.get_location_conclusion_marks(location_id)
+    present = db.characters_at_subspace(subspace_id)
+    marks = db.get_subspace_conclusion_marks(subspace_id)
     if present and set(present) <= marks:
-        _conclude_thread(game_id, room_id, location_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
+        _conclude_thread(game_id, location_id, subspace_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
         return True, len(present), len(present)
     return False, len(marks & set(present)), len(present)
 
 
-def detect_thread_should_continue(provider, model, location_id, remaining_character_count, usage_sink=None):
+def detect_thread_should_continue(provider, model, subspace_id, remaining_character_count, usage_sink=None):
     """After someone storms out, ask whether enough people remain for the scene to meaningfully
     continue. Only ever called when at least one person remains - the zero-remaining case is decided
     deterministically by the caller (storm_out below), no AI call needed. Fails safe to "continues"
     on a missing/malformed response - silently auto-concluding a scene because a judge call hiccuped
     would be a worse failure than asking again next time."""
-    context = _recent_location_context(location_id)
+    context = _recent_subspace_context(subspace_id)
     system_prompt = f"""A character just stormed out of a scene, leaving {remaining_character_count}
 participant(s) behind. Decide whether the scene has enough left to meaningfully continue, or whether
 it should be considered concluded now that they're gone.
@@ -556,44 +690,44 @@ Submit via decide_continuation."""
     return bool(result.tool_calls[0]["input"].get("continues", True))
 
 
-def storm_out(provider, model, char_row, room_id, location_id, final_message, usage_sink=None):
+def storm_out(provider, model, char_row, location_id, subspace_id, final_message, usage_sink=None):
     """Sends an optional final flavor message (pure narrative text - no AI judging/reply, same as
-    any player-authored line that isn't addressed to anyone), moves the character to their room's
-    default location, clears their own conclusion mark at the location they left (their vote no
+    any player-authored line that isn't addressed to anyone), moves the character to their location's
+    default subspace, clears their own conclusion mark at the subspace they left (their vote no
     longer counts once they're gone), and checks whether the scene should auto-conclude without them.
 
     provider/model may be None (e.g. the caller couldn't resolve a configured provider) - the leave
     itself still succeeds either way; only the headcount check gets skipped, defaulting to "still
     ongoing" rather than blocking someone from leaving because the AI is temporarily unavailable.
 
-    Returns (new_location_id, thread_auto_concluded: bool).
+    Returns (new_subspace_id, thread_auto_concluded: bool).
     """
     character_id = char_row["id"]
     game_id = char_row["game_id"]
 
     if final_message:
-        storm_turn_id = db.record_room_message(game_id, room_id, location_id, character_id, "storm_out", final_message)
-        live.publish_location_event(location_id, db.get_turn_by_id(storm_turn_id))
+        storm_turn_id = db.record_subspace_message(game_id, location_id, subspace_id, character_id, "storm_out", final_message)
+        live.publish_subspace_event(subspace_id, db.get_turn_by_id(storm_turn_id))
 
-    db.clear_character_conclusion_mark(location_id, character_id)
+    db.clear_character_conclusion_mark(subspace_id, character_id)
 
-    new_location_id = db.get_default_location(room_id)["id"]
-    server_id = db.get_room(room_id)["server_id"]
-    db.move_character(character_id, server_id, room_id, new_location_id)
+    new_subspace_id = db.get_default_subspace(location_id)["id"]
+    server_id = db.get_location(location_id)["server_id"]
+    db.move_character(character_id, server_id, location_id, new_subspace_id)
 
-    remaining = [c for c in db.characters_at_location(location_id) if c != character_id]
+    remaining = [c for c in db.characters_at_subspace(subspace_id) if c != character_id]
     auto_concluded = False
     if not remaining:
-        _conclude_thread(game_id, room_id, location_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
+        _conclude_thread(game_id, location_id, subspace_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
         auto_concluded = True
     elif provider is not None:
-        continues = detect_thread_should_continue(provider, model, location_id, len(remaining), usage_sink=usage_sink)
+        continues = detect_thread_should_continue(provider, model, subspace_id, len(remaining), usage_sink=usage_sink)
         if not continues:
-            _conclude_thread(game_id, room_id, location_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
+            _conclude_thread(game_id, location_id, subspace_id, character_id, provider=provider, model=model, usage_sink=usage_sink)
             auto_concluded = True
     # else: no provider available - skip the check, thread stays open (fail-safe default).
 
-    return new_location_id, auto_concluded
+    return new_subspace_id, auto_concluded
 
 
 # ==================== ambient AI-call billing (shared by storm-out and the sweep) ====================
@@ -651,13 +785,13 @@ def advance_date_string(date_str, progression_speed):
     return d.isoformat()
 
 
-def detect_location_should_conclude(provider, model, location_id, usage_sink=None):
-    """The daily sweep's per-location check: given the passage of time, should this location's
+def detect_subspace_should_conclude(provider, model, subspace_id, usage_sink=None):
+    """The daily sweep's per-subspace check: given the passage of time, should this subspace's
     ongoing thread now be considered concluded? Fails safe to "leave it open" on a missing/malformed
     response - an accidental auto-conclusion is worse than asking again at the next tick."""
-    context = _recent_location_context(location_id)
+    context = _recent_subspace_context(subspace_id)
     system_prompt = f"""A real amount of time has passed in this multiplayer scene since the last
-check. Decide whether the ongoing activity at this location should now be considered concluded, or
+check. Decide whether the ongoing activity at this subspace should now be considered concluded, or
 is still meaningfully ongoing and should be left open.
 
 # RECENT ACTIVITY HERE
@@ -667,7 +801,7 @@ Submit via decide_sweep."""
     tool_specs = [
         {
             "name": "decide_sweep",
-            "description": "Decide whether this location's ongoing thread should be concluded.",
+            "description": "Decide whether this subspace's ongoing thread should be concluded.",
             "parameters": {
                 "type": "object",
                 "properties": {"should_conclude": {"type": "boolean"}, "reasoning": {"type": "string"}},
@@ -687,35 +821,35 @@ Submit via decide_sweep."""
 
 def sweep_server(provider, model, server_id):
     """The daily/weekly/monthly conclusion sweep - called by the tick scheduler (scheduler.py), never
-    by a player request. Walks every location in the server; locations with nobody present are
+    by a player request. Walks every subspace in the server; subspaces with nobody present are
     skipped entirely (nothing there to conclude, and no one to bill even if there were - matches the
     same reasoning used to skip combat-classifier calls when nobody else is present). For each
-    occupied location, asks detect_location_should_conclude and concludes it if so.
+    occupied subspace, asks detect_subspace_should_conclude and concludes it if so.
 
-    Returns a list of per-location {"location_id", "usage_sink", "present_character_ids",
-    "concluded"} dicts - billing each location's usage (via bill_ambient_usage above) is left to the
+    Returns a list of per-subspace {"subspace_id", "usage_sink", "present_character_ids",
+    "concluded"} dicts - billing each subspace's usage (via bill_ambient_usage above) is left to the
     caller, so this function's job stays "decide and log," not "decide and log and bill" tangled
     together."""
     results = []
     game = db.get_game_for_server(server_id)
-    for location in db.list_locations_for_server(server_id):
-        location_id = location["id"]
-        present = db.characters_at_location(location_id)
+    for subspace in db.list_subspaces_for_server(server_id):
+        subspace_id = subspace["id"]
+        present = db.characters_at_subspace(subspace_id)
         if not present:
             continue
         usage_sink = []
-        should_conclude = detect_location_should_conclude(provider, model, location_id, usage_sink=usage_sink)
+        should_conclude = detect_subspace_should_conclude(provider, model, subspace_id, usage_sink=usage_sink)
         if should_conclude:
             # provider/model passed through so this conclusion generates a rumor too, same as
             # mark-concluded/storm-out - its cost lands in the same usage_sink the caller
-            # (scheduler.fire_tick) already bills for this location's sweep decision.
+            # (scheduler.fire_tick) already bills for this subspace's sweep decision.
             _conclude_thread(
-                game["id"], location["room_id"], location_id, present[0],
+                game["id"], subspace["location_id"], subspace_id, present[0],
                 note="Time passes, and the scene quietly concludes.",
                 provider=provider, model=model, usage_sink=usage_sink,
             )
         results.append({
-            "location_id": location_id, "usage_sink": usage_sink,
+            "subspace_id": subspace_id, "usage_sink": usage_sink,
             "present_character_ids": present, "concluded": should_conclude,
         })
     return results
@@ -723,7 +857,7 @@ def sweep_server(provider, model, server_id):
 
 # ==================== rumors ====================
 
-def generate_rumor(provider, model, game_id, room_id, location_id, usage_sink=None):
+def generate_rumor(provider, model, game_id, location_id, subspace_id, usage_sink=None):
     """Generates a rumor summary of a just-concluded thread, stored unpublished until the next tick's
     broadcast (see compile_and_publish_rumors). Per direction: summary LENGTH scales with judged
     importance, DETAIL scales with judged publicity (a shouted public brawl spreads with real detail;
@@ -733,13 +867,13 @@ def generate_rumor(provider, model, game_id, room_id, location_id, usage_sink=No
     already the third AI call layered onto some conclusions (headcount/sweep check, then this) so
     keeping it to one call matters for cost, not just simplicity.
 
-    Silently does nothing (no rumor stored) if there's no real activity at the location to summarize,
+    Silently does nothing (no rumor stored) if there's no real activity at the subspace to summarize,
     or the call fails to return usable structured output - an unnecessary or missing rumor is a much
     smaller problem than a call that crashes a conclusion."""
-    context = _recent_location_context(location_id, limit=30)
-    if context == "(no prior activity at this location)":
+    context = _recent_subspace_context(subspace_id, limit=30)
+    if context == "(no prior activity at this subspace)":
         return None
-    system_prompt = f"""A scene/thread at this location just concluded. Write a brief rumor summary
+    system_prompt = f"""A scene/thread at this subspace just concluded. Write a brief rumor summary
 of what happened, suitable for spreading through the wider server as gossip/news.
 
 # WHAT HAPPENED
@@ -782,9 +916,9 @@ Submit via submit_rumor."""
     summary = (data.get("summary") or "").strip()
     if not summary:
         return None
-    server_id = db.get_room(room_id)["server_id"]
+    server_id = db.get_location(location_id)["server_id"]
     return db.create_rumor(
-        server_id, room_id, location_id, summary,
+        server_id, location_id, subspace_id, summary,
         data.get("importance", 1), data.get("publicity", 1),
     )
 

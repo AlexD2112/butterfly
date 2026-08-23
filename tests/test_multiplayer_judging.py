@@ -53,14 +53,14 @@ class TestMultiplayerJudging(unittest.TestCase):
         self.admin = db.get_or_create_discord_user("1", "Admin", None)
         self.server_id = db.create_multiplayer_server("Test Server", "petrograd_1917", "red_admiral", "day", 24.0, self.admin["id"])
         self.game = db.get_game_for_server(self.server_id)
-        self.room_id = db.create_room(self.server_id, "Room A")
-        self.location_id = db.get_default_location(self.room_id)["id"]
+        self.location_id = db.create_location(self.server_id, "Location A")
+        self.subspace_id = db.get_default_subspace(self.location_id)["id"]
         user = db.get_or_create_discord_user("2", "Sender", None)
         self.character_id = db.create_character(user["id"], "petrograd_1917", "red_admiral", "Sender", {"turn_number": 0}, game_id=self.game["id"])
-        db.move_character(self.character_id, self.server_id, self.room_id, self.location_id)
+        db.move_character(self.character_id, self.server_id, self.location_id, self.subspace_id)
         self.npc_id = db.create_npc(
             self.game["id"], "lenin", "Vladimir Lenin", personality="Impatient.",
-            room_id=self.room_id, location_id=self.location_id,
+            location_id=self.location_id, subspace_id=self.subspace_id,
         )
 
     def tearDown(self):
@@ -71,7 +71,7 @@ class TestMultiplayerJudging(unittest.TestCase):
         fake = ScriptedProvider(responds=True, responder="lenin", reply_text="Lenin's reply.")
         with patch.object(providers, "get_provider", return_value=(fake, "gpt-5.6-luna")):
             message_id, reply_id, responder = multiplayer.handle_message(
-                fake, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "Comrade Lenin, what should we do?",
             )
         self.assertIsNotNone(message_id)
@@ -90,7 +90,7 @@ class TestMultiplayerJudging(unittest.TestCase):
         fake = ScriptedProvider(responds=False)
         with patch.object(providers, "get_provider", return_value=(fake, "gpt-5.6-luna")):
             message_id, reply_id, responder = multiplayer.handle_message(
-                fake, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "lol anyway back to you",
             )
         self.assertIsNotNone(message_id)
@@ -106,7 +106,7 @@ class TestMultiplayerJudging(unittest.TestCase):
         fake = ScriptedProvider(responds=True, responder="someone-not-present")
         with patch.object(providers, "get_provider", return_value=(fake, "gpt-5.6-luna")):
             message_id, reply_id, responder = multiplayer.handle_message(
-                fake, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "Hey you over there",
             )
         self.assertIsNone(reply_id)
@@ -117,7 +117,7 @@ class TestMultiplayerJudging(unittest.TestCase):
         fake = ScriptedProvider(responds=False)
         with patch.object(providers, "get_provider", return_value=(fake, "gpt-5.6-luna")):
             first_id, _, _ = multiplayer.handle_message(
-                fake, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "I mutter to myself.",
             )
 
@@ -126,7 +126,7 @@ class TestMultiplayerJudging(unittest.TestCase):
         fake2 = ScriptedProvider(reply_text="A small ambient beat.")
         with patch.object(providers, "get_provider", return_value=(fake2, "gpt-5.6-luna")):
             _, reply_id, responder = multiplayer.handle_message(
-                fake2, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake2, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "Did you say something?", reply_to_turn_id=first_id,
             )
         self.assertEqual(responder, "gm")
@@ -138,14 +138,14 @@ class TestMultiplayerJudging(unittest.TestCase):
         fake = ScriptedProvider(responds=True, responder="lenin", reply_text="Lenin's first reply.")
         with patch.object(providers, "get_provider", return_value=(fake, "gpt-5.6-luna")):
             _, first_reply_id, _ = multiplayer.handle_message(
-                fake, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "Comrade Lenin?",
             )
 
         fake2 = ScriptedProvider(reply_text="Lenin's second reply.")
         with patch.object(providers, "get_provider", return_value=(fake2, "gpt-5.6-luna")):
             _, second_reply_id, responder = multiplayer.handle_message(
-                fake2, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake2, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "And what about the garrison?", reply_to_turn_id=first_reply_id,
             )
         self.assertEqual(responder, "lenin")
@@ -158,7 +158,7 @@ class TestMultiplayerJudging(unittest.TestCase):
         fake = ScriptedProvider(responds=True, responder="lenin", reply_text="Fallback reply.")
         with patch.object(providers, "get_provider", side_effect=providers.ProviderError("no key")):
             message_id, reply_id, responder = multiplayer.handle_message(
-                fake, "gpt-5.6-luna", self.game["id"], self.room_id, self.location_id,
+                fake, "gpt-5.6-luna", self.game["id"], self.location_id, self.subspace_id,
                 self.character_id, "Comrade Lenin?",
             )
         # Should still complete using `fake` directly, not crash.

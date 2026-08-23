@@ -100,48 +100,48 @@ class TestSweepServer(unittest.TestCase):
         db.DB_FILE = self._orig_db_file
         self._tmpdir.cleanup()
 
-    def _make_character(self, discord_id, name, room_id, location_id):
+    def _make_character(self, discord_id, name, location_id, subspace_id):
         state = engine.load_premade_character_state("petrograd_1917")
         state.pop("_is_new", None)
         user = db.get_or_create_discord_user(discord_id, name, None)
         char_id = db.create_character(user["id"], "petrograd_1917", "red_admiral", name, state, game_id=self.game["id"])
-        db.move_character(char_id, self.server_id, room_id, location_id)
+        db.move_character(char_id, self.server_id, location_id, subspace_id)
         return char_id
 
-    def test_empty_locations_are_skipped_entirely(self):
-        db.create_room(self.server_id, "Empty Room")
+    def test_empty_subspaces_are_skipped_entirely(self):
+        db.create_location(self.server_id, "Empty Location")
         fake = ScriptedSweepProvider()
         results = multiplayer.sweep_server(fake, "gpt-5.6-luna", self.server_id)
         self.assertEqual(results, [])
         self.assertEqual(fake.calls, [])
 
-    def test_occupied_location_gets_checked_and_concluded_if_the_classifier_says_so(self):
-        room_id = db.create_room(self.server_id, "Room A")
-        location_id = db.get_default_location(room_id)["id"]
-        char_id = self._make_character("2", "Player", room_id, location_id)
+    def test_occupied_subspace_gets_checked_and_concluded_if_the_classifier_says_so(self):
+        location_id = db.create_location(self.server_id, "Location A")
+        subspace_id = db.get_default_subspace(location_id)["id"]
+        char_id = self._make_character("2", "Player", location_id, subspace_id)
 
         fake = ScriptedSweepProvider(should_conclude=True)
         results = multiplayer.sweep_server(fake, "gpt-5.6-luna", self.server_id)
 
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0]["concluded"])
-        messages = db.get_room_messages(location_id, char_id)
+        messages = db.get_subspace_messages(subspace_id, char_id)
         self.assertTrue(any(m["kind"] == "thread_concluded" for m in messages))
 
-    def test_occupied_location_left_open_if_classifier_says_still_ongoing(self):
-        room_id = db.create_room(self.server_id, "Room A")
-        location_id = db.get_default_location(room_id)["id"]
-        self._make_character("2", "Player", room_id, location_id)
+    def test_occupied_subspace_left_open_if_classifier_says_still_ongoing(self):
+        location_id = db.create_location(self.server_id, "Location A")
+        subspace_id = db.get_default_subspace(location_id)["id"]
+        self._make_character("2", "Player", location_id, subspace_id)
 
         fake = ScriptedSweepProvider(should_conclude=False)
         results = multiplayer.sweep_server(fake, "gpt-5.6-luna", self.server_id)
         self.assertFalse(results[0]["concluded"])
 
-    def test_sweeps_multiple_occupied_locations_across_multiple_rooms(self):
-        room_a = db.create_room(self.server_id, "Room A")
-        room_b = db.create_room(self.server_id, "Room B")
-        self._make_character("2", "PlayerA", room_a, db.get_default_location(room_a)["id"])
-        self._make_character("3", "PlayerB", room_b, db.get_default_location(room_b)["id"])
+    def test_sweeps_multiple_occupied_subspaces_across_multiple_locations(self):
+        location_a = db.create_location(self.server_id, "Location A")
+        location_b = db.create_location(self.server_id, "Location B")
+        self._make_character("2", "PlayerA", location_a, db.get_default_subspace(location_a)["id"])
+        self._make_character("3", "PlayerB", location_b, db.get_default_subspace(location_b)["id"])
 
         fake = ScriptedSweepProvider(should_conclude=False)
         results = multiplayer.sweep_server(fake, "gpt-5.6-luna", self.server_id)
@@ -190,14 +190,14 @@ class TestTickHeartbeat(unittest.TestCase):
             "Test", "petrograd_1917", "red_admiral", "day", 24.0, self.admin["id"], initial_date=initial_date,
         )
         game = db.get_game_for_server(server_id)
-        room_id = db.create_room(server_id, "Room A")
-        location_id = db.get_default_location(room_id)["id"]
+        location_id = db.create_location(server_id, "Location A")
+        subspace_id = db.get_default_subspace(location_id)["id"]
 
         state = engine.load_premade_character_state("petrograd_1917")
         state.pop("_is_new", None)
         user = db.get_or_create_discord_user("2", "Player", None)
         char_id = db.create_character(user["id"], "petrograd_1917", "red_admiral", "Player", state, game_id=game["id"])
-        db.move_character(char_id, server_id, room_id, location_id)
+        db.move_character(char_id, server_id, location_id, subspace_id)
 
         budget_before = db.get_budget_status(user["id"])
         fake = ScriptedSweepProvider(should_conclude=False)

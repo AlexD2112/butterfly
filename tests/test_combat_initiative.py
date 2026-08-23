@@ -20,8 +20,8 @@ class TestCombatEncounterStorage(unittest.TestCase):
         admin = db.get_or_create_discord_user("1", "Admin", None)
         self.server_id = db.create_multiplayer_server("Test Server", "petrograd_1917", "red_admiral", "day", 24.0, admin["id"])
         self.game = db.get_game_for_server(self.server_id)
-        self.room_id = db.create_room(self.server_id, "Room A")
-        self.location_id = db.get_default_location(self.room_id)["id"]
+        self.location_id = db.create_location(self.server_id, "Location A")
+        self.subspace_id = db.get_default_subspace(self.location_id)["id"]
         # Real character rows - combat_participants.character_id has a real FK to characters(id).
         u2 = db.get_or_create_discord_user("2", "Fighter1", None)
         u3 = db.get_or_create_discord_user("3", "Fighter2", None)
@@ -38,20 +38,20 @@ class TestCombatEncounterStorage(unittest.TestCase):
             {"npc_key": "lenin", "initiative_roll": 12},
             {"character_id": self.char2_id, "initiative_roll": 5},
         ]
-        encounter_id = db.create_combat_encounter(self.room_id, self.location_id, participants)
+        encounter_id = db.create_combat_encounter(self.location_id, self.subspace_id, participants)
         stored = db.get_combat_participants(encounter_id)
         self.assertEqual([p["turn_order_index"] for p in stored], [0, 1, 2])
         self.assertEqual(stored[0]["character_id"], self.char1_id)
         self.assertEqual(stored[1]["npc_key"], "lenin")
 
     def test_get_active_combat_encounter_finds_the_right_one(self):
-        encounter_id = db.create_combat_encounter(self.room_id, self.location_id, [{"character_id": self.char1_id, "initiative_roll": 10}])
-        active = db.get_active_combat_encounter(self.location_id)
+        encounter_id = db.create_combat_encounter(self.location_id, self.subspace_id, [{"character_id": self.char1_id, "initiative_roll": 10}])
+        active = db.get_active_combat_encounter(self.subspace_id)
         self.assertEqual(active["id"], encounter_id)
 
     def test_current_combat_actor_reflects_the_turn_index(self):
         encounter_id = db.create_combat_encounter(
-            self.room_id, self.location_id,
+            self.location_id, self.subspace_id,
             [{"character_id": self.char1_id, "initiative_roll": 18}, {"character_id": self.char2_id, "initiative_roll": 5}],
             start_turn_index=1,
         )
@@ -60,7 +60,7 @@ class TestCombatEncounterStorage(unittest.TestCase):
 
     def test_advance_combat_turn_wraps_around(self):
         encounter_id = db.create_combat_encounter(
-            self.room_id, self.location_id,
+            self.location_id, self.subspace_id,
             [{"character_id": self.char1_id, "initiative_roll": 18}, {"character_id": self.char2_id, "initiative_roll": 5}],
             start_turn_index=1,
         )
@@ -68,9 +68,9 @@ class TestCombatEncounterStorage(unittest.TestCase):
         self.assertEqual(db.get_current_combat_actor(encounter_id)["character_id"], self.char1_id)  # wrapped
 
     def test_end_combat_encounter_stops_it_showing_as_active(self):
-        encounter_id = db.create_combat_encounter(self.room_id, self.location_id, [{"character_id": self.char1_id, "initiative_roll": 10}])
+        encounter_id = db.create_combat_encounter(self.location_id, self.subspace_id, [{"character_id": self.char1_id, "initiative_roll": 10}])
         db.end_combat_encounter(encounter_id)
-        self.assertIsNone(db.get_active_combat_encounter(self.location_id))
+        self.assertIsNone(db.get_active_combat_encounter(self.subspace_id))
 
 
 def _usage():
@@ -129,10 +129,20 @@ class TestResolveAction(unittest.TestCase):
         admin = db.get_or_create_discord_user("1", "Admin", None)
         self.server_id = db.create_multiplayer_server("Test Server", "petrograd_1917", "red_admiral", "day", 24.0, admin["id"])
         self.game = db.get_game_for_server(self.server_id)
-        self.room_id = db.create_room(self.server_id, "Room A")
-        self.location_id = db.get_default_location(self.room_id)["id"]
+        self.location_id = db.create_location(self.server_id, "Location A")
+        self.subspace_id = db.get_default_subspace(self.location_id)["id"]
+
+        # resolve_action also runs multiplayer.detect_new_subspace (2026-08-22) after a free action,
+        # which resolves its own judge provider via providers.get_provider(JUDGE_MODEL_KEY) rather
+        # than using whatever fake provider the test passed in for the main call. Patched to raise
+        # ProviderError for every test in this class - the SAME graceful "no provider configured, skip
+        # the check" fallback resolve_action already has, so combat-focused tests here stay focused on
+        # combat and never make a real API call or depend on real environment configuration.
+        self._provider_patcher = patch.object(providers, "get_provider", side_effect=providers.ProviderError("not configured"))
+        self._provider_patcher.start()
 
     def tearDown(self):
+        self._provider_patcher.stop()
         db.DB_FILE = self._orig_db_file
         self._tmpdir.cleanup()
 
@@ -141,7 +151,7 @@ class TestResolveAction(unittest.TestCase):
         state.pop("_is_new", None)
         user = db.get_or_create_discord_user(discord_id, name, None)
         char_id = db.create_character(user["id"], "petrograd_1917", "red_admiral", name, state, game_id=self.game["id"])
-        db.move_character(char_id, self.server_id, self.room_id, self.location_id)
+        db.move_character(char_id, self.server_id, self.location_id, self.subspace_id)
         return char_id
 
     def _char_row(self, char_id):
@@ -154,7 +164,7 @@ class TestResolveAction(unittest.TestCase):
         char_id = self._make_character("2", "Solo")
         fake = ScriptedActionProvider(combat_starts=True, combat_participants=["character #999"])  # shouldn't even be asked
         result = multiplayer.resolve_action(
-            fake, "gpt-5.6-luna", "luna", self._char_row(char_id), self.room_id, self.location_id,
+            fake, "gpt-5.6-luna", "luna", self._char_row(char_id), self.location_id, self.subspace_id,
             "I look around.", fake.new_conversation(),
         )
         self.assertIsNone(result["combat_encounter_id"])
@@ -167,7 +177,7 @@ class TestResolveAction(unittest.TestCase):
             narration="A fight breaks out!", combat_starts=True, combat_participants=[f"character #{defender_id}"],
         )
         result = multiplayer.resolve_action(
-            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.room_id, self.location_id,
+            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.location_id, self.subspace_id,
             "I attack them!", fake.new_conversation(),
         )
         self.assertIsNotNone(result["combat_encounter_id"])
@@ -180,17 +190,17 @@ class TestResolveAction(unittest.TestCase):
         defender_id = self._make_character("3", "Defender")
         fake = ScriptedActionProvider(combat_starts=True, combat_participants=[f"character #{defender_id}"])
         multiplayer.resolve_action(
-            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.room_id, self.location_id,
+            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.location_id, self.subspace_id,
             "I attack them!", fake.new_conversation(),
         )
-        encounter = db.get_active_combat_encounter(self.location_id)
+        encounter = db.get_active_combat_encounter(self.subspace_id)
         current_actor_id = db.get_current_combat_actor(encounter["id"])["character_id"]
         out_of_turn_id = defender_id if current_actor_id == attacker_id else attacker_id
 
         with self.assertRaises(multiplayer.CombatTurnError):
             multiplayer.resolve_action(
                 ScriptedActionProvider(), "gpt-5.6-luna", "luna", self._char_row(out_of_turn_id),
-                self.room_id, self.location_id, "I also attack!", ScriptedActionProvider().new_conversation(),
+                self.location_id, self.subspace_id, "I also attack!", ScriptedActionProvider().new_conversation(),
             )
 
     def test_acting_on_your_turn_during_combat_advances_to_the_next_participant(self):
@@ -198,38 +208,38 @@ class TestResolveAction(unittest.TestCase):
         defender_id = self._make_character("3", "Defender")
         fake = ScriptedActionProvider(combat_starts=True, combat_participants=[f"character #{defender_id}"])
         multiplayer.resolve_action(
-            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.room_id, self.location_id,
+            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.location_id, self.subspace_id,
             "I attack them!", fake.new_conversation(),
         )
-        encounter = db.get_active_combat_encounter(self.location_id)
+        encounter = db.get_active_combat_encounter(self.subspace_id)
         current_actor_id = db.get_current_combat_actor(encounter["id"])["character_id"]
 
         fake2 = ScriptedActionProvider(narration="They strike back.", combat_ends=False)
         result = multiplayer.resolve_action(
-            fake2, "gpt-5.6-luna", "luna", self._char_row(current_actor_id), self.room_id, self.location_id,
+            fake2, "gpt-5.6-luna", "luna", self._char_row(current_actor_id), self.location_id, self.subspace_id,
             "I strike back!", fake2.new_conversation(),
         )
         self.assertEqual(result["combat_encounter_id"], encounter["id"])
         new_actor_id = db.get_current_combat_actor(encounter["id"])["character_id"]
         self.assertNotEqual(new_actor_id, current_actor_id)
 
-    def test_combat_ending_frees_the_location_for_normal_actions(self):
+    def test_combat_ending_frees_the_subspace_for_normal_actions(self):
         attacker_id = self._make_character("2", "Attacker")
         defender_id = self._make_character("3", "Defender")
         fake = ScriptedActionProvider(combat_starts=True, combat_participants=[f"character #{defender_id}"])
         multiplayer.resolve_action(
-            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.room_id, self.location_id,
+            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.location_id, self.subspace_id,
             "I attack them!", fake.new_conversation(),
         )
-        encounter = db.get_active_combat_encounter(self.location_id)
+        encounter = db.get_active_combat_encounter(self.subspace_id)
         current_actor_id = db.get_current_combat_actor(encounter["id"])["character_id"]
 
         fake2 = ScriptedActionProvider(narration="The attacker yields.", combat_ends=True)
         multiplayer.resolve_action(
-            fake2, "gpt-5.6-luna", "luna", self._char_row(current_actor_id), self.room_id, self.location_id,
+            fake2, "gpt-5.6-luna", "luna", self._char_row(current_actor_id), self.location_id, self.subspace_id,
             "I yield!", fake2.new_conversation(),
         )
-        self.assertIsNone(db.get_active_combat_encounter(self.location_id))
+        self.assertIsNone(db.get_active_combat_encounter(self.subspace_id))
 
     def test_a_bystander_can_act_freely_alongside_an_ongoing_fight(self):
         attacker_id = self._make_character("2", "Attacker")
@@ -237,15 +247,15 @@ class TestResolveAction(unittest.TestCase):
         bystander_id = self._make_character("4", "Bystander")
         fake = ScriptedActionProvider(combat_starts=True, combat_participants=[f"character #{defender_id}"])
         multiplayer.resolve_action(
-            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.room_id, self.location_id,
+            fake, "gpt-5.6-luna", "luna", self._char_row(attacker_id), self.location_id, self.subspace_id,
             "I attack them!", fake.new_conversation(),
         )
-        encounter = db.get_active_combat_encounter(self.location_id)
+        encounter = db.get_active_combat_encounter(self.subspace_id)
         before_actor = db.get_current_combat_actor(encounter["id"])["character_id"]
 
         fake2 = ScriptedActionProvider(narration="I duck for cover, uninvolved.")
         result = multiplayer.resolve_action(
-            fake2, "gpt-5.6-luna", "luna", self._char_row(bystander_id), self.room_id, self.location_id,
+            fake2, "gpt-5.6-luna", "luna", self._char_row(bystander_id), self.location_id, self.subspace_id,
             "I duck behind a desk.", fake2.new_conversation(),
         )
         # Doesn't raise CombatTurnError (not a participant), and doesn't disturb the turn order.

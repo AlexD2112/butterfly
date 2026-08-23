@@ -8,10 +8,10 @@ import server
 
 
 class TestDeleteMultiplayerServerCascade(unittest.TestCase):
-    """db.delete_multiplayer_server directly - builds one fully-populated server (rooms, locations,
-    NPCs, characters, combat, conclusions, rumors, usage) and confirms every piece of it is actually
-    gone afterward, that single-player data is untouched, and that billing history survives with its
-    character_id nulled rather than being deleted outright."""
+    """db.delete_multiplayer_server directly - builds one fully-populated server (locations,
+    subspaces, NPCs, characters, combat, conclusions, rumors, usage) and confirms every piece of it
+    is actually gone afterward, that single-player data is untouched, and that billing history
+    survives with its character_id nulled rather than being deleted outright."""
 
     def setUp(self):
         self._tmpdir = TemporaryDirectory()
@@ -34,31 +34,31 @@ class TestDeleteMultiplayerServerCascade(unittest.TestCase):
             "Doomed Server", "petrograd_1917", "red_admiral", "day", 24.0, admin["id"], initial_date="1917-09-25",
         )
         game = db.get_game_for_server(server_id)
-        room_id = db.create_room(server_id, "Room A")
-        main_location_id = db.get_default_location(room_id)["id"]
-        second_location_id = db.create_location(room_id, "Second Spot")
-        npc_id = db.create_npc(game["id"], "old_sailor", "Old Sailor Ivan", room_id=room_id, location_id=main_location_id)
+        location_id = db.create_location(server_id, "Location A")
+        main_subspace_id = db.get_default_subspace(location_id)["id"]
+        second_subspace_id = db.create_subspace(location_id, "Second Spot")
+        npc_id = db.create_npc(game["id"], "old_sailor", "Old Sailor Ivan", location_id=location_id, subspace_id=main_subspace_id)
 
         char_a = self._make_character(admin["id"], game["id"], "PlayerA")
         char_b = self._make_character(admin["id"], game["id"], "PlayerB")
-        db.move_character(char_a, server_id, room_id, main_location_id)
-        db.move_character(char_b, server_id, room_id, main_location_id)
+        db.move_character(char_a, server_id, location_id, main_subspace_id)
+        db.move_character(char_b, server_id, location_id, main_subspace_id)
 
         # A message + a reply, so turns.reply_to_turn_id (self-referential FK) is exercised by the
         # bulk delete, not just a simple case.
-        msg_turn_id = db.record_room_message(game["id"], room_id, main_location_id, char_a, "message", "Hello.")
-        db.record_room_message(
-            game["id"], room_id, main_location_id, char_a, "npc_reply", "Well met.",
+        msg_turn_id = db.record_subspace_message(game["id"], location_id, main_subspace_id, char_a, "message", "Hello.")
+        db.record_subspace_message(
+            game["id"], location_id, main_subspace_id, char_a, "npc_reply", "Well met.",
             reply_to_turn_id=msg_turn_id, responder="old_sailor",
         )
 
         encounter_id = db.create_combat_encounter(
-            room_id, main_location_id,
+            location_id, main_subspace_id,
             [{"character_id": char_a, "initiative_roll": 15}, {"npc_key": "old_sailor", "initiative_roll": 10}],
         )
-        db.mark_location_concluded_by(main_location_id, char_a)
+        db.mark_subspace_concluded_by(main_subspace_id, char_a)
 
-        rumor_id = db.create_rumor(server_id, room_id, main_location_id, "Something happened.", 3, 3)
+        rumor_id = db.create_rumor(server_id, location_id, main_subspace_id, "Something happened.", 3, 3)
         db.publish_rumor_broadcast(server_id, "Word is spreading.", 1)
 
         db.record_usage(admin["id"], char_a, "openai", "gpt-5.6-luna", 10, 5, 0, 0, 0.001)
@@ -74,16 +74,16 @@ class TestDeleteMultiplayerServerCascade(unittest.TestCase):
         conn = db.get_db()
         self.assertIsNone(conn.execute("SELECT id FROM multiplayer_servers WHERE id = ?", (server_id,)).fetchone())
         self.assertIsNone(conn.execute("SELECT id FROM games WHERE id = ?", (game["id"],)).fetchone())
-        self.assertIsNone(conn.execute("SELECT id FROM rooms WHERE server_id = ?", (server_id,)).fetchone())
-        self.assertIsNone(conn.execute("SELECT id FROM locations WHERE id = ?", (main_location_id,)).fetchone())
-        self.assertIsNone(conn.execute("SELECT id FROM locations WHERE id = ?", (second_location_id,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT id FROM locations WHERE server_id = ?", (server_id,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT id FROM subspaces WHERE id = ?", (main_subspace_id,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT id FROM subspaces WHERE id = ?", (second_subspace_id,)).fetchone())
         self.assertIsNone(conn.execute("SELECT id FROM npcs WHERE id = ?", (npc_id,)).fetchone())
         self.assertIsNone(conn.execute("SELECT * FROM characters WHERE id IN (?, ?)", (char_a, char_b)).fetchone())
         self.assertEqual(conn.execute("SELECT COUNT(*) c FROM turns WHERE game_id = ?", (game["id"],)).fetchone()["c"], 0)
-        self.assertIsNone(conn.execute("SELECT character_id FROM room_occupancy WHERE character_id IN (?, ?)", (char_a, char_b)).fetchone())
+        self.assertIsNone(conn.execute("SELECT character_id FROM location_occupancy WHERE character_id IN (?, ?)", (char_a, char_b)).fetchone())
         self.assertIsNone(conn.execute("SELECT id FROM combat_encounters WHERE id = ?", (encounter_id,)).fetchone())
         self.assertEqual(conn.execute("SELECT COUNT(*) c FROM combat_participants WHERE encounter_id = ?", (encounter_id,)).fetchone()["c"], 0)
-        self.assertIsNone(conn.execute("SELECT * FROM location_conclusions WHERE location_id = ?", (main_location_id,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT * FROM subspace_conclusions WHERE subspace_id = ?", (main_subspace_id,)).fetchone())
         self.assertIsNone(conn.execute("SELECT id FROM rumors WHERE id = ?", (rumor_id,)).fetchone())
         self.assertEqual(conn.execute("SELECT COUNT(*) c FROM rumor_broadcasts WHERE server_id = ?", (server_id,)).fetchone()["c"], 0)
 

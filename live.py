@@ -1,9 +1,9 @@
 """
 In-process pub/sub for multiplayer's live-update layer (SSE) - see NOTES.md, 2026-08-21. Deliberately
-tiny: a dict of location_id/server_id -> a set of queue.Queue objects, one queue per open SSE
+tiny: a dict of subspace_id/server_id -> a set of queue.Queue objects, one queue per open SSE
 connection. multiplayer.py's message/action/conclusion/rumor-broadcast functions call
-publish_location_event/publish_server_event right after recording something; server.py's SSE route
-subscribes one queue per connection under both its location and server, so a single generator loop
+publish_subspace_event/publish_server_event right after recording something; server.py's SSE route
+subscribes one queue per connection under both its subspace and server, so a single generator loop
 only ever needs to drain one queue, not juggle two.
 
 This is in-process only - it works because this whole app is deliberately a single Python process
@@ -22,7 +22,7 @@ worth revisiting if long-lived idle connections turn out to be common.
 import queue
 import threading
 
-_location_subscribers = {}
+_subspace_subscribers = {}
 _server_subscribers = {}
 _lock = threading.Lock()
 
@@ -31,17 +31,17 @@ _lock = threading.Lock()
 HEARTBEAT_TIMEOUT_SECONDS = 15
 
 
-def subscribe(location_id, server_id):
+def subscribe(subspace_id, server_id):
     q = queue.Queue()
     with _lock:
-        _location_subscribers.setdefault(location_id, set()).add(q)
+        _subspace_subscribers.setdefault(subspace_id, set()).add(q)
         _server_subscribers.setdefault(server_id, set()).add(q)
     return q
 
 
-def unsubscribe(location_id, server_id, q):
+def unsubscribe(subspace_id, server_id, q):
     with _lock:
-        subs = _location_subscribers.get(location_id)
+        subs = _subspace_subscribers.get(subspace_id)
         if subs is not None:
             subs.discard(q)
         subs = _server_subscribers.get(server_id)
@@ -49,9 +49,9 @@ def unsubscribe(location_id, server_id, q):
             subs.discard(q)
 
 
-def publish_location_event(location_id, event):
+def publish_subspace_event(subspace_id, event):
     with _lock:
-        subs = list(_location_subscribers.get(location_id, ()))
+        subs = list(_subspace_subscribers.get(subspace_id, ()))
     for q in subs:
         q.put(event)
 

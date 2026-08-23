@@ -39,8 +39,53 @@ def get_db():
     return conn
 
 
+def _migrate_room_location_to_location_subspace(conn):
+    """One-time schema migration (2026-08-22): renames the Room/Location hierarchy to
+    Location/Subspace. What was 'Room' (the top-level container within a server) is now 'Location';
+    what was 'Location' (the finer-grained unit where visibility/combat/peek/conclusion mechanics
+    actually operate) is now 'Subspace'. See NOTES.md for the full reasoning behind the rename.
+
+    Guarded on whether the OLD 'rooms' table still exists - a genuinely one-time migration (unlike
+    most of this file's ADD-COLUMN migrations, which are safe to attempt on every init_db() call and
+    just no-op via the try/except OperationalError pattern). Runs before any CREATE TABLE below, so
+    those always see either a freshly-migrated old database or a genuinely fresh one that never had the old
+    names at all - never a collision between an old-shaped table and a same-named new one.
+
+    Verified empirically, not assumed from memory of SQLite version behavior: renaming a table that
+    other tables' REFERENCES clauses point at correctly rewrites those clauses to the new name, and
+    PRAGMA foreign_keys = ON (see get_db) stays fully enforced afterward - confirmed with a real
+    throwaway db before this ever touched real data."""
+    exists = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rooms'").fetchone()
+    if exists is None:
+        return  # already migrated, or a fresh DB that never had the old schema
+
+    # Free up the 'locations' name before reusing it for the renamed 'rooms' table.
+    conn.execute("ALTER TABLE locations RENAME TO subspaces")
+    conn.execute("ALTER TABLE rooms RENAME TO locations")
+    conn.execute("ALTER TABLE room_occupancy RENAME TO location_occupancy")
+    conn.execute("ALTER TABLE location_conclusions RENAME TO subspace_conclusions")
+
+    conn.execute("ALTER TABLE subspaces RENAME COLUMN room_id TO location_id")
+
+    # location_id -> subspace_id must happen BEFORE room_id -> location_id on the same table, or the
+    # second rename collides with the column name the first rename just vacated into.
+    for table in ("turns", "npcs", "combat_encounters", "rumors"):
+        conn.execute(f"ALTER TABLE {table} RENAME COLUMN location_id TO subspace_id")
+        conn.execute(f"ALTER TABLE {table} RENAME COLUMN room_id TO location_id")
+
+    conn.execute("ALTER TABLE location_occupancy RENAME COLUMN location_id TO subspace_id")
+    conn.execute("ALTER TABLE location_occupancy RENAME COLUMN room_id TO location_id")
+    conn.execute("ALTER TABLE location_occupancy RENAME COLUMN joined_location_at TO joined_subspace_at")
+    conn.execute("ALTER TABLE location_occupancy RENAME COLUMN joined_room_at TO joined_location_at")
+
+    conn.execute("ALTER TABLE subspace_conclusions RENAME COLUMN location_id TO subspace_id")
+
+    conn.commit()
+
+
 def init_db():
     conn = get_db()
+    _migrate_room_location_to_location_subspace(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -148,12 +193,16 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
-    # Multiplayer servers/rooms/locations (2026-08-21). A multiplayer_server has exactly one games
-    # row (mode='multiplayer', linked both ways - games.multiplayer_server_id and this table's own
-    # implicit 1:1, looked up via get_game_for_server rather than a redundant column here, avoiding a
-    # circular FK at insert time). A room can have multiple locations (confirmed: multiple concurrent
-    # side-conversations can run in one room) - every room gets a default "Main" location so movement
-    # always has somewhere valid to land.
+    # Multiplayer servers/locations/subspaces (2026-08-21, renamed from rooms/locations 2026-08-22 -
+    # see NOTES.md). A multiplayer_server has exactly one games row (mode='multiplayer', linked both
+    # ways - games.multiplayer_server_id and this table's own implicit 1:1, looked up via
+    # get_game_for_server rather than a redundant column here, avoiding a circular FK at insert time).
+    # A location can have multiple subspaces (confirmed: multiple concurrent side-conversations can
+    # run in one location) - every location gets a default "Main" subspace so movement always has
+    # somewhere valid to land. Subspaces can also be created dynamically through play (2026-08-22,
+    # see multiplayer.detect_new_subspace), not just by an admin ahead of time - a location itself is
+    # still always admin-created, keeping the top-level map shape under admin control while the
+    # texture inside each location can grow organically.
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS multiplayer_servers (
@@ -172,7 +221,7 @@ def init_db():
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS rooms (
+        CREATE TABLE IF NOT EXISTS locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             server_id INTEGER NOT NULL REFERENCES multiplayer_servers(id),
             name TEXT NOT NULL,
@@ -181,27 +230,46 @@ def init_db():
         )
         """
     )
+    # origin distinguishes admin-authored subspaces from ones a player's action spawned through play
+    # (2026-08-22) - 'admin' vs 'dynamic', purely for provenance (so an admin can later tell what the
+    # AI invented vs what they built, and prune it if quality is inconsistent) - no mechanic treats
+    # the two differently otherwise. created_by_character_id is NULL for admin-created subspaces.
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS locations (
+        CREATE TABLE IF NOT EXISTS subspaces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            room_id INTEGER NOT NULL REFERENCES rooms(id),
+            location_id INTEGER NOT NULL REFERENCES locations(id),
             name TEXT NOT NULL,
+            origin TEXT NOT NULL DEFAULT 'admin',
+            created_by_character_id INTEGER REFERENCES characters(id),
             created_at REAL NOT NULL
         )
         """
     )
+    # origin/created_by_character_id are new as of this rename - a database that already had a
+    # 'subspaces' table (renamed from the old 'locations' by the migration above) doesn't pick these
+    # up from the CREATE TABLE above, since IF NOT EXISTS no-ops once the table already exists under
+    # its new name. Same ALTER-and-swallow pattern as every other column added after a table already
+    # existed elsewhere in this file.
+    for col_sql in [
+        "ALTER TABLE subspaces ADD COLUMN origin TEXT NOT NULL DEFAULT 'admin'",
+        "ALTER TABLE subspaces ADD COLUMN created_by_character_id INTEGER REFERENCES characters(id)",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     # One row per character (character_id is the primary key) - enforces "every player is constantly
-    # located in exactly one room/area at a time" structurally, not just by convention.
+    # in exactly one location/subspace at a time" structurally, not just by convention.
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS room_occupancy (
+        CREATE TABLE IF NOT EXISTS location_occupancy (
             character_id INTEGER PRIMARY KEY REFERENCES characters(id),
             server_id INTEGER NOT NULL REFERENCES multiplayer_servers(id),
-            room_id INTEGER NOT NULL REFERENCES rooms(id),
             location_id INTEGER NOT NULL REFERENCES locations(id),
-            joined_room_at REAL NOT NULL,
-            joined_location_at REAL NOT NULL
+            subspace_id INTEGER NOT NULL REFERENCES subspaces(id),
+            joined_location_at REAL NOT NULL,
+            joined_subspace_at REAL NOT NULL
         )
         """
     )
@@ -209,12 +277,12 @@ def init_db():
     # the games-schema NOTES.md entry for why). All nullable/defaulted so single-player rows are
     # unaffected - kind defaults to 'action', which is retroactively correct for every row that
     # predates this column (they were all single-player actions). visible_to_json is the actual
-    # visibility mechanism (see record_room_message) - a PERMANENT snapshot of who was present when a
-    # message was sent, so arriving at a location later never grants retroactive access to what was
-    # said before you got there.
+    # visibility mechanism (see record_subspace_message) - a PERMANENT snapshot of who was present
+    # when a message was sent, so arriving at a subspace later never grants retroactive access to
+    # what was said before you got there.
     for col_sql in [
-        "ALTER TABLE turns ADD COLUMN room_id INTEGER REFERENCES rooms(id)",
         "ALTER TABLE turns ADD COLUMN location_id INTEGER REFERENCES locations(id)",
+        "ALTER TABLE turns ADD COLUMN subspace_id INTEGER REFERENCES subspaces(id)",
         "ALTER TABLE turns ADD COLUMN kind TEXT NOT NULL DEFAULT 'action'",
         "ALTER TABLE turns ADD COLUMN reply_to_turn_id INTEGER REFERENCES turns(id)",
         "ALTER TABLE turns ADD COLUMN responder TEXT",
@@ -238,13 +306,13 @@ def init_db():
             personality TEXT,
             traits_json TEXT NOT NULL DEFAULT '[]',
             memory_json TEXT NOT NULL DEFAULT '[]',
-            room_id INTEGER REFERENCES rooms(id),
             location_id INTEGER REFERENCES locations(id),
+            subspace_id INTEGER REFERENCES subspaces(id),
             created_at REAL NOT NULL
         )
         """
     )
-    # Combat: one active encounter at a time per location, participants in a fixed initiative order -
+    # Combat: one active encounter at a time per subspace, participants in a fixed initiative order -
     # "turn order/initiative must be respected... no free-for-all resolution" (2026-08-21). Rolling
     # initiative and detecting when combat starts/ends happens in multiplayer.py (mechanics stay
     # app-owned, not model-trusted); this is just the persisted state those decisions act on.
@@ -252,8 +320,8 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS combat_encounters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            room_id INTEGER NOT NULL REFERENCES rooms(id),
             location_id INTEGER NOT NULL REFERENCES locations(id),
+            subspace_id INTEGER NOT NULL REFERENCES subspaces(id),
             status TEXT NOT NULL DEFAULT 'active',
             current_turn_index INTEGER NOT NULL DEFAULT 0,
             created_at REAL NOT NULL,
@@ -275,17 +343,17 @@ def init_db():
         )
         """
     )
-    # Room conclusion (2026-08-21): who has marked the CURRENT thread at a location concluded. One
-    # row per character per location - PRIMARY KEY doubles as the "already marked" check. Cleared
-    # (see clear_location_conclusions) once a thread actually concludes, so a fresh thread at the
-    # same location starts tracking from zero again.
+    # Subspace conclusion (2026-08-21): who has marked the CURRENT thread at a subspace concluded. One
+    # row per character per subspace - PRIMARY KEY doubles as the "already marked" check. Cleared
+    # (see clear_subspace_conclusions) once a thread actually concludes, so a fresh thread at the
+    # same subspace starts tracking from zero again.
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS location_conclusions (
-            location_id INTEGER NOT NULL REFERENCES locations(id),
+        CREATE TABLE IF NOT EXISTS subspace_conclusions (
+            subspace_id INTEGER NOT NULL REFERENCES subspaces(id),
             character_id INTEGER NOT NULL REFERENCES characters(id),
             marked_at REAL NOT NULL,
-            PRIMARY KEY (location_id, character_id)
+            PRIMARY KEY (subspace_id, character_id)
         )
         """
     )
@@ -319,8 +387,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS rumors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             server_id INTEGER NOT NULL REFERENCES multiplayer_servers(id),
-            room_id INTEGER NOT NULL REFERENCES rooms(id),
             location_id INTEGER NOT NULL REFERENCES locations(id),
+            subspace_id INTEGER NOT NULL REFERENCES subspaces(id),
             summary TEXT NOT NULL,
             importance INTEGER NOT NULL,
             publicity INTEGER NOT NULL,
@@ -492,7 +560,7 @@ def get_game_for_server(server_id):
     return dict(row) if row else None
 
 
-# ==================== multiplayer servers / rooms / locations ====================
+# ==================== multiplayer servers / locations / subspaces ====================
 
 def create_multiplayer_server(name, setting_key, system_key, progression_speed, progression_rate_hours,
                                created_by_user_id, initial_date=None):
@@ -523,11 +591,11 @@ def create_multiplayer_server(name, setting_key, system_key, progression_speed, 
 
 def delete_multiplayer_server(server_id):
     """Hard-deletes a multiplayer server and everything scoped to it: combat state, conclusion
-    marks, room occupancy, rumors/broadcasts, NPCs, every turn (message/action/reply) recorded
-    against this server's game, every character created for it, its locations, its rooms, its one
-    games row, and finally the server row itself. Irreversible by design, not a soft-delete - see
-    server.py's admin route for the confirmation this is gated behind, and NOTES.md for why a real
-    undo system wasn't built for this.
+    marks, location occupancy, rumors/broadcasts, NPCs, every turn (message/action/reply) recorded
+    against this server's game, every character created for it, its subspaces, its locations, its
+    one games row, and finally the server row itself. Irreversible by design, not a soft-delete -
+    see server.py's admin route for the confirmation this is gated behind, and NOTES.md for why a
+    real undo system wasn't built for this.
 
     Deletion order matters for correctness here, not just hygiene: every connection runs with
     `PRAGMA foreign_keys = ON` (see get_db), so children must go before parents or SQLite raises an
@@ -537,32 +605,32 @@ def delete_multiplayer_server(server_id):
     character that generated it is gone.
 
     Single-player data can't be touched by this: everything here is scoped by this server's own id,
-    its room ids, or its one games row (multiplayer_server_id = server_id) - a single-player game's
-    multiplayer_server_id is always NULL, so it never matches."""
+    its location ids, or its one games row (multiplayer_server_id = server_id) - a single-player
+    game's multiplayer_server_id is always NULL, so it never matches."""
     conn = get_db()
     game_row = conn.execute("SELECT id FROM games WHERE multiplayer_server_id = ?", (server_id,)).fetchone()
     game_id = game_row["id"] if game_row else None
-    room_ids = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE server_id = ?", (server_id,)).fetchall()]
+    location_ids = [r["id"] for r in conn.execute("SELECT id FROM locations WHERE server_id = ?", (server_id,)).fetchall()]
     character_ids = (
         [r["id"] for r in conn.execute("SELECT id FROM characters WHERE game_id = ?", (game_id,)).fetchall()]
         if game_id is not None else []
     )
 
-    if room_ids:
-        placeholders = ",".join("?" * len(room_ids))
+    if location_ids:
+        placeholders = ",".join("?" * len(location_ids))
         conn.execute(
             f"DELETE FROM combat_participants WHERE encounter_id IN "
-            f"(SELECT id FROM combat_encounters WHERE room_id IN ({placeholders}))",
-            room_ids,
+            f"(SELECT id FROM combat_encounters WHERE location_id IN ({placeholders}))",
+            location_ids,
         )
-        conn.execute(f"DELETE FROM combat_encounters WHERE room_id IN ({placeholders})", room_ids)
+        conn.execute(f"DELETE FROM combat_encounters WHERE location_id IN ({placeholders})", location_ids)
         conn.execute(
-            f"DELETE FROM location_conclusions WHERE location_id IN "
-            f"(SELECT id FROM locations WHERE room_id IN ({placeholders}))",
-            room_ids,
+            f"DELETE FROM subspace_conclusions WHERE subspace_id IN "
+            f"(SELECT id FROM subspaces WHERE location_id IN ({placeholders}))",
+            location_ids,
         )
 
-    conn.execute("DELETE FROM room_occupancy WHERE server_id = ?", (server_id,))
+    conn.execute("DELETE FROM location_occupancy WHERE server_id = ?", (server_id,))
     conn.execute("DELETE FROM rumors WHERE server_id = ?", (server_id,))
     conn.execute("DELETE FROM rumor_broadcasts WHERE server_id = ?", (server_id,))
 
@@ -575,10 +643,10 @@ def delete_multiplayer_server(server_id):
         conn.execute("DELETE FROM turns WHERE game_id = ?", (game_id,))
         conn.execute("DELETE FROM characters WHERE game_id = ?", (game_id,))
 
-    if room_ids:
-        placeholders = ",".join("?" * len(room_ids))
-        conn.execute(f"DELETE FROM locations WHERE room_id IN ({placeholders})", room_ids)
-    conn.execute("DELETE FROM rooms WHERE server_id = ?", (server_id,))
+    if location_ids:
+        placeholders = ",".join("?" * len(location_ids))
+        conn.execute(f"DELETE FROM subspaces WHERE location_id IN ({placeholders})", location_ids)
+    conn.execute("DELETE FROM locations WHERE server_id = ?", (server_id,))
 
     if game_id is not None:
         conn.execute("DELETE FROM games WHERE id = ?", (game_id,))
@@ -602,12 +670,12 @@ def list_multiplayer_servers():
     return [dict(r) for r in rows]
 
 
-def list_locations_for_server(server_id):
-    """Every location across every room in a server, with its room_id alongside - the sweep needs to
-    walk all of them, not just one room at a time."""
+def list_subspaces_for_server(server_id):
+    """Every subspace across every location in a server, with its location_id alongside - the sweep
+    needs to walk all of them, not just one location at a time."""
     conn = get_db()
     rows = conn.execute(
-        "SELECT l.* FROM locations l JOIN rooms r ON r.id = l.room_id WHERE r.server_id = ? ORDER BY l.id ASC",
+        "SELECT s.* FROM subspaces s JOIN locations l ON l.id = s.location_id WHERE l.server_id = ? ORDER BY s.id ASC",
         (server_id,),
     ).fetchall()
     conn.close()
@@ -624,39 +692,19 @@ def set_server_tick_state(server_id, new_date, tick_time):
     conn.close()
 
 
-def create_room(server_id, name, description=None):
+def create_location(server_id, name, description=None):
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO rooms (server_id, name, description, created_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO locations (server_id, name, description, created_at) VALUES (?, ?, ?, ?)",
         (server_id, name, description, time.time()),
     )
-    room_id = cur.lastrowid
-    # Every room needs at least one location to place people in - see create_location for others.
-    conn.execute("INSERT INTO locations (room_id, name, created_at) VALUES (?, 'Main', ?)", (room_id, time.time()))
-    conn.commit()
-    conn.close()
-    return room_id
-
-
-def get_room(room_id):
-    conn = get_db()
-    row = conn.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def list_rooms(server_id):
-    conn = get_db()
-    rows = conn.execute("SELECT * FROM rooms WHERE server_id = ? ORDER BY id ASC", (server_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def create_location(room_id, name):
-    conn = get_db()
-    cur = conn.execute("INSERT INTO locations (room_id, name, created_at) VALUES (?, ?, ?)", (room_id, name, time.time()))
-    conn.commit()
     location_id = cur.lastrowid
+    # Every location needs at least one subspace to place people in - see create_subspace for others.
+    conn.execute(
+        "INSERT INTO subspaces (location_id, name, origin, created_at) VALUES (?, 'Main', 'admin', ?)",
+        (location_id, time.time()),
+    )
+    conn.commit()
     conn.close()
     return location_id
 
@@ -668,71 +716,117 @@ def get_location(location_id):
     return dict(row) if row else None
 
 
-def list_locations(room_id):
+def list_locations(server_id):
     conn = get_db()
-    rows = conn.execute("SELECT * FROM locations WHERE room_id = ? ORDER BY id ASC", (room_id,)).fetchall()
+    rows = conn.execute("SELECT * FROM locations WHERE server_id = ? ORDER BY id ASC", (server_id,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def get_default_location(room_id):
-    """The first (oldest) location in a room - always exists, since create_room() creates one
-    automatically. Used when a move doesn't specify a location explicitly."""
+def create_subspace(location_id, name, origin="admin", created_by_character_id=None):
+    """origin: 'admin' (default, via the admin form) or 'dynamic' (spawned through play - see
+    multiplayer.detect_new_subspace). Purely a provenance marker, not a mechanic switch - every
+    other function here treats an admin-created and a dynamically-created subspace identically."""
     conn = get_db()
-    row = conn.execute("SELECT * FROM locations WHERE room_id = ? ORDER BY id ASC LIMIT 1", (room_id,)).fetchone()
+    cur = conn.execute(
+        "INSERT INTO subspaces (location_id, name, origin, created_by_character_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (location_id, name, origin, created_by_character_id, time.time()),
+    )
+    conn.commit()
+    subspace_id = cur.lastrowid
+    conn.close()
+    return subspace_id
+
+
+def get_subspace(subspace_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM subspaces WHERE id = ?", (subspace_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
 
-def move_character(character_id, server_id, room_id, location_id):
-    """Moves a character into a room+location. character_id is room_occupancy's primary key, so this
-    structurally enforces 'exactly one room at a time' - a move always replaces wherever the
-    character was, never adds a second location. joined_room_at only resets if the room actually
-    changed; moving between locations within the same room doesn't count as re-entering the room."""
+def list_subspaces(location_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM subspaces WHERE location_id = ? ORDER BY id ASC", (location_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_default_subspace(location_id):
+    """The first (oldest) subspace in a location - always exists, since create_location() creates one
+    automatically. Used when a move doesn't specify a subspace explicitly."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM subspaces WHERE location_id = ? ORDER BY id ASC LIMIT 1", (location_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def find_subspace_by_name(location_id, name):
+    """Case-insensitive exact-name lookup within one location - used by
+    multiplayer.detect_new_subspace to decide whether a proposed subspace name actually matches one
+    that already exists there, rather than creating a near-duplicate ("Cellar" vs "The Cellar") every
+    time someone independently arrives at the same place."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM subspaces WHERE location_id = ? AND LOWER(name) = LOWER(?) LIMIT 1",
+        (location_id, name),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def move_character(character_id, server_id, location_id, subspace_id):
+    """Moves a character into a location+subspace. character_id is location_occupancy's primary key,
+    so this structurally enforces 'exactly one location at a time' - a move always replaces wherever
+    the character was, never adds a second subspace. joined_location_at only resets if the location
+    actually changed; moving between subspaces within the same location doesn't count as re-entering
+    the location."""
     conn = get_db()
     now = time.time()
-    existing = conn.execute("SELECT room_id, joined_room_at FROM room_occupancy WHERE character_id = ?", (character_id,)).fetchone()
+    existing = conn.execute(
+        "SELECT location_id, joined_location_at FROM location_occupancy WHERE character_id = ?", (character_id,)
+    ).fetchone()
     if existing is None:
         conn.execute(
-            "INSERT INTO room_occupancy (character_id, server_id, room_id, location_id, joined_room_at, joined_location_at) "
+            "INSERT INTO location_occupancy (character_id, server_id, location_id, subspace_id, joined_location_at, joined_subspace_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (character_id, server_id, room_id, location_id, now, now),
+            (character_id, server_id, location_id, subspace_id, now, now),
         )
     else:
-        joined_room_at = now if existing["room_id"] != room_id else existing["joined_room_at"]
+        joined_location_at = now if existing["location_id"] != location_id else existing["joined_location_at"]
         conn.execute(
-            "UPDATE room_occupancy SET server_id = ?, room_id = ?, location_id = ?, joined_room_at = ?, "
-            "joined_location_at = ? WHERE character_id = ?",
-            (server_id, room_id, location_id, joined_room_at, now, character_id),
+            "UPDATE location_occupancy SET server_id = ?, location_id = ?, subspace_id = ?, joined_location_at = ?, "
+            "joined_subspace_at = ? WHERE character_id = ?",
+            (server_id, location_id, subspace_id, joined_location_at, now, character_id),
         )
     conn.commit()
     conn.close()
 
 
-def get_character_location(character_id):
+def get_character_presence(character_id):
     conn = get_db()
-    row = conn.execute("SELECT * FROM room_occupancy WHERE character_id = ?", (character_id,)).fetchone()
+    row = conn.execute("SELECT * FROM location_occupancy WHERE character_id = ?", (character_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
 
-def characters_at_location(location_id):
+def characters_at_subspace(subspace_id):
     """Who's currently present - used to compute a new message's permanent visibility snapshot (see
-    record_room_message) and to show a location's current occupants."""
+    record_subspace_message) and to show a subspace's current occupants."""
     conn = get_db()
-    rows = conn.execute("SELECT character_id FROM room_occupancy WHERE location_id = ?", (location_id,)).fetchall()
+    rows = conn.execute("SELECT character_id FROM location_occupancy WHERE subspace_id = ?", (subspace_id,)).fetchall()
     conn.close()
     return [r["character_id"] for r in rows]
 
 
 # ==================== NPCs (character sheets: personality + memory) ====================
 
-def create_npc(game_id, key, name, personality="", traits=None, room_id=None, location_id=None):
+def create_npc(game_id, key, name, personality="", traits=None, location_id=None, subspace_id=None):
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO npcs (game_id, key, name, personality, traits_json, memory_json, room_id, location_id, created_at) "
+        "INSERT INTO npcs (game_id, key, name, personality, traits_json, memory_json, location_id, subspace_id, created_at) "
         "VALUES (?, ?, ?, ?, ?, '[]', ?, ?, ?)",
-        (game_id, key, name, personality, json.dumps(traits or []), room_id, location_id, time.time()),
+        (game_id, key, name, personality, json.dumps(traits or []), location_id, subspace_id, time.time()),
     )
     conn.commit()
     npc_id = cur.lastrowid
@@ -754,16 +848,16 @@ def list_npcs_for_game(game_id):
     return [dict(r) for r in rows]
 
 
-def npcs_at_location(location_id):
+def npcs_at_subspace(subspace_id):
     conn = get_db()
-    rows = conn.execute("SELECT * FROM npcs WHERE location_id = ?", (location_id,)).fetchall()
+    rows = conn.execute("SELECT * FROM npcs WHERE subspace_id = ?", (subspace_id,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def move_npc(npc_id, room_id, location_id):
+def move_npc(npc_id, location_id, subspace_id):
     conn = get_db()
-    conn.execute("UPDATE npcs SET room_id = ?, location_id = ? WHERE id = ?", (room_id, location_id, npc_id))
+    conn.execute("UPDATE npcs SET location_id = ?, subspace_id = ? WHERE id = ?", (location_id, subspace_id, npc_id))
     conn.commit()
     conn.close()
 
@@ -800,17 +894,17 @@ def build_npc_sheet_text(npc_row):
     return "\n".join(lines)
 
 
-# ==================== room messages (multiplayer's shared log, in `turns`) ====================
+# ==================== subspace messages (multiplayer's shared log, in `turns`) ====================
 
-def record_room_message(game_id, room_id, location_id, character_id, kind, content, reply_to_turn_id=None,
-                         responder=None, model_key=None, debug_events=None, flagged=False, flag_reason=None):
+def record_subspace_message(game_id, location_id, subspace_id, character_id, kind, content, reply_to_turn_id=None,
+                             responder=None, model_key=None, debug_events=None, flagged=False, flag_reason=None):
     """Records one row in the shared multiplayer log - a player's message/action, or an AI/NPC/GM
     reply to one - reusing `turns` rather than a parallel table (see the games-schema NOTES.md entry).
-    visible_to_json is a PERMANENT snapshot of who was present in this location at send time, taken
+    visible_to_json is a PERMANENT snapshot of who was present in this subspace at send time, taken
     once here and never updated afterward - the actual mechanism that keeps someone who arrives later
     from seeing messages sent before they got there, per direction (not inferred from current
-    room_occupancy, which would retroactively leak history to new arrivals). flagged/flag_reason are
-    the significance markers (see turns' flagged column comment) - set by the caller from
+    location_occupancy, which would retroactively leak history to new arrivals). flagged/flag_reason
+    are the significance markers (see turns' flagged column comment) - set by the caller from
     council.detect_stakes_signals, a free check, not a new AI call."""
     # Which field content actually lands in, by kind: player-authored text (message/action/storm_out
     # - storm_out's final flavor line is still the PLAYER's own words) goes to player_input;
@@ -821,11 +915,11 @@ def record_room_message(game_id, room_id, location_id, character_id, kind, conte
     # empty narration field on a live thread_concluded event), not a code review - see NOTES.md.
     player_authored_kinds = ("message", "action", "storm_out")
     ai_or_system_kinds = ("npc_reply", "gm_reply", "thread_concluded")
-    present = characters_at_location(location_id)
+    present = characters_at_subspace(subspace_id)
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO turns (character_id, turn_number, player_input, narration, model_key, "
-        "debug_events_json, game_id, room_id, location_id, kind, reply_to_turn_id, responder, "
+        "debug_events_json, game_id, location_id, subspace_id, kind, reply_to_turn_id, responder, "
         "visible_to_json, flagged, flag_reason, created_at) "
         "VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
@@ -834,7 +928,7 @@ def record_room_message(game_id, room_id, location_id, character_id, kind, conte
             content if kind in ai_or_system_kinds else "",
             model_key,
             json.dumps(debug_events or []),
-            game_id, room_id, location_id, kind, reply_to_turn_id, responder,
+            game_id, location_id, subspace_id, kind, reply_to_turn_id, responder,
             json.dumps(present),
             1 if flagged else 0, flag_reason,
             time.time(),
@@ -847,9 +941,9 @@ def record_room_message(game_id, room_id, location_id, character_id, kind, conte
 
 
 def get_turn_by_id(turn_id):
-    """Same character_name join as get_room_messages - this is what live.py's SSE events are built
-    from (see multiplayer.py's publish_location_event call sites), so a live-streamed row needs the
-    same display name a polled/reloaded one would have."""
+    """Same character_name join as get_subspace_messages - this is what live.py's SSE events are
+    built from (see multiplayer.py's publish_subspace_event call sites), so a live-streamed row needs
+    the same display name a polled/reloaded one would have."""
     conn = get_db()
     row = conn.execute(
         "SELECT t.*, c.name AS character_name FROM turns t LEFT JOIN characters c ON c.id = t.character_id "
@@ -860,20 +954,20 @@ def get_turn_by_id(turn_id):
     return dict(row) if row else None
 
 
-def get_room_messages(location_id, viewer_character_id):
-    """Every row at this location visible to viewer_character_id, filtered by each row's own
-    permanent visible_to_json snapshot - NOT by current room_occupancy. That's the whole point: a
+def get_subspace_messages(subspace_id, viewer_character_id):
+    """Every row at this subspace visible to viewer_character_id, filtered by each row's own
+    permanent visible_to_json snapshot - NOT by current location_occupancy. That's the whole point: a
     character who just arrived doesn't retroactively gain access to what was said before they did.
 
     Each row also carries character_name - a LEFT JOIN against characters, resolved fresh on every
     read rather than stored on the turn itself, so a display name always reflects the character's
-    current name (not a snapshot) even though it can outlive the character having left the location -
+    current name (not a snapshot) even though it can outlive the character having left the subspace -
     unlike visible_to_json, "who said this" isn't something that should ever change or go stale."""
     conn = get_db()
     rows = conn.execute(
         "SELECT t.*, c.name AS character_name FROM turns t LEFT JOIN characters c ON c.id = t.character_id "
-        "WHERE t.location_id = ? ORDER BY t.id ASC",
-        (location_id,),
+        "WHERE t.subspace_id = ? ORDER BY t.id ASC",
+        (subspace_id,),
     ).fetchall()
     conn.close()
     out = []
@@ -886,26 +980,26 @@ def get_room_messages(location_id, viewer_character_id):
 
 # ==================== combat encounters (initiative-ordered turn enforcement) ====================
 
-def get_active_combat_encounter(location_id):
+def get_active_combat_encounter(subspace_id):
     conn = get_db()
     row = conn.execute(
-        "SELECT * FROM combat_encounters WHERE location_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
-        (location_id,),
+        "SELECT * FROM combat_encounters WHERE subspace_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
+        (subspace_id,),
     ).fetchone()
     conn.close()
     return dict(row) if row else None
 
 
-def create_combat_encounter(room_id, location_id, participants, start_turn_index=0):
+def create_combat_encounter(location_id, subspace_id, participants, start_turn_index=0):
     """participants: a list of {"character_id": int|None, "npc_key": str|None, "initiative_roll": int}
     dicts, already in the order the caller (multiplayer.py) wants them seated - turn_order_index is
     just each entry's position in that list. start_turn_index lets the caller begin the rotation
     partway through (e.g. skipping the participant who just acted to trigger this fight)."""
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO combat_encounters (room_id, location_id, status, current_turn_index, created_at) "
+        "INSERT INTO combat_encounters (location_id, subspace_id, status, current_turn_index, created_at) "
         "VALUES (?, ?, 'active', ?, ?)",
-        (room_id, location_id, start_turn_index, time.time()),
+        (location_id, subspace_id, start_turn_index, time.time()),
     )
     encounter_id = cur.lastrowid
     for idx, p in enumerate(participants):
@@ -966,39 +1060,39 @@ def end_combat_encounter(encounter_id):
     conn.close()
 
 
-# ==================== room conclusion (mark-concluded / storm-out) ====================
+# ==================== subspace conclusion (mark-concluded / storm-out) ====================
 
-def mark_location_concluded_by(location_id, character_id):
+def mark_subspace_concluded_by(subspace_id, character_id):
     conn = get_db()
     conn.execute(
-        "INSERT OR REPLACE INTO location_conclusions (location_id, character_id, marked_at) VALUES (?, ?, ?)",
-        (location_id, character_id, time.time()),
+        "INSERT OR REPLACE INTO subspace_conclusions (subspace_id, character_id, marked_at) VALUES (?, ?, ?)",
+        (subspace_id, character_id, time.time()),
     )
     conn.commit()
     conn.close()
 
 
-def clear_character_conclusion_mark(location_id, character_id):
+def clear_character_conclusion_mark(subspace_id, character_id):
     """Removes just one character's mark - used when they storm out, so their vote no longer counts
-    toward unanimity (they're gone, same as leaving a room mid-conversation in person)."""
+    toward unanimity (they're gone, same as leaving a subspace mid-conversation in person)."""
     conn = get_db()
-    conn.execute("DELETE FROM location_conclusions WHERE location_id = ? AND character_id = ?", (location_id, character_id))
+    conn.execute("DELETE FROM subspace_conclusions WHERE subspace_id = ? AND character_id = ?", (subspace_id, character_id))
     conn.commit()
     conn.close()
 
 
-def get_location_conclusion_marks(location_id):
+def get_subspace_conclusion_marks(subspace_id):
     conn = get_db()
-    rows = conn.execute("SELECT character_id FROM location_conclusions WHERE location_id = ?", (location_id,)).fetchall()
+    rows = conn.execute("SELECT character_id FROM subspace_conclusions WHERE subspace_id = ?", (subspace_id,)).fetchall()
     conn.close()
     return {r["character_id"] for r in rows}
 
 
-def clear_location_conclusions(location_id):
+def clear_subspace_conclusions(subspace_id):
     """Resets tracking entirely - called once a thread actually concludes, so whatever happens next
-    at this location starts a fresh count."""
+    at this subspace starts a fresh count."""
     conn = get_db()
-    conn.execute("DELETE FROM location_conclusions WHERE location_id = ?", (location_id,))
+    conn.execute("DELETE FROM subspace_conclusions WHERE subspace_id = ?", (subspace_id,))
     conn.commit()
     conn.close()
 
@@ -1016,23 +1110,23 @@ def get_character_owner(character_id):
 
 
 def characters_in_server(server_id):
-    """Every character currently present anywhere in a server (any room, any location) - used for
-    server-wide billing (the rumor broadcast) and server-wide SSE subscriptions, not location-scoped
-    like characters_at_location."""
+    """Every character currently present anywhere in a server (any location, any subspace) - used for
+    server-wide billing (the rumor broadcast) and server-wide SSE subscriptions, not subspace-scoped
+    like characters_at_subspace."""
     conn = get_db()
-    rows = conn.execute("SELECT character_id FROM room_occupancy WHERE server_id = ?", (server_id,)).fetchall()
+    rows = conn.execute("SELECT character_id FROM location_occupancy WHERE server_id = ?", (server_id,)).fetchall()
     conn.close()
     return [r["character_id"] for r in rows]
 
 
 # ==================== rumors ====================
 
-def create_rumor(server_id, room_id, location_id, summary, importance, publicity):
+def create_rumor(server_id, location_id, subspace_id, summary, importance, publicity):
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO rumors (server_id, room_id, location_id, summary, importance, publicity, created_at, published_at) "
+        "INSERT INTO rumors (server_id, location_id, subspace_id, summary, importance, publicity, created_at, published_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
-        (server_id, room_id, location_id, summary, importance, publicity, time.time()),
+        (server_id, location_id, subspace_id, summary, importance, publicity, time.time()),
     )
     conn.commit()
     rumor_id = cur.lastrowid
@@ -1099,7 +1193,7 @@ def get_character_unchecked(character_id):
     character_id on someone else's behalf. Callers stay responsible for verifying the REQUESTING
     character (the one the current session actually owns) via get_character first, same as today -
     this is only ever used to look up OTHER participants already established as present/involved by
-    trusted server-side logic (room_occupancy, combat_participants), not from raw client input."""
+    trusted server-side logic (location_occupancy, combat_participants), not from raw client input."""
     conn = get_db()
     row = conn.execute("SELECT * FROM characters WHERE id = ?", (character_id,)).fetchone()
     conn.close()

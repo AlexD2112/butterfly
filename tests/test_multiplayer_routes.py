@@ -41,7 +41,10 @@ class ActionFakeProvider:
     """A fake shaped for engine.run_turn's tool-calling loop (a plain narration reply, no tool
     calls, so the loop exits after one call) plus a "no combat" answer for the combat-start
     classifier that always runs afterward - exercises the real action-resolution route end to end
-    without a live API."""
+    without a live API. Also stands in for the dynamic-subspace judge call (force_tool_name=
+    "decide_subspace") since providers.get_provider is patched to return this same fake for every
+    model_key in these tests - falls through to the plain-narration branch, which has no tool_calls,
+    so detect_new_subspace safely decides "no new subspace" rather than crashing or hitting a real API."""
 
     def new_conversation(self):
         return []
@@ -91,7 +94,7 @@ class TestMultiplayerRoutes(unittest.TestCase):
         res = self.client.post("/api/admin/multiplayer_servers", json={"name": "X", "setting_key": "petrograd_1917"})
         self.assertEqual(res.status_code, 403)
 
-    def test_admin_can_create_server_room_and_location(self):
+    def test_admin_can_create_server_location_and_subspace(self):
         self._login_as_discord_user("1", "Admin", is_admin=True)
         server_res = self.client.post(
             "/api/admin/multiplayer_servers",
@@ -100,26 +103,26 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self.assertEqual(server_res.status_code, 200)
         server_id = server_res.get_json()["server_id"]
 
-        room_res = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/rooms", json={"name": "The Smolny Institute"})
-        self.assertEqual(room_res.status_code, 200)
-        room_id = room_res.get_json()["room_id"]
+        location_res = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/locations", json={"name": "The Smolny Institute"})
+        self.assertEqual(location_res.status_code, 200)
+        location_id = location_res.get_json()["location_id"]
 
-        loc_res = self.client.post(f"/api/admin/rooms/{room_id}/locations", json={"name": "The Corridor"})
-        self.assertEqual(loc_res.status_code, 200)
+        subspace_res = self.client.post(f"/api/admin/locations/{location_id}/subspaces", json={"name": "The Corridor"})
+        self.assertEqual(subspace_res.status_code, 200)
 
-        rooms = self.client.get(f"/api/multiplayer/servers/{server_id}/rooms").get_json()["rooms"]
-        self.assertEqual(len(rooms), 1)
-        locations = self.client.get(f"/api/multiplayer/rooms/{room_id}/locations").get_json()["locations"]
-        self.assertEqual(len(locations), 2)  # default "Main" + "The Corridor"
+        locations = self.client.get(f"/api/multiplayer/servers/{server_id}/locations").get_json()["locations"]
+        self.assertEqual(len(locations), 1)
+        subspaces = self.client.get(f"/api/multiplayer/locations/{location_id}/subspaces").get_json()["subspaces"]
+        self.assertEqual(len(subspaces), 2)  # default "Main" + "The Corridor"
 
-    def _make_server_room_and_character(self, discord_id="2", username="Player"):
+    def _make_server_location_and_character(self, discord_id="2", username="Player"):
         admin = self._login_as_discord_user("1", "Admin", is_admin=True)
         server_res = self.client.post(
             "/api/admin/multiplayer_servers",
             json={"name": "Petrograd Test", "setting_key": "petrograd_1917"},
         )
         server_id = server_res.get_json()["server_id"]
-        room_id = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/rooms", json={"name": "Room A"}).get_json()["room_id"]
+        location_id = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/locations", json={"name": "Location A"}).get_json()["location_id"]
 
         self._login_as_discord_user(discord_id, username)
         char_res = self.client.post(
@@ -127,26 +130,26 @@ class TestMultiplayerRoutes(unittest.TestCase):
             json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id},
         )
         character_id = char_res.get_json()["character_id"]
-        return server_id, room_id, character_id
+        return server_id, location_id, character_id
 
     def test_character_created_with_multiplayer_server_id_attaches_to_the_shared_game(self):
-        server_id, room_id, character_id = self._make_server_room_and_character()
+        server_id, location_id, character_id = self._make_server_location_and_character()
         char = db.get_character(character_id, db.get_user_by_id(db.get_or_create_discord_user("2", "Player", None)["id"])["id"])
         server_game = db.get_game_for_server(server_id)
         self.assertEqual(char["game_id"], server_game["id"])
 
-    def test_move_and_then_location_messages_reflects_the_move(self):
-        server_id, room_id, character_id = self._make_server_room_and_character()
-        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+    def test_move_and_then_subspace_messages_reflects_the_move(self):
+        server_id, location_id, character_id = self._make_server_location_and_character()
+        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
         self.assertEqual(move_res.status_code, 200)
 
-        msgs_res = self.client.get(f"/api/multiplayer/characters/{character_id}/location_messages")
+        msgs_res = self.client.get(f"/api/multiplayer/characters/{character_id}/subspace_messages")
         self.assertEqual(msgs_res.status_code, 200)
         self.assertEqual(msgs_res.get_json()["messages"], [])
 
     def test_local_user_cannot_send_a_multiplayer_message(self):
-        server_id, room_id, character_id = self._make_server_room_and_character()
-        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+        server_id, location_id, character_id = self._make_server_location_and_character()
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
 
         # Switch to a fresh local/anonymous session (not the Discord user who owns the character) -
         # should 404 as "not found" since ownership is checked before the is_local gate, matching the
@@ -157,8 +160,8 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self.assertIn(res.status_code, (403, 404))
 
     def test_action_kind_resolves_through_the_engine_and_is_recorded(self):
-        server_id, room_id, character_id = self._make_server_room_and_character()
-        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+        server_id, location_id, character_id = self._make_server_location_and_character()
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
 
         with patch.object(providers, "get_provider", return_value=(ActionFakeProvider(), "gpt-5.6-luna")):
             res = self.client.post(
@@ -170,14 +173,16 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self.assertEqual(data["kind"], "action")
         self.assertEqual(data["narration"], "You see nothing unusual.")
         self.assertIsNone(data["combat_encounter_id"])
+        self.assertIsNone(data["new_subspace_id"])
+        self.assertIsNone(data["moved_to_subspace_id"])
 
         turns = db.get_turns(character_id)
         self.assertTrue(any(t["kind"] == "action" for t in turns))
         self.assertTrue(any(t["kind"] == "gm_reply" for t in turns))
 
     def test_a_message_send_records_it_and_returns_budget(self):
-        server_id, room_id, character_id = self._make_server_room_and_character()
-        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+        server_id, location_id, character_id = self._make_server_location_and_character()
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
 
         with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
             res = self.client.post(
@@ -190,26 +195,26 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self.assertIsNone(data["reply_turn_id"])  # FakeProvider always says no one responds
         self.assertIn("budget", data)
 
-    def test_location_detail_reports_occupants_and_no_combat(self):
-        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
-        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
-        location_id = move_res.get_json()["location_id"]
+    def test_subspace_detail_reports_occupants_and_no_combat(self):
+        server_id, location_id, character_id = self._make_server_location_and_character(discord_id="2", username="PlayerA")
+        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
+        subspace_id = move_res.get_json()["subspace_id"]
 
-        res = self.client.get(f"/api/multiplayer/locations/{location_id}/detail")
+        res = self.client.get(f"/api/multiplayer/subspaces/{subspace_id}/detail")
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
-        self.assertEqual(data["location"]["id"], location_id)
+        self.assertEqual(data["subspace"]["id"], subspace_id)
         self.assertEqual([o["character_id"] for o in data["occupants"]], [character_id])
         self.assertTrue(data["occupants"][0]["name"])  # premade's real in-state name, whatever it is
         self.assertIsNone(data["combat"])
         self.assertEqual(data["conclusion"], {"marked_character_ids": [], "total_present": 1})
 
-    def test_location_detail_unknown_location_404s(self):
-        res = self.client.get("/api/multiplayer/locations/999999/detail")
+    def test_subspace_detail_unknown_subspace_404s(self):
+        res = self.client.get("/api/multiplayer/subspaces/999999/detail")
         self.assertEqual(res.status_code, 404)
 
     def test_my_characters_only_returns_the_current_users_characters_for_that_server(self):
-        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
+        server_id, location_id, character_id = self._make_server_location_and_character(discord_id="2", username="PlayerA")
         self._login_as_discord_user("3", "PlayerB")
         self.client.post(
             "/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id},
@@ -221,60 +226,60 @@ class TestMultiplayerRoutes(unittest.TestCase):
         data = res.get_json()
         self.assertEqual([c["id"] for c in data["characters"]], [character_id])
 
-    def test_location_messages_include_the_sender_display_name(self):
-        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
-        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
-        location_id = move_res.get_json()["location_id"]
+    def test_subspace_messages_include_the_sender_display_name(self):
+        server_id, location_id, character_id = self._make_server_location_and_character(discord_id="2", username="PlayerA")
+        move_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
+        subspace_id = move_res.get_json()["subspace_id"]
         expected_name = db.get_character_unchecked(character_id)["name"]
         with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
             self.client.post(
                 f"/api/multiplayer/characters/{character_id}/send",
                 json={"kind": "message", "content": "Hello there.", "model_key": "luna"},
             )
-        res = self.client.get(f"/api/multiplayer/characters/{character_id}/location_messages")
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/subspace_messages")
         messages = res.get_json()["messages"]
         self.assertTrue(any(m["character_name"] == expected_name for m in messages))
 
-    def test_peek_shows_messages_from_a_different_location_in_the_same_room(self):
-        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
-        main_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
-        main_location_id = main_res.get_json()["location_id"]
+    def test_peek_shows_messages_from_a_different_subspace_in_the_same_location(self):
+        server_id, location_id, character_id = self._make_server_location_and_character(discord_id="2", username="PlayerA")
+        main_res = self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
+        main_subspace_id = main_res.get_json()["subspace_id"]
 
         self._login_as_discord_user("1", "Admin", is_admin=True)
-        second_location_id = self.client.post(
-            f"/api/admin/rooms/{room_id}/locations", json={"name": "Second Spot"}
-        ).get_json()["location_id"]
+        second_subspace_id = self.client.post(
+            f"/api/admin/locations/{location_id}/subspaces", json={"name": "Second Spot"}
+        ).get_json()["subspace_id"]
 
         self._login_as_discord_user("2", "PlayerA")
         self.client.post(
             f"/api/multiplayer/characters/{character_id}/move",
-            json={"room_id": room_id, "location_id": second_location_id},
+            json={"location_id": location_id, "subspace_id": second_subspace_id},
         )
         with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
             self.client.post(
                 f"/api/multiplayer/characters/{character_id}/send",
                 json={"kind": "message", "content": "Message from the second spot.", "model_key": "luna"},
             )
-        # Move back to Main - not physically at the second location any more when peeking.
+        # Move back to Main - not physically at the second subspace any more when peeking.
         self.client.post(
             f"/api/multiplayer/characters/{character_id}/move",
-            json={"room_id": room_id, "location_id": main_location_id},
+            json={"location_id": location_id, "subspace_id": main_subspace_id},
         )
 
-        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{second_location_id}")
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{second_subspace_id}")
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
-        self.assertEqual(data["location_id"], second_location_id)
+        self.assertEqual(data["subspace_id"], second_subspace_id)
         self.assertTrue(any(m["player_input"] == "Message from the second spot." for m in data["messages"]))
 
-    def test_peek_at_a_never_visited_location_is_empty_not_an_error(self):
-        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
-        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+    def test_peek_at_a_never_visited_subspace_is_empty_not_an_error(self):
+        server_id, location_id, character_id = self._make_server_location_and_character(discord_id="2", username="PlayerA")
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
 
         self._login_as_discord_user("1", "Admin", is_admin=True)
-        second_location_id = self.client.post(
-            f"/api/admin/rooms/{room_id}/locations", json={"name": "Second Spot"}
-        ).get_json()["location_id"]
+        second_subspace_id = self.client.post(
+            f"/api/admin/locations/{location_id}/subspaces", json={"name": "Second Spot"}
+        ).get_json()["subspace_id"]
         # A different character sends a message there - PlayerA's character was never present.
         other_char_id = self.client.post(
             "/api/characters",
@@ -282,7 +287,7 @@ class TestMultiplayerRoutes(unittest.TestCase):
         ).get_json()["character_id"]
         self.client.post(
             f"/api/multiplayer/characters/{other_char_id}/move",
-            json={"room_id": room_id, "location_id": second_location_id},
+            json={"location_id": location_id, "subspace_id": second_subspace_id},
         )
         with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
             self.client.post(
@@ -291,24 +296,24 @@ class TestMultiplayerRoutes(unittest.TestCase):
             )
 
         self._login_as_discord_user("2", "PlayerA")
-        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{second_location_id}")
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{second_subspace_id}")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.get_json()["messages"], [])
 
-    def test_peek_at_a_location_in_a_different_room_is_rejected(self):
-        server_id, room_id, character_id = self._make_server_room_and_character(discord_id="2", username="PlayerA")
-        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"room_id": room_id})
+    def test_peek_at_a_subspace_in_a_different_location_is_rejected(self):
+        server_id, location_id, character_id = self._make_server_location_and_character(discord_id="2", username="PlayerA")
+        self.client.post(f"/api/multiplayer/characters/{character_id}/move", json={"location_id": location_id})
 
         self._login_as_discord_user("1", "Admin", is_admin=True)
-        other_room_id = self.client.post(
-            f"/api/admin/multiplayer_servers/{server_id}/rooms", json={"name": "Room B"}
-        ).get_json()["room_id"]
-        other_room_location_id = self.client.get(
-            f"/api/multiplayer/rooms/{other_room_id}/locations"
-        ).get_json()["locations"][0]["id"]
+        other_location_id = self.client.post(
+            f"/api/admin/multiplayer_servers/{server_id}/locations", json={"name": "Location B"}
+        ).get_json()["location_id"]
+        other_location_subspace_id = self.client.get(
+            f"/api/multiplayer/locations/{other_location_id}/subspaces"
+        ).get_json()["subspaces"][0]["id"]
 
         self._login_as_discord_user("2", "PlayerA")
-        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{other_room_location_id}")
+        res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{other_location_subspace_id}")
         self.assertEqual(res.status_code, 400)
 
 

@@ -71,8 +71,8 @@ def fire_tick(server_id):
     if provider is None:
         return  # no configured judge provider - date still advanced, sweep/rumors just skipped this tick
 
-    for location_result in multiplayer.sweep_server(provider, model, server_id):
-        multiplayer.bill_ambient_usage(location_result["usage_sink"], location_result["present_character_ids"])
+    for subspace_result in multiplayer.sweep_server(provider, model, server_id):
+        multiplayer.bill_ambient_usage(subspace_result["usage_sink"], subspace_result["present_character_ids"])
 
     # The broadcast benefits everyone currently on the server, not one location - billed across
     # everyone present server-wide, same 0.5x-shared/50%-subsidized model as everything ambient.

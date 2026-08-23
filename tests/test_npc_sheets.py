@@ -30,25 +30,25 @@ class TestNpcSheets(unittest.TestCase):
         self.assertEqual(json.loads(npc["traits_json"]), ["decisive", "ruthless", "persuasive"])
         self.assertEqual(json.loads(npc["memory_json"]), [])
 
-    def _make_server_with_two_rooms(self):
+    def _make_server_with_two_locations(self):
         admin = db.get_or_create_discord_user("999", "Admin", None)
         server_id = db.create_multiplayer_server("Test Server", "petrograd_1917", "red_admiral", "day", 24.0, admin["id"])
-        room_a = db.create_room(server_id, "Room A")
-        room_b = db.create_room(server_id, "Room B")
-        return db.get_default_location(room_a)["id"], db.get_default_location(room_b)["id"], room_a, room_b
+        location_a = db.create_location(server_id, "Location A")
+        location_b = db.create_location(server_id, "Location B")
+        return db.get_default_subspace(location_a)["id"], db.get_default_subspace(location_b)["id"], location_a, location_b
 
-    def test_npcs_at_location_reflects_placement(self):
-        loc_a, loc_b, room_a, _ = self._make_server_with_two_rooms()
-        npc_id = db.create_npc(self.game_id, "lenin", "Vladimir Lenin", room_id=room_a, location_id=loc_a)
-        self.assertEqual([n["id"] for n in db.npcs_at_location(loc_a)], [npc_id])
-        self.assertEqual(db.npcs_at_location(loc_b), [])
+    def test_npcs_at_subspace_reflects_placement(self):
+        subspace_a, subspace_b, location_a, _ = self._make_server_with_two_locations()
+        npc_id = db.create_npc(self.game_id, "lenin", "Vladimir Lenin", location_id=location_a, subspace_id=subspace_a)
+        self.assertEqual([n["id"] for n in db.npcs_at_subspace(subspace_a)], [npc_id])
+        self.assertEqual(db.npcs_at_subspace(subspace_b), [])
 
-    def test_move_npc_updates_location(self):
-        loc_a, loc_b, room_a, room_b = self._make_server_with_two_rooms()
-        npc_id = db.create_npc(self.game_id, "lenin", "Vladimir Lenin", room_id=room_a, location_id=loc_a)
-        db.move_npc(npc_id, room_id=room_b, location_id=loc_b)
-        self.assertEqual(db.npcs_at_location(loc_a), [])
-        self.assertEqual([n["id"] for n in db.npcs_at_location(loc_b)], [npc_id])
+    def test_move_npc_updates_subspace(self):
+        subspace_a, subspace_b, location_a, location_b = self._make_server_with_two_locations()
+        npc_id = db.create_npc(self.game_id, "lenin", "Vladimir Lenin", location_id=location_a, subspace_id=subspace_a)
+        db.move_npc(npc_id, location_id=location_b, subspace_id=subspace_b)
+        self.assertEqual(db.npcs_at_subspace(subspace_a), [])
+        self.assertEqual([n["id"] for n in db.npcs_at_subspace(subspace_b)], [npc_id])
 
     def test_add_npc_memory_appends_and_caps(self):
         npc_id = db.create_npc(self.game_id, "lenin", "Vladimir Lenin")

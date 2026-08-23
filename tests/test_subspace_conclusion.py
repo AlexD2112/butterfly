@@ -49,8 +49,8 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
         admin = db.get_or_create_discord_user("1", "Admin", None)
         self.server_id = db.create_multiplayer_server("Test Server", "petrograd_1917", "red_admiral", "day", 24.0, admin["id"])
         self.game = db.get_game_for_server(self.server_id)
-        self.room_id = db.create_room(self.server_id, "Room A")
-        self.location_id = db.get_default_location(self.room_id)["id"]
+        self.location_id = db.create_location(self.server_id, "Location A")
+        self.subspace_id = db.get_default_subspace(self.location_id)["id"]
 
     def tearDown(self):
         db.DB_FILE = self._orig_db_file
@@ -61,7 +61,7 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
         state.pop("_is_new", None)
         user = db.get_or_create_discord_user(discord_id, name, None)
         char_id = db.create_character(user["id"], "petrograd_1917", "red_admiral", name, state, game_id=self.game["id"])
-        db.move_character(char_id, self.server_id, self.room_id, self.location_id)
+        db.move_character(char_id, self.server_id, self.location_id, self.subspace_id)
         return char_id
 
     def _char_row(self, char_id):
@@ -72,7 +72,7 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
 
     def test_a_solo_character_marking_concluded_is_immediately_unanimous(self):
         char_id = self._make_character("2", "Solo")
-        concluded, marks, total = multiplayer.mark_concluded(self._char_row(char_id), self.room_id, self.location_id)
+        concluded, marks, total = multiplayer.mark_concluded(self._char_row(char_id), self.location_id, self.subspace_id)
         self.assertTrue(concluded)
         self.assertEqual(marks, 1)
         self.assertEqual(total, 1)
@@ -80,33 +80,33 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
     def test_two_present_needs_both_marks_to_conclude(self):
         char_a = self._make_character("2", "A")
         char_b = self._make_character("3", "B")
-        concluded1, marks1, total1 = multiplayer.mark_concluded(self._char_row(char_a), self.room_id, self.location_id)
+        concluded1, marks1, total1 = multiplayer.mark_concluded(self._char_row(char_a), self.location_id, self.subspace_id)
         self.assertFalse(concluded1)
         self.assertEqual((marks1, total1), (1, 2))
 
-        concluded2, marks2, total2 = multiplayer.mark_concluded(self._char_row(char_b), self.room_id, self.location_id)
+        concluded2, marks2, total2 = multiplayer.mark_concluded(self._char_row(char_b), self.location_id, self.subspace_id)
         self.assertTrue(concluded2)
         self.assertEqual((marks2, total2), (2, 2))
 
     def test_conclusion_logs_a_visible_marker_and_resets_tracking(self):
         char_a = self._make_character("2", "A")
-        multiplayer.mark_concluded(self._char_row(char_a), self.room_id, self.location_id)
+        multiplayer.mark_concluded(self._char_row(char_a), self.location_id, self.subspace_id)
         # solo -> immediately concluded
-        messages = db.get_room_messages(self.location_id, char_a)
+        messages = db.get_subspace_messages(self.subspace_id, char_a)
         concluded_rows = [m for m in messages if m["kind"] == "thread_concluded"]
         self.assertTrue(concluded_rows)
         # Real bug, found via a live SSE smoke test, not a code review: the note text used to be
-        # silently discarded for this kind (record_room_message's content routing only covered
+        # silently discarded for this kind (record_subspace_message's content routing only covered
         # message/action and npc_reply/gm_reply, missing thread_concluded and storm_out entirely).
         self.assertEqual(concluded_rows[0]["narration"], "The scene concludes.")
-        self.assertEqual(db.get_location_conclusion_marks(self.location_id), set())
+        self.assertEqual(db.get_subspace_conclusion_marks(self.subspace_id), set())
 
     def test_a_third_arrival_does_not_retroactively_count_as_having_marked(self):
         char_a = self._make_character("2", "A")
         char_b = self._make_character("3", "B")
-        multiplayer.mark_concluded(self._char_row(char_a), self.room_id, self.location_id)
+        multiplayer.mark_concluded(self._char_row(char_a), self.location_id, self.subspace_id)
         char_c = self._make_character("4", "C")  # arrives after A marked, before B does
-        concluded, marks, total = multiplayer.mark_concluded(self._char_row(char_b), self.room_id, self.location_id)
+        concluded, marks, total = multiplayer.mark_concluded(self._char_row(char_b), self.location_id, self.subspace_id)
         # Still not unanimous - C hasn't marked, and now counts toward "present"
         self.assertFalse(concluded)
         self.assertEqual(total, 3)
@@ -114,13 +114,13 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
     def test_storm_out_with_final_message_records_it_and_moves_the_character(self):
         char_id = self._make_character("2", "Leaver")
         fake = ScriptedContinuationProvider(continues=True)
-        new_location_id, auto_concluded = multiplayer.storm_out(
-            fake, "gpt-5.6-luna", self._char_row(char_id), self.room_id, self.location_id,
+        new_subspace_id, auto_concluded = multiplayer.storm_out(
+            fake, "gpt-5.6-luna", self._char_row(char_id), self.location_id, self.subspace_id,
             "I storm off in a rage!",
         )
-        self.assertEqual(new_location_id, self.location_id)  # only one location - the default itself
-        location = db.get_character_location(char_id)
-        self.assertEqual(location["location_id"], new_location_id)
+        self.assertEqual(new_subspace_id, self.subspace_id)  # only one subspace - the default itself
+        presence = db.get_character_presence(char_id)
+        self.assertEqual(presence["subspace_id"], new_subspace_id)
 
         # No one else was present, so the deterministic zero-remaining path fires - auto-concluded,
         # regardless of the scripted provider's answer (never even called).
@@ -128,8 +128,8 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
         self.assertNotIn("decide_continuation", fake.calls)
 
         # The final flavor message's actual text must land somewhere retrievable - see the
-        # content-routing bug fix in db.record_room_message (found via a live SSE smoke test).
-        messages = db.get_room_messages(self.location_id, char_id)
+        # content-routing bug fix in db.record_subspace_message (found via a live SSE smoke test).
+        messages = db.get_subspace_messages(self.subspace_id, char_id)
         storm_rows = [m for m in messages if m["kind"] == "storm_out"]
         self.assertEqual(len(storm_rows), 1)
         self.assertEqual(storm_rows[0]["player_input"], "I storm off in a rage!")
@@ -139,7 +139,7 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
         stayer_id = self._make_character("3", "Stayer")
         fake = ScriptedContinuationProvider(continues=True)
         _, auto_concluded = multiplayer.storm_out(
-            fake, "gpt-5.6-luna", self._char_row(leaver_id), self.room_id, self.location_id, None,
+            fake, "gpt-5.6-luna", self._char_row(leaver_id), self.location_id, self.subspace_id, None,
         )
         self.assertIn("decide_continuation", fake.calls)
         self.assertFalse(auto_concluded)
@@ -149,28 +149,28 @@ class TestMarkConcludedAndStormOutOrchestration(unittest.TestCase):
         stayer_id = self._make_character("3", "Stayer")
         fake = ScriptedContinuationProvider(continues=False)
         _, auto_concluded = multiplayer.storm_out(
-            fake, "gpt-5.6-luna", self._char_row(leaver_id), self.room_id, self.location_id, None,
+            fake, "gpt-5.6-luna", self._char_row(leaver_id), self.location_id, self.subspace_id, None,
         )
         self.assertTrue(auto_concluded)
-        self.assertIsNone(db.get_location_conclusion_marks(self.location_id) or None)  # cleared, i.e. empty set (falsy)
+        self.assertIsNone(db.get_subspace_conclusion_marks(self.subspace_id) or None)  # cleared, i.e. empty set (falsy)
 
     def test_storm_out_with_no_provider_available_defaults_to_still_ongoing(self):
         leaver_id = self._make_character("2", "Leaver")
         stayer_id = self._make_character("3", "Stayer")
         _, auto_concluded = multiplayer.storm_out(
-            None, None, self._char_row(leaver_id), self.room_id, self.location_id, None,
+            None, None, self._char_row(leaver_id), self.location_id, self.subspace_id, None,
         )
         self.assertFalse(auto_concluded)
 
     def test_storming_out_clears_the_leavers_own_prior_mark(self):
         char_a = self._make_character("2", "A")
         char_b = self._make_character("3", "B")
-        multiplayer.mark_concluded(self._char_row(char_a), self.room_id, self.location_id)
-        self.assertEqual(db.get_location_conclusion_marks(self.location_id), {char_a})
+        multiplayer.mark_concluded(self._char_row(char_a), self.location_id, self.subspace_id)
+        self.assertEqual(db.get_subspace_conclusion_marks(self.subspace_id), {char_a})
 
         fake = ScriptedContinuationProvider(continues=True)
-        multiplayer.storm_out(fake, "gpt-5.6-luna", self._char_row(char_a), self.room_id, self.location_id, None)
-        self.assertEqual(db.get_location_conclusion_marks(self.location_id), set())
+        multiplayer.storm_out(fake, "gpt-5.6-luna", self._char_row(char_a), self.location_id, self.subspace_id, None)
+        self.assertEqual(db.get_subspace_conclusion_marks(self.subspace_id), set())
 
 
 class TestMarkConcludedRoute(unittest.TestCase):
@@ -194,25 +194,25 @@ class TestMarkConcludedRoute(unittest.TestCase):
             sess["user_id"] = user["id"]
         return user
 
-    def _setup_server_room_and_two_characters(self):
+    def _setup_server_location_and_two_characters(self):
         admin = self._login("1", "Admin")
         db.set_is_admin(admin["id"], True)
         server_res = self.client.post("/api/admin/multiplayer_servers", json={"name": "Test", "setting_key": "petrograd_1917"})
         server_id = server_res.get_json()["server_id"]
-        room_id = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/rooms", json={"name": "Room A"}).get_json()["room_id"]
+        location_id = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/locations", json={"name": "Location A"}).get_json()["location_id"]
 
         self._login("2", "PlayerA")
         char_a = self.client.post("/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id}).get_json()["character_id"]
-        self.client.post(f"/api/multiplayer/characters/{char_a}/move", json={"room_id": room_id})
+        self.client.post(f"/api/multiplayer/characters/{char_a}/move", json={"location_id": location_id})
 
         self._login("3", "PlayerB")
         char_b = self.client.post("/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id}).get_json()["character_id"]
-        self.client.post(f"/api/multiplayer/characters/{char_b}/move", json={"room_id": room_id})
+        self.client.post(f"/api/multiplayer/characters/{char_b}/move", json={"location_id": location_id})
 
-        return server_id, room_id, char_a, char_b
+        return server_id, location_id, char_a, char_b
 
     def test_mark_concluded_route_reports_progress_toward_unanimity(self):
-        server_id, room_id, char_a, char_b = self._setup_server_room_and_two_characters()
+        server_id, location_id, char_a, char_b = self._setup_server_location_and_two_characters()
         self._login("2", "PlayerA")
         res = self.client.post(f"/api/multiplayer/characters/{char_a}/mark_concluded", json={})
         self.assertEqual(res.status_code, 200)
@@ -221,7 +221,7 @@ class TestMarkConcludedRoute(unittest.TestCase):
         self.assertEqual(data["total_present"], 2)
 
     def test_storm_out_ambient_billing_splits_cost_at_50_percent_across_remaining_players(self):
-        server_id, room_id, char_a, char_b = self._setup_server_room_and_two_characters()
+        server_id, location_id, char_a, char_b = self._setup_server_location_and_two_characters()
         b_user = db.get_or_create_discord_user("3", "PlayerB", None)
         budget_before = db.get_budget_status(b_user["id"])
 
@@ -255,11 +255,11 @@ class TestMarkConcludedRoute(unittest.TestCase):
         db.set_is_admin(admin["id"], True)
         server_res = self.client.post("/api/admin/multiplayer_servers", json={"name": "Test", "setting_key": "petrograd_1917"})
         server_id = server_res.get_json()["server_id"]
-        room_id = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/rooms", json={"name": "Room A"}).get_json()["room_id"]
+        location_id = self.client.post(f"/api/admin/multiplayer_servers/{server_id}/locations", json={"name": "Location A"}).get_json()["location_id"]
 
         self._login("2", "Solo")
         char_id = self.client.post("/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id}).get_json()["character_id"]
-        self.client.post(f"/api/multiplayer/characters/{char_id}/move", json={"room_id": room_id})
+        self.client.post(f"/api/multiplayer/characters/{char_id}/move", json={"location_id": location_id})
 
         res = self.client.post(f"/api/multiplayer/characters/{char_id}/mark_concluded", json={"storm_out": True, "final_message": "Bye."})
         self.assertEqual(res.status_code, 200)

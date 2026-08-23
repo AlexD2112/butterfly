@@ -495,7 +495,7 @@ def api_character_turn(character_id):
         lock.release()
 
 
-# ==================== multiplayer: admin-gated server/room/location creation ====================
+# ==================== multiplayer: admin-gated server/location/subspace creation ====================
 
 def _require_admin():
     """Returns (user, None) if the current session is an admin, else (None, (response, status)) to
@@ -551,8 +551,8 @@ def api_admin_delete_server(server_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/admin/multiplayer_servers/<int:server_id>/rooms", methods=["POST"])
-def api_admin_create_room(server_id):
+@app.route("/api/admin/multiplayer_servers/<int:server_id>/locations", methods=["POST"])
+def api_admin_create_location(server_id):
     user, err = _require_admin()
     if err:
         return err
@@ -562,23 +562,23 @@ def api_admin_create_room(server_id):
     name = (body.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required."}), 400
-    room_id = db.create_room(server_id, name, body.get("description"))
-    return jsonify({"room_id": room_id})
+    location_id = db.create_location(server_id, name, body.get("description"))
+    return jsonify({"location_id": location_id})
 
 
-@app.route("/api/admin/rooms/<int:room_id>/locations", methods=["POST"])
-def api_admin_create_location(room_id):
+@app.route("/api/admin/locations/<int:location_id>/subspaces", methods=["POST"])
+def api_admin_create_subspace(location_id):
     user, err = _require_admin()
     if err:
         return err
-    if db.get_room(room_id) is None:
-        return jsonify({"error": "Unknown room."}), 404
+    if db.get_location(location_id) is None:
+        return jsonify({"error": "Unknown location."}), 404
     body = request.get_json(force=True)
     name = (body.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required."}), 400
-    location_id = db.create_location(room_id, name)
-    return jsonify({"location_id": location_id})
+    subspace_id = db.create_subspace(location_id, name)
+    return jsonify({"subspace_id": subspace_id})
 
 
 @app.route("/api/admin/npcs", methods=["POST"])
@@ -594,11 +594,11 @@ def api_admin_create_npc():
     name = (body.get("name") or "").strip()
     if not (game_id and key and name):
         return jsonify({"error": "game_id, key, and name are required."}), 400
-    room_id = body.get("room_id")
     location_id = body.get("location_id")
+    subspace_id = body.get("subspace_id")
     npc_id = db.create_npc(
         game_id, key, name, personality=body.get("personality", ""), traits=body.get("traits"),
-        room_id=room_id, location_id=location_id,
+        location_id=location_id, subspace_id=subspace_id,
     )
     return jsonify({"npc_id": npc_id})
 
@@ -618,18 +618,18 @@ def api_multiplayer_servers():
     return jsonify({"servers": servers})
 
 
-@app.route("/api/multiplayer/servers/<int:server_id>/rooms")
-def api_multiplayer_rooms(server_id):
+@app.route("/api/multiplayer/servers/<int:server_id>/locations")
+def api_multiplayer_locations(server_id):
     if db.get_multiplayer_server(server_id) is None:
         return jsonify({"error": "Unknown multiplayer server."}), 404
-    return jsonify({"rooms": db.list_rooms(server_id)})
+    return jsonify({"locations": db.list_locations(server_id)})
 
 
-@app.route("/api/multiplayer/rooms/<int:room_id>/locations")
-def api_multiplayer_locations(room_id):
-    if db.get_room(room_id) is None:
-        return jsonify({"error": "Unknown room."}), 404
-    return jsonify({"locations": db.list_locations(room_id)})
+@app.route("/api/multiplayer/locations/<int:location_id>/subspaces")
+def api_multiplayer_subspaces(location_id):
+    if db.get_location(location_id) is None:
+        return jsonify({"error": "Unknown location."}), 404
+    return jsonify({"subspaces": db.list_subspaces(location_id)})
 
 
 @app.route("/api/multiplayer/servers/<int:server_id>/my_characters")
@@ -647,25 +647,25 @@ def api_multiplayer_my_characters(server_id):
     return jsonify({"characters": [{"id": c["id"], "name": c["name"]} for c in mine]})
 
 
-@app.route("/api/multiplayer/locations/<int:location_id>/detail")
-def api_multiplayer_location_detail(location_id):
-    """Everything a location's UI needs in one call: who's here (players + NPCs), whether a fight is
+@app.route("/api/multiplayer/subspaces/<int:subspace_id>/detail")
+def api_multiplayer_subspace_detail(subspace_id):
+    """Everything a subspace's UI needs in one call: who's here (players + NPCs), whether a fight is
     active and whose turn it is, and how conclusion-marking currently stands. Unauthenticated like the
-    other browsing routes (servers/rooms/locations lists) - "who's in this location right now" isn't
-    treated as private, same as walking into a room and seeing who's there."""
-    location = db.get_location(location_id)
-    if location is None:
-        return jsonify({"error": "Unknown location."}), 404
-    room = db.get_room(location["room_id"])
+    other browsing routes (servers/locations/subspaces lists) - "who's in this subspace right now"
+    isn't treated as private, same as walking into a room and seeing who's there."""
+    subspace = db.get_subspace(subspace_id)
+    if subspace is None:
+        return jsonify({"error": "Unknown subspace."}), 404
+    location = db.get_location(subspace["location_id"])
 
-    occupant_ids = db.characters_at_location(location_id)
+    occupant_ids = db.characters_at_subspace(subspace_id)
     occupants = []
     for cid in occupant_ids:
         c = db.get_character_unchecked(cid)
         if c:
             occupants.append({"character_id": cid, "name": c["name"]})
 
-    npcs = [{"id": n["id"], "key": n["key"], "name": n["name"]} for n in db.npcs_at_location(location_id)]
+    npcs = [{"id": n["id"], "key": n["key"], "name": n["name"]} for n in db.npcs_at_subspace(subspace_id)]
 
     def _participant_name(p):
         if p["character_id"]:
@@ -674,7 +674,7 @@ def api_multiplayer_location_detail(location_id):
         return p["npc_key"]
 
     combat = None
-    encounter = db.get_active_combat_encounter(location_id)
+    encounter = db.get_active_combat_encounter(subspace_id)
     if encounter:
         participants = [
             {
@@ -692,11 +692,11 @@ def api_multiplayer_location_detail(location_id):
             "current_actor_name": _participant_name(current_actor) if current_actor else None,
         }
 
-    marked = db.get_location_conclusion_marks(location_id)
+    marked = db.get_subspace_conclusion_marks(subspace_id)
     return jsonify(
         {
+            "subspace": subspace,
             "location": location,
-            "room": room,
             "occupants": occupants,
             "npcs": npcs,
             "combat": combat,
@@ -712,58 +712,59 @@ def api_multiplayer_move(character_id):
     if char is None:
         return jsonify({"error": "Character not found."}), 404
     body = request.get_json(force=True)
-    room_id = body.get("room_id")
-    room = db.get_room(room_id)
-    if room is None:
-        return jsonify({"error": "Unknown room."}), 400
     location_id = body.get("location_id")
-    if location_id is None:
-        location_id = db.get_default_location(room_id)["id"]
-    elif db.get_location(location_id) is None or db.get_location(location_id)["room_id"] != room_id:
-        return jsonify({"error": "Unknown location for this room."}), 400
-    db.move_character(character_id, room["server_id"], room_id, location_id)
-    return jsonify({"ok": True, "room_id": room_id, "location_id": location_id})
+    location = db.get_location(location_id)
+    if location is None:
+        return jsonify({"error": "Unknown location."}), 400
+    subspace_id = body.get("subspace_id")
+    if subspace_id is None:
+        subspace_id = db.get_default_subspace(location_id)["id"]
+    elif db.get_subspace(subspace_id) is None or db.get_subspace(subspace_id)["location_id"] != location_id:
+        return jsonify({"error": "Unknown subspace for this location."}), 400
+    db.move_character(character_id, location["server_id"], location_id, subspace_id)
+    return jsonify({"ok": True, "location_id": location_id, "subspace_id": subspace_id})
 
 
-@app.route("/api/multiplayer/characters/<int:character_id>/location_messages")
-def api_multiplayer_location_messages(character_id):
+@app.route("/api/multiplayer/characters/<int:character_id>/subspace_messages")
+def api_multiplayer_subspace_messages(character_id):
     user = current_user()
     char = db.get_character(character_id, user["id"])
     if char is None:
         return jsonify({"error": "Character not found."}), 404
-    presence = db.get_character_location(character_id)
+    presence = db.get_character_presence(character_id)
     if presence is None:
-        return jsonify({"error": "This character isn't in a room yet."}), 400
-    messages = db.get_room_messages(presence["location_id"], character_id)
-    return jsonify({"messages": messages, "room_id": presence["room_id"], "location_id": presence["location_id"]})
+        return jsonify({"error": "This character isn't in a location yet."}), 400
+    messages = db.get_subspace_messages(presence["subspace_id"], character_id)
+    return jsonify({"messages": messages, "location_id": presence["location_id"], "subspace_id": presence["subspace_id"]})
 
 
-@app.route("/api/multiplayer/characters/<int:character_id>/peek/<int:location_id>")
-def api_multiplayer_peek_location(character_id, location_id):
-    """Read-only visibility into another location in the character's CURRENT room, without actually
-    moving them there - lets a player check what's happening elsewhere in the room before deciding
-    whether to go. Deliberately restricted to the current room only (not any location server-wide):
-    "peek at the room next door" is the feature asked for, not "see into any location anywhere."
+@app.route("/api/multiplayer/characters/<int:character_id>/peek/<int:subspace_id>")
+def api_multiplayer_peek_subspace(character_id, subspace_id):
+    """Read-only visibility into another subspace in the character's CURRENT location, without
+    actually moving them there - lets a player check what's happening elsewhere in the location
+    before deciding whether to go. Deliberately restricted to the current location only (not any
+    subspace server-wide): "peek at the subspace next door" is the feature asked for, not "see into
+    any subspace anywhere."
 
-    Reuses get_room_messages unchanged, so the peeked location's existing visible_to_json privacy
+    Reuses get_subspace_messages unchanged, so the peeked subspace's existing visible_to_json privacy
     guarantee applies exactly as it does everywhere else - a character who's never actually been
-    present at that location gets back an empty list, same as if they'd fetched location_messages for
-    it as their real location. This is not a bypass; it's the same rule, just queryable for a location
-    other than your current one."""
+    present at that subspace gets back an empty list, same as if they'd fetched subspace_messages for
+    it as their real subspace. This is not a bypass; it's the same rule, just queryable for a
+    subspace other than your current one."""
     user = current_user()
     char = db.get_character(character_id, user["id"])
     if char is None:
         return jsonify({"error": "Character not found."}), 404
-    presence = db.get_character_location(character_id)
+    presence = db.get_character_presence(character_id)
     if presence is None:
-        return jsonify({"error": "This character isn't in a room yet."}), 400
-    target = db.get_location(location_id)
+        return jsonify({"error": "This character isn't in a location yet."}), 400
+    target = db.get_subspace(subspace_id)
     if target is None:
-        return jsonify({"error": "Unknown location."}), 404
-    if target["room_id"] != presence["room_id"]:
-        return jsonify({"error": "You can only peek at locations in your current room."}), 400
-    messages = db.get_room_messages(location_id, character_id)
-    return jsonify({"messages": messages, "room_id": target["room_id"], "location_id": location_id})
+        return jsonify({"error": "Unknown subspace."}), 404
+    if target["location_id"] != presence["location_id"]:
+        return jsonify({"error": "You can only peek at subspaces in your current location."}), 400
+    messages = db.get_subspace_messages(subspace_id, character_id)
+    return jsonify({"messages": messages, "location_id": target["location_id"], "subspace_id": subspace_id})
 
 
 @app.route("/api/multiplayer/characters/<int:character_id>/send", methods=["POST"])
@@ -776,9 +777,9 @@ def api_multiplayer_send(character_id):
     if user["is_local"]:
         return jsonify({"error": "Log in with Discord to send messages.", "discord_login_required": True}), 403
 
-    presence = db.get_character_location(character_id)
+    presence = db.get_character_presence(character_id)
     if presence is None:
-        return jsonify({"error": "This character isn't in a room yet."}), 400
+        return jsonify({"error": "This character isn't in a location yet."}), 400
 
     body = request.get_json(force=True)
     kind = body.get("kind")
@@ -821,7 +822,7 @@ def api_multiplayer_send(character_id):
         try:
             if kind == "message":
                 message_turn_id, reply_turn_id, responder = multiplayer.handle_message(
-                    provider, model, char["game_id"], presence["room_id"], presence["location_id"],
+                    provider, model, char["game_id"], presence["location_id"], presence["subspace_id"],
                     character_id, content, reply_to_turn_id=reply_to_turn_id, usage_sink=usage_sink,
                 )
                 response_body = {
@@ -835,7 +836,7 @@ def api_multiplayer_send(character_id):
                 conversation = _conversation_for(character_id, provider_key, provider)
                 try:
                     result = multiplayer.resolve_action(
-                        provider, model, model_key, char, presence["room_id"], presence["location_id"],
+                        provider, model, model_key, char, presence["location_id"], presence["subspace_id"],
                         content, conversation, usage_sink=usage_sink, budget_ok=budget_ok,
                     )
                 except multiplayer.CombatTurnError as e:
@@ -847,6 +848,12 @@ def api_multiplayer_send(character_id):
                     "narration": result["narration"],
                     "debug_events": result["debug_events"],
                     "combat_encounter_id": result["combat_encounter_id"],
+                    # Set when this action's resolution created a new subspace, or moved the
+                    # character into an already-existing one (matched by name) - see
+                    # multiplayer.detect_new_subspace. The frontend treats either case like any other
+                    # move: reload location/subspace detail and reopen its SSE stream there.
+                    "new_subspace_id": result["new_subspace_id"],
+                    "moved_to_subspace_id": result["moved_to_subspace_id"],
                 }
         except Exception as e:
             return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
@@ -906,9 +913,9 @@ def api_multiplayer_mark_concluded(character_id):
     char = db.get_character(character_id, user["id"])
     if char is None:
         return jsonify({"error": "Character not found."}), 404
-    presence = db.get_character_location(character_id)
+    presence = db.get_character_presence(character_id)
     if presence is None:
-        return jsonify({"error": "This character isn't in a room yet."}), 400
+        return jsonify({"error": "This character isn't in a location yet."}), 400
 
     body = request.get_json(force=True) or {}
     storm_out = bool(body.get("storm_out"))
@@ -924,16 +931,16 @@ def api_multiplayer_mark_concluded(character_id):
             provider, model = providers.get_provider(model_key)
         except providers.ProviderError:
             provider, model = None, None
-        present_before = db.characters_at_location(presence["location_id"])
+        present_before = db.characters_at_subspace(presence["subspace_id"])
         usage_sink = []
         concluded, marks, total = multiplayer.mark_concluded(
-            char, presence["room_id"], presence["location_id"], provider=provider, model=model, usage_sink=usage_sink,
+            char, presence["location_id"], presence["subspace_id"], provider=provider, model=model, usage_sink=usage_sink,
         )
         if concluded:
             _bill_ambient_usage(usage_sink, present_before)
         return jsonify({"concluded": concluded, "marks": marks, "total_present": total})
     final_message = (body.get("final_message") or "").strip() or None
-    remaining_before = [c for c in db.characters_at_location(presence["location_id"]) if c != character_id]
+    remaining_before = [c for c in db.characters_at_subspace(presence["subspace_id"]) if c != character_id]
 
     # A provider is always worth resolving now, not just when remaining_before is non-empty - even a
     # zero-remaining storm-out still generates a rumor of the concluded thread (see
@@ -945,12 +952,12 @@ def api_multiplayer_mark_concluded(character_id):
         provider, model = None, None  # leaving still succeeds; both the headcount check and rumor generation just get skipped
 
     usage_sink = []
-    new_location_id, auto_concluded = multiplayer.storm_out(
-        provider, model, char, presence["room_id"], presence["location_id"], final_message, usage_sink=usage_sink,
+    new_subspace_id, auto_concluded = multiplayer.storm_out(
+        provider, model, char, presence["location_id"], presence["subspace_id"], final_message, usage_sink=usage_sink,
     )
     _bill_ambient_usage(usage_sink, remaining_before)
 
-    return jsonify({"new_location_id": new_location_id, "thread_auto_concluded": auto_concluded})
+    return jsonify({"new_subspace_id": new_subspace_id, "thread_auto_concluded": auto_concluded})
 
 
 @app.route("/api/multiplayer/servers/<int:server_id>/rumors")
@@ -962,28 +969,28 @@ def api_multiplayer_rumors(server_id):
 
 @app.route("/api/multiplayer/characters/<int:character_id>/stream")
 def api_multiplayer_stream(character_id):
-    """Server-Sent Events - live updates for whichever location/server this character is currently
+    """Server-Sent Events - live updates for whichever subspace/server this character is currently
     in, per the explicit "see messages live" requirement (not polling). One queue per connection,
-    subscribed under both the location and server (see live.py) so a single generator only ever
+    subscribed under both the subspace and server (see live.py) so a single generator only ever
     drains one queue. A heartbeat comment line is sent whenever nothing real has happened for
     live.HEARTBEAT_TIMEOUT_SECONDS, so proxies/browsers don't treat a quiet connection as dead.
 
-    Known limitation, not solved here: if this character MOVES to a new location while a stream is
-    open, this connection keeps listening on the OLD location - the frontend is expected to close and
+    Known limitation, not solved here: if this character MOVES to a new subspace while a stream is
+    open, this connection keeps listening on the OLD subspace - the frontend is expected to close and
     reopen the stream after a successful move, not something this endpoint handles server-side."""
     user = current_user()
     char = db.get_character(character_id, user["id"])
     if char is None:
         return jsonify({"error": "Character not found."}), 404
-    presence = db.get_character_location(character_id)
+    presence = db.get_character_presence(character_id)
     if presence is None:
-        return jsonify({"error": "This character isn't in a room yet."}), 400
+        return jsonify({"error": "This character isn't in a location yet."}), 400
 
-    location_id = presence["location_id"]
+    subspace_id = presence["subspace_id"]
     server_id = presence["server_id"]
 
     def event_stream():
-        q = live.subscribe(location_id, server_id)
+        q = live.subscribe(subspace_id, server_id)
         try:
             while True:
                 try:
@@ -992,7 +999,7 @@ def api_multiplayer_stream(character_id):
                 except queue.Empty:
                     yield ": heartbeat\n\n"
         finally:
-            live.unsubscribe(location_id, server_id, q)
+            live.unsubscribe(subspace_id, server_id, q)
 
     return Response(event_stream(), mimetype="text/event-stream")
 
