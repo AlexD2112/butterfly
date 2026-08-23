@@ -532,6 +532,16 @@ def api_admin_create_server():
         name, setting_key, system_key, progression_speed, progression_rate_hours, user["id"],
         initial_date=initial_date,
     )
+    # Auto-seed one starting Location (which auto-seeds its own default Subspace - see
+    # db.create_location) so players have somewhere to land immediately - an admin no longer has to
+    # manually create one before the server is actually usable. Deliberately at this route level, not
+    # inside db.create_multiplayer_server itself: plenty of tests build servers as raw fixtures via
+    # the db function directly and manage their own locations explicitly - this is a product decision
+    # about the real admin-facing creation flow, not a schema invariant.
+    db.create_location(
+        server_id, "Starting Point",
+        "Where this world begins - rename it, or just let the story grow its own places from here.",
+    )
     return jsonify({"server_id": server_id})
 
 
@@ -579,6 +589,101 @@ def api_admin_create_subspace(location_id):
         return jsonify({"error": "name is required."}), 400
     subspace_id = db.create_subspace(location_id, name)
     return jsonify({"subspace_id": subspace_id})
+
+
+# ==================== admin: editing/cleaning up Locations and Subspaces ====================
+# The safety net for dynamic creation (see multiplayer.detect_new_space): a bad or duplicate
+# AI-generated space shouldn't require nuking the whole server to fix. Rename covers a bad name;
+# merge covers duplicates (two spaces that turned out to be the same place, described differently by
+# two different players/turns); delete covers a space that shouldn't exist at all. All three require
+# the target(s) to have no one currently present - see db.py's docstrings for exactly why.
+
+@app.route("/api/admin/locations/<int:location_id>", methods=["PATCH"])
+def api_admin_edit_location(location_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_location(location_id) is None:
+        return jsonify({"error": "Unknown location."}), 404
+    body = request.get_json(force=True)
+    name = body.get("name")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            return jsonify({"error": "name cannot be blank."}), 400
+    db.rename_location(location_id, name=name, description=body.get("description"))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/locations/<int:location_id>", methods=["DELETE"])
+def api_admin_delete_location(location_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_location(location_id) is None:
+        return jsonify({"error": "Unknown location."}), 404
+    try:
+        db.delete_location(location_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/locations/<int:location_id>/merge_into/<int:target_location_id>", methods=["POST"])
+def api_admin_merge_locations(location_id, target_location_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_location(location_id) is None or db.get_location(target_location_id) is None:
+        return jsonify({"error": "Unknown location."}), 404
+    try:
+        db.merge_locations(location_id, target_location_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/subspaces/<int:subspace_id>", methods=["PATCH"])
+def api_admin_edit_subspace(subspace_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_subspace(subspace_id) is None:
+        return jsonify({"error": "Unknown subspace."}), 404
+    body = request.get_json(force=True)
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required."}), 400
+    db.rename_subspace(subspace_id, name)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/subspaces/<int:subspace_id>", methods=["DELETE"])
+def api_admin_delete_subspace(subspace_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_subspace(subspace_id) is None:
+        return jsonify({"error": "Unknown subspace."}), 404
+    try:
+        db.delete_subspace(subspace_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/subspaces/<int:subspace_id>/merge_into/<int:target_subspace_id>", methods=["POST"])
+def api_admin_merge_subspaces(subspace_id, target_subspace_id):
+    user, err = _require_admin()
+    if err:
+        return err
+    if db.get_subspace(subspace_id) is None or db.get_subspace(target_subspace_id) is None:
+        return jsonify({"error": "Unknown subspace."}), 404
+    try:
+        db.merge_subspaces(subspace_id, target_subspace_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/npcs", methods=["POST"])
@@ -848,12 +953,14 @@ def api_multiplayer_send(character_id):
                     "narration": result["narration"],
                     "debug_events": result["debug_events"],
                     "combat_encounter_id": result["combat_encounter_id"],
-                    # Set when this action's resolution created a new subspace, or moved the
-                    # character into an already-existing one (matched by name) - see
-                    # multiplayer.detect_new_subspace. The frontend treats either case like any other
+                    # Set when this action's resolution created a new subspace or a whole new
+                    # location, or moved the character into an already-existing one (matched by name)
+                    # - see multiplayer.detect_new_space. The frontend treats every case like any other
                     # move: reload location/subspace detail and reopen its SSE stream there.
                     "new_subspace_id": result["new_subspace_id"],
+                    "new_location_id": result["new_location_id"],
                     "moved_to_subspace_id": result["moved_to_subspace_id"],
+                    "moved_to_location_id": result["moved_to_location_id"],
                 }
         except Exception as e:
             return jsonify({"error": f"{type(e).__name__}: {e}"}), 502

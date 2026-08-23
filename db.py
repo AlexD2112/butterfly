@@ -762,17 +762,236 @@ def get_default_subspace(location_id):
 
 
 def find_subspace_by_name(location_id, name):
-    """Case-insensitive exact-name lookup within one location - used by
-    multiplayer.detect_new_subspace to decide whether a proposed subspace name actually matches one
-    that already exists there, rather than creating a near-duplicate ("Cellar" vs "The Cellar") every
-    time someone independently arrives at the same place."""
+    """Case-insensitive exact-name lookup within one location - used by multiplayer.detect_new_space
+    to decide whether a proposed subspace name actually matches one that already exists there, rather
+    than creating a near-duplicate ("Cellar" vs "The Cellar") every time someone independently arrives
+    at the same place. ORDER BY id ASC makes the pick deterministic on the (rare, name-collision) case
+    where more than one row matches - see merge_locations, which relies on this returning the older
+    (pre-existing) row rather than whichever one a reparent just moved into place."""
     conn = get_db()
     row = conn.execute(
-        "SELECT * FROM subspaces WHERE location_id = ? AND LOWER(name) = LOWER(?) LIMIT 1",
+        "SELECT * FROM subspaces WHERE location_id = ? AND LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1",
         (location_id, name),
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def find_location_by_name(server_id, name):
+    """Case-insensitive exact-name lookup within one server - used by multiplayer.detect_new_space
+    to decide whether a proposed new Location actually matches one that already exists on this
+    server, mirroring find_subspace_by_name's role for subspaces."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM locations WHERE server_id = ? AND LOWER(name) = LOWER(?) LIMIT 1",
+        (server_id, name),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def rename_location(location_id, name=None, description=None):
+    """Admin edit - only touches fields actually passed (None means 'leave as-is', not 'clear it'),
+    so a name-only edit doesn't wipe the description."""
+    conn = get_db()
+    if name is not None:
+        conn.execute("UPDATE locations SET name = ? WHERE id = ?", (name, location_id))
+    if description is not None:
+        conn.execute("UPDATE locations SET description = ? WHERE id = ?", (description, location_id))
+    conn.commit()
+    conn.close()
+
+
+def rename_subspace(subspace_id, name):
+    conn = get_db()
+    conn.execute("UPDATE subspaces SET name = ? WHERE id = ?", (name, subspace_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_location(location_id):
+    """Removes a single location and its subspaces - the admin cleanup tool for a bad dynamically-
+    created Location, as opposed to delete_multiplayer_server's whole-server nuke. Refuses (raises
+    ValueError) if anyone is currently present in any of its subspaces - the location_occupancy FK
+    would raise anyway, this just returns a clean error first - or if it's the server's last
+    remaining location, since a server needs somewhere for players to be."""
+    conn = get_db()
+    location = conn.execute("SELECT * FROM locations WHERE id = ?", (location_id,)).fetchone()
+    if location is None:
+        conn.close()
+        raise ValueError("Unknown location.")
+    remaining = conn.execute(
+        "SELECT COUNT(*) c FROM locations WHERE server_id = ?", (location["server_id"],)
+    ).fetchone()["c"]
+    if remaining <= 1:
+        conn.close()
+        raise ValueError("Cannot delete a server's last remaining location.")
+    subspace_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM subspaces WHERE location_id = ?", (location_id,)
+    ).fetchall()]
+    if subspace_ids:
+        placeholders = ",".join("?" * len(subspace_ids))
+        occupied = conn.execute(
+            f"SELECT COUNT(*) c FROM location_occupancy WHERE subspace_id IN ({placeholders})", subspace_ids
+        ).fetchone()["c"]
+        if occupied:
+            conn.close()
+            raise ValueError("Cannot delete a location while characters are present - move or merge them first.")
+        conn.execute(f"DELETE FROM subspace_conclusions WHERE subspace_id IN ({placeholders})", subspace_ids)
+        conn.execute(
+            f"DELETE FROM combat_participants WHERE encounter_id IN "
+            f"(SELECT id FROM combat_encounters WHERE subspace_id IN ({placeholders}))", subspace_ids,
+        )
+        conn.execute(f"DELETE FROM combat_encounters WHERE subspace_id IN ({placeholders})", subspace_ids)
+        conn.execute(f"DELETE FROM npcs WHERE subspace_id IN ({placeholders})", subspace_ids)
+        conn.execute(f"DELETE FROM turns WHERE subspace_id IN ({placeholders})", subspace_ids)
+        conn.execute(f"DELETE FROM subspaces WHERE id IN ({placeholders})", subspace_ids)
+    conn.execute("DELETE FROM locations WHERE id = ?", (location_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_subspace(subspace_id):
+    """Removes a single subspace - the fine-grained sibling of delete_location, for when only one
+    bad dynamically-created subspace needs removing, not the whole location. Refuses if anyone is
+    present, or if it's the location's last remaining subspace (every location keeps at least one -
+    see create_location)."""
+    conn = get_db()
+    subspace = conn.execute("SELECT * FROM subspaces WHERE id = ?", (subspace_id,)).fetchone()
+    if subspace is None:
+        conn.close()
+        raise ValueError("Unknown subspace.")
+    remaining = conn.execute(
+        "SELECT COUNT(*) c FROM subspaces WHERE location_id = ?", (subspace["location_id"],)
+    ).fetchone()["c"]
+    if remaining <= 1:
+        conn.close()
+        raise ValueError("Cannot delete a location's last remaining subspace.")
+    occupied = conn.execute(
+        "SELECT COUNT(*) c FROM location_occupancy WHERE subspace_id = ?", (subspace_id,)
+    ).fetchone()["c"]
+    if occupied:
+        conn.close()
+        raise ValueError("Cannot delete a subspace while characters are present - move or merge them first.")
+    conn.execute("DELETE FROM subspace_conclusions WHERE subspace_id = ?", (subspace_id,))
+    conn.execute(
+        "DELETE FROM combat_participants WHERE encounter_id IN "
+        "(SELECT id FROM combat_encounters WHERE subspace_id = ?)", (subspace_id,),
+    )
+    conn.execute("DELETE FROM combat_encounters WHERE subspace_id = ?", (subspace_id,))
+    conn.execute("DELETE FROM npcs WHERE subspace_id = ?", (subspace_id,))
+    conn.execute("DELETE FROM turns WHERE subspace_id = ?", (subspace_id,))
+    conn.execute("DELETE FROM subspaces WHERE id = ?", (subspace_id,))
+    conn.commit()
+    conn.close()
+
+
+def merge_subspaces(source_subspace_id, target_subspace_id):
+    """Merges source into target - occupants, NPCs, and message history move to target; source is
+    deleted. Both must belong to the same location (merging across locations is what merge_locations
+    is for - it calls this internally for same-name subspace collisions). Blocked if either side has
+    an active combat encounter - reconciling two live fights isn't attempted. Conclusion marks on
+    both sides are cleared rather than reconciled, since a merge genuinely changes what "everyone
+    here" means - a fresh conclusion vote is simpler and safer than carrying partial marks across two
+    different scenes. Raises ValueError if blocked/invalid."""
+    if source_subspace_id == target_subspace_id:
+        raise ValueError("Cannot merge a subspace into itself.")
+    conn = get_db()
+    source = conn.execute("SELECT * FROM subspaces WHERE id = ?", (source_subspace_id,)).fetchone()
+    target = conn.execute("SELECT * FROM subspaces WHERE id = ?", (target_subspace_id,)).fetchone()
+    if source is None or target is None:
+        conn.close()
+        raise ValueError("Unknown subspace.")
+    if source["location_id"] != target["location_id"]:
+        conn.close()
+        raise ValueError("Subspaces must belong to the same location to merge.")
+    for sid in (source_subspace_id, target_subspace_id):
+        active = conn.execute(
+            "SELECT id FROM combat_encounters WHERE subspace_id = ? AND status = 'active'", (sid,)
+        ).fetchone()
+        if active:
+            conn.close()
+            raise ValueError("Cannot merge while either subspace has an active combat encounter.")
+    conn.execute(
+        "UPDATE location_occupancy SET subspace_id = ?, joined_subspace_at = ? WHERE subspace_id = ?",
+        (target_subspace_id, time.time(), source_subspace_id),
+    )
+    conn.execute("UPDATE npcs SET subspace_id = ? WHERE subspace_id = ?", (target_subspace_id, source_subspace_id))
+    conn.execute("UPDATE turns SET subspace_id = ? WHERE subspace_id = ?", (target_subspace_id, source_subspace_id))
+    conn.execute("DELETE FROM subspace_conclusions WHERE subspace_id IN (?, ?)", (source_subspace_id, target_subspace_id))
+    conn.execute("DELETE FROM subspaces WHERE id = ?", (source_subspace_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def _reparent_subspace(subspace_id, new_location_id):
+    """Moves a subspace (with everything tied to it) onto a different location - internal helper for
+    merge_locations' non-colliding case. Denormalized location_id copies on turns/npcs/
+    location_occupancy/combat_encounters all need updating alongside the subspace's own row, or
+    they'd silently keep pointing at the old location."""
+    conn = get_db()
+    conn.execute("UPDATE subspaces SET location_id = ? WHERE id = ?", (new_location_id, subspace_id))
+    conn.execute("UPDATE location_occupancy SET location_id = ? WHERE subspace_id = ?", (new_location_id, subspace_id))
+    conn.execute("UPDATE npcs SET location_id = ? WHERE subspace_id = ?", (new_location_id, subspace_id))
+    conn.execute("UPDATE turns SET location_id = ? WHERE subspace_id = ?", (new_location_id, subspace_id))
+    conn.execute("UPDATE combat_encounters SET location_id = ? WHERE subspace_id = ?", (new_location_id, subspace_id))
+    conn.commit()
+    conn.close()
+
+
+def merge_locations(source_location_id, target_location_id):
+    """Merges source into target - every subspace under source is reparented onto target, EXCEPT
+    where a same-named subspace already exists under target, in which case the two subspaces are
+    themselves merged (via merge_subspaces) rather than left as duplicates. Occupants/NPCs/message
+    history move with whichever subspace they belong to either way. Blocked if any subspace under
+    EITHER location has an active combat encounter. Source's row is deleted once its subspaces are
+    all reparented/merged away; target keeps its own name/description (use rename_location
+    separately to change it). Raises ValueError if blocked/invalid."""
+    if source_location_id == target_location_id:
+        raise ValueError("Cannot merge a location into itself.")
+    conn = get_db()
+    source = conn.execute("SELECT * FROM locations WHERE id = ?", (source_location_id,)).fetchone()
+    target = conn.execute("SELECT * FROM locations WHERE id = ?", (target_location_id,)).fetchone()
+    if source is None or target is None:
+        conn.close()
+        raise ValueError("Unknown location.")
+    if source["server_id"] != target["server_id"]:
+        conn.close()
+        raise ValueError("Locations must belong to the same server to merge.")
+    source_subspace_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM subspaces WHERE location_id = ?", (source_location_id,)
+    ).fetchall()]
+    all_subspace_ids = source_subspace_ids + [r["id"] for r in conn.execute(
+        "SELECT id FROM subspaces WHERE location_id = ?", (target_location_id,)
+    ).fetchall()]
+    if all_subspace_ids:
+        placeholders = ",".join("?" * len(all_subspace_ids))
+        active = conn.execute(
+            f"SELECT id FROM combat_encounters WHERE subspace_id IN ({placeholders}) AND status = 'active'",
+            all_subspace_ids,
+        ).fetchone()
+        if active:
+            conn.close()
+            raise ValueError("Cannot merge while either location has an active combat encounter.")
+    conn.close()  # merge_subspaces/_reparent_subspace below each manage their own connection
+
+    for subspace_id in source_subspace_ids:
+        subspace = get_subspace(subspace_id)
+        # Check for a name collision BEFORE reparenting - find_subspace_by_name is scoped to
+        # target_location_id, so it can only see a pre-existing subspace there, never this one
+        # (merge_subspaces itself requires both sides to already share a location, so reparenting
+        # first and merging second, not the other way round, is what actually satisfies that).
+        matched = find_subspace_by_name(target_location_id, subspace["name"])
+        _reparent_subspace(subspace_id, target_location_id)
+        if matched:
+            merge_subspaces(subspace_id, matched["id"])
+
+    conn = get_db()
+    conn.execute("DELETE FROM locations WHERE id = ?", (source_location_id,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def move_character(character_id, server_id, location_id, subspace_id):

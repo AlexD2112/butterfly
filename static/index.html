@@ -1447,9 +1447,15 @@ async function loadMpLocationList() {
       </div>
       <div class="mp-location-subspaces" id="mp-location-subspaces-${l.id}"></div>
       ${isAdmin ? `
-        <div style="margin-top:6px;display:flex;gap:6px;">
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
           <button type="button" class="mp-toggle-btn" data-add-sub="${l.id}">+ Subspace</button>
           <button type="button" class="mp-toggle-btn" data-add-npc="${l.id}">+ NPC</button>
+          <button type="button" class="mp-toggle-btn" data-rename-location="${l.id}">Rename</button>
+          <button type="button" class="mp-toggle-btn danger-btn" data-delete-location="${l.id}">Delete</button>
+          <select data-merge-location-select="${l.id}" style="font-size:11.5px;">
+            <option value="">Merge into…</option>
+            ${data.locations.filter(o => o.id !== l.id).map(o => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('')}
+          </select>
         </div>
         <div class="mp-form" id="mp-add-sub-form-${l.id}">
           <div class="field-row"><input type="text" placeholder="Subspace name" id="mp-sub-name-${l.id}"></div>
@@ -1484,6 +1490,54 @@ async function loadMpLocationList() {
   el.querySelectorAll('[data-submit-npc]').forEach(btn => {
     btn.addEventListener('click', () => submitAddNpc(parseInt(btn.dataset.submitNpc, 10)));
   });
+  el.querySelectorAll('[data-rename-location]').forEach(btn => {
+    btn.addEventListener('click', () => renameLocationPrompt(parseInt(btn.dataset.renameLocation, 10)));
+  });
+  el.querySelectorAll('[data-delete-location]').forEach(btn => {
+    btn.addEventListener('click', () => deleteLocationConfirm(parseInt(btn.dataset.deleteLocation, 10)));
+  });
+  el.querySelectorAll('[data-merge-location-select]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const sourceId = parseInt(sel.dataset.mergeLocationSelect, 10);
+      const targetId = sel.value ? parseInt(sel.value, 10) : null;
+      sel.value = '';
+      if (targetId) mergeLocationConfirm(sourceId, targetId);
+    });
+  });
+}
+
+async function renameLocationPrompt(locationId) {
+  const name = window.prompt('New name for this location:');
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const res = await fetch(`/api/admin/locations/${locationId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: trimmed }),
+  });
+  const data = await res.json();
+  if (data.error) { setStatus(data.error); return; }
+  await loadMpLocationList();
+}
+
+async function deleteLocationConfirm(locationId) {
+  const confirmed = window.confirm('Permanently delete this location and every subspace in it? Only works if nobody is currently there.');
+  if (!confirmed) return;
+  const res = await fetch(`/api/admin/locations/${locationId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.error) { setStatus(data.error); return; }
+  await loadMpLocationList();
+}
+
+async function mergeLocationConfirm(sourceId, targetId) {
+  const confirmed = window.confirm(
+    'Merge this location into the selected one? Its subspaces, occupants, NPCs, and message history move over, and the merged-away location is deleted. Only works if neither has active combat.'
+  );
+  if (!confirmed) return;
+  const res = await fetch(`/api/admin/locations/${sourceId}/merge_into/${targetId}`, { method: 'POST' });
+  const data = await res.json();
+  if (data.error) { setStatus(data.error); return; }
+  await loadMpLocationList();
 }
 
 async function loadMpLocationSubspacesInline(locationId) {
@@ -1491,9 +1545,73 @@ async function loadMpLocationSubspacesInline(locationId) {
   const data = await res.json();
   const el = document.getElementById(`mp-location-subspaces-${locationId}`);
   if (!el) return;
-  el.innerHTML = data.subspaces.map(s => `<div class="mp-loc-row"><span>${escapeHtml(s.name)}</span></div>`).join('');
+  const isAdmin = CURRENT_USER && CURRENT_USER.is_admin;
+  el.innerHTML = data.subspaces.map(s => `
+    <div class="mp-loc-row">
+      <span>${escapeHtml(s.name)}</span>
+      ${isAdmin ? `
+        <span style="display:flex;gap:4px;align-items:center;">
+          <button type="button" class="mp-toggle-btn" data-rename-sub="${s.id}" title="Rename">Rename</button>
+          <button type="button" class="mp-toggle-btn danger-btn" data-delete-sub="${s.id}" title="Delete">Delete</button>
+          <select data-merge-sub-select="${s.id}" style="font-size:11px;">
+            <option value="">Merge into…</option>
+            ${data.subspaces.filter(o => o.id !== s.id).map(o => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('')}
+          </select>
+        </span>
+      ` : ''}
+    </div>
+  `).join('');
   const npcSelect = document.getElementById(`mp-npc-sub-${locationId}`);
   if (npcSelect) npcSelect.innerHTML = data.subspaces.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+
+  el.querySelectorAll('[data-rename-sub]').forEach(btn => {
+    btn.addEventListener('click', () => renameSubspacePrompt(parseInt(btn.dataset.renameSub, 10), locationId));
+  });
+  el.querySelectorAll('[data-delete-sub]').forEach(btn => {
+    btn.addEventListener('click', () => deleteSubspaceConfirm(parseInt(btn.dataset.deleteSub, 10), locationId));
+  });
+  el.querySelectorAll('[data-merge-sub-select]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const sourceId = parseInt(sel.dataset.mergeSubSelect, 10);
+      const targetId = sel.value ? parseInt(sel.value, 10) : null;
+      sel.value = '';
+      if (targetId) mergeSubspaceConfirm(sourceId, targetId, locationId);
+    });
+  });
+}
+
+async function renameSubspacePrompt(subspaceId, locationId) {
+  const name = window.prompt('New name for this subspace:');
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const res = await fetch(`/api/admin/subspaces/${subspaceId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: trimmed }),
+  });
+  const data = await res.json();
+  if (data.error) { setStatus(data.error); return; }
+  await loadMpLocationSubspacesInline(locationId);
+}
+
+async function deleteSubspaceConfirm(subspaceId, locationId) {
+  const confirmed = window.confirm('Permanently delete this subspace? Only works if nobody is currently there and it is not the location\'s last remaining subspace.');
+  if (!confirmed) return;
+  const res = await fetch(`/api/admin/subspaces/${subspaceId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.error) { setStatus(data.error); return; }
+  await loadMpLocationSubspacesInline(locationId);
+}
+
+async function mergeSubspaceConfirm(sourceId, targetId, locationId) {
+  const confirmed = window.confirm(
+    'Merge this subspace into the selected one? Occupants, NPCs, and message history move over, and the merged-away subspace is deleted. Only works if neither has active combat.'
+  );
+  if (!confirmed) return;
+  const res = await fetch(`/api/admin/subspaces/${sourceId}/merge_into/${targetId}`, { method: 'POST' });
+  const data = await res.json();
+  if (data.error) { setStatus(data.error); return; }
+  await loadMpLocationSubspacesInline(locationId);
 }
 
 async function submitAddSubspace(locationId) {
@@ -1903,14 +2021,20 @@ async function sendMpMessage() {
       MP_REPLY_TO = null;
       updateMpReplyChip();
       renderBudget(data.budget);
-      // An action can spawn a new subspace or move the character into an existing one it matched by
-      // name (see multiplayer.detect_new_subspace) - either way, follow them there: reload
-      // location/subspace detail and reopen the SSE stream on the new subspace, per server.py's note
-      // on api_multiplayer_send.
+      // An action can spawn a new subspace or a whole new location, or move the character into an
+      // existing one matched by name (see multiplayer.detect_new_space) - either way, follow them
+      // there: reload location/subspace detail and reopen the SSE stream on the new subspace, per
+      // server.py's note on api_multiplayer_send. moved_to_location_id is only set when the LOCATION
+      // itself changed (not just the subspace within it) - falls back to the current location.
       const movedSubspaceId = data.new_subspace_id || data.moved_to_subspace_id;
-      if (movedSubspaceId && movedSubspaceId !== MP_SUBSPACE_ID) {
-        await enterMpSubspace(MP_LOCATION_ID, movedSubspaceId);
-        setStatus(data.new_subspace_id ? 'A new space opened up — you moved there.' : 'You moved to a nearby space.');
+      const movedLocationId = data.moved_to_location_id || MP_LOCATION_ID;
+      if (movedSubspaceId && (movedSubspaceId !== MP_SUBSPACE_ID || movedLocationId !== MP_LOCATION_ID)) {
+        await enterMpSubspace(movedLocationId, movedSubspaceId);
+        setStatus(
+          data.new_location_id ? 'A new place opened up — you moved there.' :
+          data.new_subspace_id ? 'A new space opened up — you moved there.' :
+          'You moved to a nearby space.'
+        );
       } else {
         await loadMpMessages();
         await refreshMpSubspaceDetail();

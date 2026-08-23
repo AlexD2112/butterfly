@@ -48,6 +48,12 @@ SETTING_REGISTRY = {
         "blurb": "Leon Trotsky, Chairman of the Petrograd Soviet. It's September 1917, and Kerensky's government is barely holding on.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Leon Trotsky",
+        "location_scale_hint": (
+            "This entire campaign takes place within one city (Petrograd). A Location should be "
+            "building/institution-scale - a specific building, factory floor, barracks, or street "
+            "(e.g. 'The Smolny Institute', 'The Putilov Works', 'Nevsky Prospekt') - not a whole city "
+            "district, and never the city itself."
+        ),
     },
     "britannia_876": {
         "system": "monarch",
@@ -55,6 +61,12 @@ SETTING_REGISTRY = {
         "blurb": "Alfred, King of the West Saxons. Guthrum's Vikings have a camp in the west and aren't going anywhere.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Alfred, King of the West Saxons",
+        "location_scale_hint": (
+            "This campaign follows a king moving across a kingdom under threat. A Location should be "
+            "settlement/stronghold-scale - a royal hall, a fortified burh, a marsh hideout, an enemy "
+            "camp (e.g. 'Athelney', 'Chippenham', 'The Viking Camp at Wareham') - broader than a "
+            "single room, narrower than the whole of Wessex."
+        ),
     },
     "rome_59_bce": {
         "system": "apollo",
@@ -62,6 +74,12 @@ SETTING_REGISTRY = {
         "blurb": "Julius Caesar, at the height of his power as Consul, with Pompey and Crassus watching his every move.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Julius Caesar",
+        "location_scale_hint": (
+            "This campaign's politics play out within one city (Rome) during Caesar's consulship. A "
+            "Location should be building/district-scale - a specific place within the city (e.g. "
+            "'The Forum', 'The Senate House', 'Caesar's Domus', 'The Campus Martius') - not the city "
+            "itself, and not a province."
+        ),
     },
     "crusades_1097": {
         "system": "monarch",
@@ -69,6 +87,13 @@ SETTING_REGISTRY = {
         "blurb": "Bohemond of Taranto, marching on Antioch, having sworn an oath he's already thinking about breaking.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Bohemond of Taranto",
+        "location_scale_hint": (
+            "This campaign follows an army marching across a huge region (Anatolia and the Levant). "
+            "A Location should be city/region-scale - a besieged city, a march through a named "
+            "territory, a major camp (e.g. 'Nicaea', 'The March Through Anatolia', 'The Siege Camp at "
+            "Antioch') - individual tents or rooms belong at the Subspace level, not the Location "
+            "level."
+        ),
     },
 }
 DEFAULT_SETTING_KEY = "petrograd_1917"

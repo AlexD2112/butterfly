@@ -41,10 +41,10 @@ class ActionFakeProvider:
     """A fake shaped for engine.run_turn's tool-calling loop (a plain narration reply, no tool
     calls, so the loop exits after one call) plus a "no combat" answer for the combat-start
     classifier that always runs afterward - exercises the real action-resolution route end to end
-    without a live API. Also stands in for the dynamic-subspace judge call (force_tool_name=
-    "decide_subspace") since providers.get_provider is patched to return this same fake for every
+    without a live API. Also stands in for the dynamic-space judge call (force_tool_name=
+    "decide_space") since providers.get_provider is patched to return this same fake for every
     model_key in these tests - falls through to the plain-narration branch, which has no tool_calls,
-    so detect_new_subspace safely decides "no new subspace" rather than crashing or hitting a real API."""
+    so detect_new_space safely decides "no change" rather than crashing or hitting a real API."""
 
     def new_conversation(self):
         return []
@@ -111,7 +111,7 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self.assertEqual(subspace_res.status_code, 200)
 
         locations = self.client.get(f"/api/multiplayer/servers/{server_id}/locations").get_json()["locations"]
-        self.assertEqual(len(locations), 1)
+        self.assertEqual(len(locations), 2)  # auto-seeded "Starting Point" + "The Smolny Institute"
         subspaces = self.client.get(f"/api/multiplayer/locations/{location_id}/subspaces").get_json()["subspaces"]
         self.assertEqual(len(subspaces), 2)  # default "Main" + "The Corridor"
 
@@ -315,6 +315,100 @@ class TestMultiplayerRoutes(unittest.TestCase):
         self._login_as_discord_user("2", "PlayerA")
         res = self.client.get(f"/api/multiplayer/characters/{character_id}/peek/{other_location_subspace_id}")
         self.assertEqual(res.status_code, 400)
+
+
+class TestAdminLocationSubspaceCleanup(unittest.TestCase):
+    """Route-level: admin gating, and that rename/delete/merge actually reach db.py's logic - the
+    logic itself (occupancy guards, reparenting, name-collision folding) is covered in
+    test_locations_and_subspaces.py; this just confirms the routes are wired up and gated correctly."""
+
+    def setUp(self):
+        self._tmpdir = TemporaryDirectory()
+        self._orig_db_file = db.DB_FILE
+        db.DB_FILE = Path(self._tmpdir.name) / "test_butterfly.db"
+        db.init_db()
+        server.app.config["TESTING"] = True
+        self.client = server.app.test_client()
+
+    def tearDown(self):
+        db.DB_FILE = self._orig_db_file
+        self._tmpdir.cleanup()
+
+    def _login_as_discord_user(self, discord_id, username, is_admin=False):
+        user = db.get_or_create_discord_user(discord_id, username, None)
+        if is_admin:
+            db.set_is_admin(user["id"], True)
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = user["id"]
+        return user
+
+    def _make_server_with_two_locations(self):
+        self._login_as_discord_user("1", "Admin", is_admin=True)
+        server_id = self.client.post(
+            "/api/admin/multiplayer_servers", json={"name": "Test", "setting_key": "petrograd_1917"},
+        ).get_json()["server_id"]
+        # Server auto-seeds "Starting Point" - grab it, plus create a second one.
+        location_a = self.client.get(f"/api/multiplayer/servers/{server_id}/locations").get_json()["locations"][0]["id"]
+        location_b = self.client.post(
+            f"/api/admin/multiplayer_servers/{server_id}/locations", json={"name": "Location B"},
+        ).get_json()["location_id"]
+        return server_id, location_a, location_b
+
+    def test_non_admin_cannot_rename_delete_or_merge_a_location(self):
+        server_id, location_a, location_b = self._make_server_with_two_locations()
+        self._login_as_discord_user("2", "Regular", is_admin=False)
+        self.assertEqual(self.client.patch(f"/api/admin/locations/{location_a}", json={"name": "X"}).status_code, 403)
+        self.assertEqual(self.client.delete(f"/api/admin/locations/{location_a}").status_code, 403)
+        self.assertEqual(self.client.post(f"/api/admin/locations/{location_a}/merge_into/{location_b}").status_code, 403)
+
+    def test_admin_can_rename_a_location(self):
+        server_id, location_a, location_b = self._make_server_with_two_locations()
+        res = self.client.patch(f"/api/admin/locations/{location_a}", json={"name": "Renamed"})
+        self.assertEqual(res.status_code, 200)
+        locations = self.client.get(f"/api/multiplayer/servers/{server_id}/locations").get_json()["locations"]
+        self.assertTrue(any(l["name"] == "Renamed" for l in locations))
+
+    def test_admin_can_delete_an_empty_non_last_location(self):
+        server_id, location_a, location_b = self._make_server_with_two_locations()
+        res = self.client.delete(f"/api/admin/locations/{location_b}")
+        self.assertEqual(res.status_code, 200)
+        locations = self.client.get(f"/api/multiplayer/servers/{server_id}/locations").get_json()["locations"]
+        self.assertEqual(len(locations), 1)
+
+    def test_deleting_the_last_location_is_rejected_with_a_clean_error(self):
+        server_id, location_a, location_b = self._make_server_with_two_locations()
+        self.client.delete(f"/api/admin/locations/{location_b}")  # down to one
+        res = self.client.delete(f"/api/admin/locations/{location_a}")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("error", res.get_json())
+
+    def test_admin_can_merge_two_locations(self):
+        server_id, location_a, location_b = self._make_server_with_two_locations()
+        res = self.client.post(f"/api/admin/locations/{location_a}/merge_into/{location_b}")
+        self.assertEqual(res.status_code, 200)
+        locations = self.client.get(f"/api/multiplayer/servers/{server_id}/locations").get_json()["locations"]
+        self.assertEqual(len(locations), 1)
+        self.assertEqual(locations[0]["id"], location_b)
+
+    def test_admin_can_rename_delete_and_merge_subspaces(self):
+        server_id, location_a, location_b = self._make_server_with_two_locations()
+        sub_main = self.client.get(f"/api/multiplayer/locations/{location_a}/subspaces").get_json()["subspaces"][0]["id"]
+        sub_extra = self.client.post(
+            f"/api/admin/locations/{location_a}/subspaces", json={"name": "Extra"},
+        ).get_json()["subspace_id"]
+
+        self.assertEqual(self.client.patch(f"/api/admin/subspaces/{sub_extra}", json={"name": "Renamed Sub"}).status_code, 200)
+        subs = self.client.get(f"/api/multiplayer/locations/{location_a}/subspaces").get_json()["subspaces"]
+        self.assertTrue(any(s["name"] == "Renamed Sub" for s in subs))
+
+        merge_res = self.client.post(f"/api/admin/subspaces/{sub_extra}/merge_into/{sub_main}")
+        self.assertEqual(merge_res.status_code, 200)
+        subs = self.client.get(f"/api/multiplayer/locations/{location_a}/subspaces").get_json()["subspaces"]
+        self.assertEqual(len(subs), 1)
+
+        # Now try to delete the last remaining subspace - should be rejected.
+        del_res = self.client.delete(f"/api/admin/subspaces/{sub_main}")
+        self.assertEqual(del_res.status_code, 400)
 
 
 if __name__ == "__main__":

@@ -120,6 +120,190 @@ class ScriptedActionProvider:
         conversation.append(("tool_results", results))
 
 
+class ScriptedSpaceProvider:
+    """Like ScriptedActionProvider (never starts combat, plain narration), but ALSO scripts a real
+    answer to decide_space - used to actually exercise multiplayer.detect_new_space's decision-
+    application branches in resolve_action, rather than just its graceful-skip-when-unconfigured path
+    (which is all TestResolveAction above covers)."""
+
+    def __init__(self, narration="You move on.", space_kind="no_change", space_name=None, target_subspace_name=None):
+        self.narration = narration
+        self.space_kind = space_kind
+        self.space_name = space_name
+        self.target_subspace_name = target_subspace_name
+        self.calls = []
+
+    def new_conversation(self):
+        return []
+
+    def append_user_message(self, conversation, text):
+        conversation.append(("user", text))
+
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+        self.calls.append(force_tool_name or "plain")
+        if force_tool_name == "decide_combat":
+            return providers.TurnResult(
+                text_parts=[], tool_calls=[{"id": "c1", "name": "decide_combat",
+                                             "input": {"started": False, "participants": [], "reasoning": "scripted"}}],
+                usage=_usage(),
+            )
+        if force_tool_name == "decide_space":
+            return providers.TurnResult(
+                text_parts=[], tool_calls=[{"id": "s1", "name": "decide_space", "input": {
+                    "kind": self.space_kind, "name": self.space_name,
+                    "target_subspace_name": self.target_subspace_name, "reasoning": "scripted",
+                }}],
+                usage=_usage(),
+            )
+        return providers.TurnResult(text_parts=[self.narration], tool_calls=[], usage=_usage())
+
+    def append_assistant_turn(self, conversation, turn_result):
+        conversation.append(("assistant", turn_result))
+
+    def append_tool_results(self, conversation, turn_result, results):
+        conversation.append(("tool_results", results))
+
+
+class TestDynamicSpaceCreation(unittest.TestCase):
+    """resolve_action's application of multiplayer.detect_new_space's decision - the actual DB
+    mutations (create/move), not just the classifier prompt/parsing (that's exercised for real against
+    a live model separately, see NOTES.md's launch-readiness entry). providers.get_provider is patched
+    to hand back a ScriptedSpaceProvider instead of the usual ProviderError-skip, so these tests
+    actually reach the decision-application branches."""
+
+    def setUp(self):
+        self._tmpdir = TemporaryDirectory()
+        self._orig_db_file = db.DB_FILE
+        db.DB_FILE = Path(self._tmpdir.name) / "test_butterfly.db"
+        db.init_db()
+        admin = db.get_or_create_discord_user("1", "Admin", None)
+        self.server_id = db.create_multiplayer_server("Test Server", "petrograd_1917", "red_admiral", "day", 24.0, admin["id"])
+        self.game = db.get_game_for_server(self.server_id)
+        self.location_id = db.create_location(self.server_id, "Location A")
+        self.subspace_id = db.get_default_subspace(self.location_id)["id"]
+
+    def tearDown(self):
+        db.DB_FILE = self._orig_db_file
+        self._tmpdir.cleanup()
+
+    def _make_character(self, discord_id, name):
+        state = engine.load_premade_character_state("petrograd_1917")
+        state.pop("_is_new", None)
+        user = db.get_or_create_discord_user(discord_id, name, None)
+        char_id = db.create_character(user["id"], "petrograd_1917", "red_admiral", name, state, game_id=self.game["id"])
+        db.move_character(char_id, self.server_id, self.location_id, self.subspace_id)
+        return char_id
+
+    def _char_row(self, char_id):
+        conn = db.get_db()
+        user_id = conn.execute("SELECT user_id FROM characters WHERE id = ?", (char_id,)).fetchone()["user_id"]
+        conn.close()
+        return db.get_character(char_id, user_id)
+
+    def _resolve(self, char_id, space_kind, space_name=None, target_subspace_name=None, content="I do something."):
+        fake = ScriptedSpaceProvider(space_kind=space_kind, space_name=space_name, target_subspace_name=target_subspace_name)
+        with patch.object(providers, "get_provider", return_value=(fake, "gpt-5.6-luna")):
+            return multiplayer.resolve_action(
+                fake, "gpt-5.6-luna", "luna", self._char_row(char_id), self.location_id, self.subspace_id,
+                content, fake.new_conversation(),
+            )
+
+    def test_no_change_leaves_the_character_exactly_where_they_were(self):
+        char_id = self._make_character("2", "Solo")
+        result = self._resolve(char_id, "no_change")
+        self.assertIsNone(result["new_subspace_id"])
+        self.assertIsNone(result["new_location_id"])
+        self.assertIsNone(result["moved_to_subspace_id"])
+        self.assertIsNone(result["moved_to_location_id"])
+        self.assertEqual(db.get_character_presence(char_id)["subspace_id"], self.subspace_id)
+
+    def test_new_subspace_creates_it_under_the_current_location_and_moves_the_character(self):
+        char_id = self._make_character("2", "Solo")
+        result = self._resolve(char_id, "new_subspace", "The Cellar")
+        self.assertIsNotNone(result["new_subspace_id"])
+        self.assertIsNone(result["new_location_id"])
+        self.assertIsNone(result["moved_to_location_id"])  # same location, only the subspace changed
+        new_subspace = db.get_subspace(result["new_subspace_id"])
+        self.assertEqual(new_subspace["location_id"], self.location_id)
+        self.assertEqual(new_subspace["name"], "The Cellar")
+        self.assertEqual(new_subspace["origin"], "dynamic")
+        self.assertEqual(new_subspace["created_by_character_id"], char_id)
+        self.assertEqual(db.get_character_presence(char_id)["subspace_id"], result["new_subspace_id"])
+
+    def test_matched_subspace_moves_into_the_existing_one_without_creating_a_duplicate(self):
+        existing_id = db.create_subspace(self.location_id, "The Cellar")
+        char_id = self._make_character("2", "Solo")
+        result = self._resolve(char_id, "matched_subspace", "The Cellar")
+        self.assertIsNone(result["new_subspace_id"])
+        self.assertEqual(result["moved_to_subspace_id"], existing_id)
+        self.assertEqual(len(db.list_subspaces(self.location_id)), 2)  # Main + The Cellar, no 3rd
+
+    def test_new_location_creates_it_with_a_default_subspace_and_moves_the_character(self):
+        char_id = self._make_character("2", "Solo")
+        result = self._resolve(char_id, "new_location", "The Putilov Works")
+        self.assertIsNotNone(result["new_location_id"])
+        self.assertEqual(result["moved_to_location_id"], result["new_location_id"])
+        new_location = db.get_location(result["new_location_id"])
+        self.assertEqual(new_location["name"], "The Putilov Works")
+        self.assertEqual(new_location["server_id"], self.server_id)
+        presence = db.get_character_presence(char_id)
+        self.assertEqual(presence["location_id"], result["new_location_id"])
+        self.assertEqual(presence["subspace_id"], db.get_default_subspace(result["new_location_id"])["id"])
+
+    def test_matched_location_moves_into_the_existing_locations_default_subspace(self):
+        other_location_id = db.create_location(self.server_id, "The Putilov Works")
+        char_id = self._make_character("2", "Solo")
+        result = self._resolve(char_id, "matched_location", "The Putilov Works")
+        self.assertIsNone(result["new_location_id"])
+        self.assertEqual(result["moved_to_location_id"], other_location_id)
+        self.assertEqual(result["moved_to_subspace_id"], db.get_default_subspace(other_location_id)["id"])
+        self.assertEqual(db.get_character_presence(char_id)["location_id"], other_location_id)
+
+    def test_matched_location_with_a_target_subspace_lands_in_that_existing_subspace_not_the_default(self):
+        # Regression test for a real miscalibration found via live-model testing 2026-08-23 (see
+        # NOTES.md): "I head back to the telegraph room" after having left for a different Location
+        # created a DUPLICATE "Telegraph Room" under the wrong Location instead of routing back to the
+        # original one, because the classifier previously had no visibility into other Locations'
+        # subspaces. target_subspace_name is the fix - the classifier can name a specific existing
+        # subspace under the matched Location, and the app must land there, not that Location's
+        # generic default.
+        other_location_id = db.create_location(self.server_id, "The Smolny Institute")
+        telegraph_room_id = db.create_subspace(other_location_id, "Telegraph Room")
+        char_id = self._make_character("2", "Solo")
+        result = self._resolve(
+            char_id, "matched_location", "The Smolny Institute", target_subspace_name="Telegraph Room",
+        )
+        self.assertEqual(result["moved_to_location_id"], other_location_id)
+        self.assertEqual(result["moved_to_subspace_id"], telegraph_room_id)  # the EXISTING one, not a new duplicate
+        self.assertEqual(len(db.list_subspaces(other_location_id)), 2)  # Main + Telegraph Room, no 3rd
+
+    def test_new_location_with_a_target_subspace_creates_that_subspace_there_not_just_the_default(self):
+        char_id = self._make_character("2", "Solo")
+        result = self._resolve(
+            char_id, "new_location", "The Putilov Works", target_subspace_name="Shop Floor",
+        )
+        landing = db.get_subspace(result["moved_to_subspace_id"])
+        self.assertEqual(landing["name"], "Shop Floor")
+        self.assertEqual(landing["location_id"], result["new_location_id"])
+        self.assertEqual(len(db.list_subspaces(result["new_location_id"])), 2)  # Main + Shop Floor
+
+    def test_dynamic_space_creation_is_skipped_entirely_during_active_combat(self):
+        attacker_id = self._make_character("2", "Attacker")
+        defender_id = self._make_character("3", "Defender")
+        db.create_combat_encounter(
+            self.location_id, self.subspace_id,
+            [{"character_id": attacker_id, "initiative_roll": 18}, {"character_id": defender_id, "initiative_roll": 5}],
+        )
+        current_actor_id = db.get_current_combat_actor(db.get_active_combat_encounter(self.subspace_id)["id"])["character_id"]
+        fake = ScriptedSpaceProvider(space_kind="new_subspace", space_name="Somewhere New")
+        with patch.object(providers, "get_provider", return_value=(fake, "gpt-5.6-luna")):
+            multiplayer.resolve_action(
+                fake, "gpt-5.6-luna", "luna", self._char_row(current_actor_id), self.location_id, self.subspace_id,
+                "I press the attack.", fake.new_conversation(),
+            )
+        self.assertNotIn("decide_space", fake.calls)  # never even asked - a fight isn't when the world grows
+
+
 class TestResolveAction(unittest.TestCase):
     def setUp(self):
         self._tmpdir = TemporaryDirectory()

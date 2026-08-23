@@ -21,7 +21,8 @@ Multiplayer orchestration: two mostly-independent pieces sharing this module.
    the app - system._shared.core.attribute_modifier + a d20, never trusted to the model); while an
    encounter is active, an action from a listed participant is rejected outright if it isn't their
    turn - "no free-for-all resolution," enforced in code, not by asking nicely. A resolved action is
-   also where detect_new_subspace (2026-08-22, see below) checks for organic world growth.
+   also where detect_new_space (2026-08-22, widened 2026-08-23, see below) checks for organic world
+   growth.
 
 3. Subspace conclusion - mark_concluded()/storm_out(). "Thread" is scoped per-SUBSPACE, not per-
    location (subspaces are the actual sub-conversation unit built for message visibility - see
@@ -46,17 +47,25 @@ Multiplayer orchestration: two mostly-independent pieces sharing this module.
    an open SSE connection (server.py's stream route) sees it appear without polling. See live.py's
    own docstring for the pub/sub mechanics and its known limitations.
 
-6. Dynamic subspace creation (2026-08-22) - detect_new_subspace() runs after a resolved ACTION (never
-   a message - those are dialogue, not movement) and decides whether the narration describes arriving
-   somewhere genuinely new and distinct within the character's current LOCATION. Deliberately scoped
-   to a cheap prompt (the player's action text + the resulting narration + the names of subspaces
-   already there, NOT the full game/location context) and instructed to be conservative - biased
-   toward "no" unless the signal is unambiguous, so a passing glance or a minor beat in the same space
-   doesn't spawn a new subspace. Only ever creates a SUBSPACE nested under the character's current
-   LOCATION, never a whole new top-level Location - that stays admin-only, keeping the overall map
-   shape under admin control while the texture inside each location can grow through play. A
-   dynamically-created subspace is immediately visible/movable-to for everyone at that location, same
-   as an admin-created one - no separate discovery mechanic (see NOTES.md for that decision).
+6. Dynamic space creation (2026-08-22, widened 2026-08-23) - detect_new_space() runs after a resolved
+   ACTION (never a message - those are dialogue, not movement) and decides whether the narration
+   describes arriving somewhere genuinely new: a new SUBSPACE within the character's current LOCATION,
+   or a whole new LOCATION entirely (originally Subspace-only; Location-level creation and admin-
+   controlled granularity both landed 2026-08-23 - see NOTES.md). Deliberately scoped to a cheap
+   prompt (the player's action text + the resulting narration + the setting's own scale guidance +
+   the names of Locations/Subspaces that already exist, NOT the full game/occupant context) and
+   instructed to be conservative - biased toward "no" unless the signal is unambiguous, so a passing
+   glance or a minor beat in the same space doesn't spawn anything. What counts as "a new Location" vs
+   "just a new Subspace in the same place" is setting-relative, not a fixed universal threshold - each
+   setting in engine.SETTING_REGISTRY carries its own location_scale_hint (building-scale for a
+   single-city setting like Petrograd, city/region-scale for a marching-army setting like the
+   Crusades) which gets folded directly into the classifier prompt. A new Location auto-seeds its own
+   default Subspace (see db.create_location) and a dynamically-created space of either kind is
+   immediately visible/movable-to for everyone who can see it, same as an admin-created one - no
+   separate discovery mechanic (see NOTES.md). Admins can rename, delete, or merge Locations/Subspaces
+   after the fact (db.merge_locations/merge_subspaces/delete_location/delete_subspace/rename_location/
+   rename_subspace) as the cleanup mechanism for a bad or duplicate dynamic generation - this is what
+   makes admin-free organic growth viable instead of a one-way ratchet toward junk.
 
 Mechanics (dice, checks, state changes) still only ever happen inside engine.run_turn's existing
 tool loop - this module never calls systems/_shared/core.py's check/state functions directly, only
@@ -415,30 +424,53 @@ def _start_combat(location_id, subspace_id, acting_character_row, other_particip
     return db.create_combat_encounter(location_id, subspace_id, rolled, start_turn_index=start_turn_index)
 
 
-def detect_new_subspace(provider, model, action_content, narration, existing_subspace_names, usage_sink=None):
-    """After a resolved action, decide whether the character has arrived somewhere genuinely new and
-    distinct within their current location - and if a new place, propose a short name for it, or if
-    it matches one of the already-existing subspaces there, say which one instead of inventing a
-    near-duplicate. Deliberately a NARROW prompt (just the player's action text + the resulting
-    narration + the existing subspace names at this location, not the full game/location/occupant
-    context) - kept cheap since this runs on every action, not gated behind a free pre-filter.
+def detect_new_space(provider, model, action_content, narration, setting_label, location_scale_hint,
+                      all_locations_with_subspaces, current_location_name, usage_sink=None):
+    """After a resolved action, decide whether the character has arrived somewhere genuinely new -
+    either a new Subspace within their current Location, or a whole new Location entirely (2026-08-23
+    - widened from the original subspace-only version, same call, same cost: still one cheap classifier
+    check per action, not two). Deliberately a NARROW prompt (action text + narration + the setting's
+    own scale guidance + a name-only map of what already exists, not the full game/occupant context) -
+    kept cheap since this runs on every free action.
 
-    Deliberately conservative: only proposes a new subspace when the narration clearly, unambiguously
-    describes the character now being in a distinct, separate sub-area - not just looking somewhere,
+    all_locations_with_subspaces: {location_name: [subspace_name, ...]} for EVERY location on the
+    server, not just the current one (2026-08-23 fix - see NOTES.md's launch-readiness entry: the
+    original current-location-only visibility meant "I head back to the telegraph room" after leaving
+    for a different Location couldn't recognize the telegraph room it already knew about elsewhere,
+    and created a duplicate under the wrong Location instead of routing back to the right one).
+    current_location_name identifies which entry is "home" for the new_subspace/matched_subspace
+    decisions (those are always scoped to the character's CURRENT Location specifically).
+
+    Deliberately conservative throughout: only proposes a new space when the narration clearly,
+    unambiguously describes the character now being somewhere distinct - not just looking somewhere,
     mentioning a place in passing, or a minor beat in the same space. When in doubt, this should say
-    no - a missed subspace is a much smaller problem than the world fragmenting into junk locations
-    from every minor narrative beat.
+    no - a missed space is a much smaller problem than the world fragmenting into junk locations from
+    every minor narrative beat. The Location/Subspace distinction itself is setting-relative
+    (location_scale_hint tells the model what "a new Location" actually means for THIS setting - a
+    building in Petrograd, a city in the Crusades campaign - so the same classifier logic gives
+    sensibly different granularity per setting rather than one fixed universal threshold).
 
-    Returns {"new_subspace_name": str} if a genuinely new subspace should be created, or
-    {"matched_existing_name": str} if it matches one already listed, or None if neither (nothing
-    warrants a subspace at all). Fails safe to None on a missing/malformed response."""
+    Returns one of: None (nothing warrants a new space), {"new_subspace_name": str},
+    {"matched_subspace_name": str}, {"new_location_name": str, "target_subspace_name": str|None}, or
+    {"matched_location_name": str, "target_subspace_name": str|None}. target_subspace_name (only ever
+    set alongside a *_location result) names a specific subspace within that OTHER location - existing
+    (reuse it) or new (create it there) - rather than always landing on that location's plain default.
+    Fails safe to None on a missing/malformed response."""
+    location_lines = []
+    for loc_name, subspace_names in all_locations_with_subspaces.items():
+        marker = " (character's CURRENT location)" if loc_name == current_location_name else ""
+        location_lines.append(f"- {loc_name}{marker} - subspaces: {', '.join(subspace_names) if subspace_names else '(none yet)'}")
+
     system_prompt = f"""A player's action was just resolved in a multiplayer scene. Decide whether it
-describes the character arriving somewhere genuinely new and distinct within their current location -
-a separate sub-area worth tracking on its own, not just a different way of describing where they
-already were.
+describes the character arriving somewhere genuinely new - either a new sub-area within their current
+Location, or an entirely new Location (which may be one they've visited before) - or nowhere new at all.
 
-# SUBSPACES THAT ALREADY EXIST HERE
-{", ".join(existing_subspace_names) if existing_subspace_names else "(none yet)"}
+# SETTING
+{setting_label}
+{location_scale_hint}
+
+# EVERY LOCATION THAT ALREADY EXISTS ON THIS SERVER, AND ITS SUBSPACES
+{chr(10).join(location_lines) if location_lines else "(none yet)"}
 
 # THE PLAYER'S ACTION
 {action_content}
@@ -446,55 +478,78 @@ already were.
 # WHAT ACTUALLY HAPPENED
 {narration}
 
-Be conservative. Only decide a new subspace is warranted if the narration clearly and unambiguously
-describes the character now being in a distinct, separate sub-area - climbing down into a cellar,
-stepping through a door into another room, moving to a genuinely separate part of the scene. A
-glance, a mention in passing, or continuing to act in the same space is NOT a new subspace. If it's
-unclear either way, decide no new subspace.
+Decide exactly one of:
+- no_change: nothing here warrants tracking a new space at all - a glance, a mention in passing, or
+  continuing to act in the same space.
+- new_subspace: the character is now in a distinct, separate sub-area WITHIN their CURRENT Location -
+  climbing down into a cellar, stepping through a door into another room, moving to a genuinely
+  separate part of the same broader place. Use the setting's own scale guidance above to judge what
+  counts as "the same Location." Never used if the destination actually matches a subspace already
+  listed under a DIFFERENT Location below - that's matched_location instead (see its target_subspace).
+- matched_subspace: same as new_subspace, but it actually matches one of the CURRENT Location's own
+  subspaces listed above (e.g. someone else already found "The Cellar" and this is the same place) -
+  reuse that name, don't invent a near-duplicate.
+- new_location: the character has left their current Location entirely for a genuinely different,
+  never-before-seen place, at the granularity described in the setting's scale guidance above - not a
+  different room in the same building, but a different building/city/region as appropriate for this
+  setting. You may optionally also name a specific subspace within it (target_subspace_name) if the
+  narration is specific enough - otherwise leave target_subspace_name empty and the app will use that
+  new Location's default space.
+- matched_location: same as new_location, but the DESTINATION LOCATION matches one already listed
+  above (reuse its exact name) - including when the action describes RETURNING somewhere the character
+  has been before. If the narration also names a specific room/spot, check whether that name already
+  appears in that Location's own subspace list above and set target_subspace_name to the EXACT
+  matching name if so (don't invent a near-duplicate of a place that already exists there); if it's a
+  genuinely new spot within that other Location, you may still set target_subspace_name to a new name
+  for it. Leave target_subspace_name empty if the narration doesn't single out a specific spot.
 
-If it does warrant one, also check whether it actually matches one of the subspaces already listed
-above (e.g. someone else already found "The Cellar" and this is the same place) rather than a truly
-new one - reuse the existing name in that case instead of inventing a near-duplicate.
-
-Submit via decide_subspace."""
+Be conservative throughout. If it's unclear, decide no_change. Submit via decide_space."""
     tool_specs = [
         {
-            "name": "decide_subspace",
-            "description": "Decide whether this action warrants a new or existing subspace.",
+            "name": "decide_space",
+            "description": "Decide whether this action warrants a new or existing Location/Subspace.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "warrants_subspace": {"type": "boolean"},
-                    "matches_existing": {
-                        "type": "boolean",
-                        "description": "True if this matches one of the existing subspaces listed above.",
+                    "kind": {
+                        "type": "string",
+                        "enum": ["no_change", "new_subspace", "matched_subspace", "new_location", "matched_location"],
                     },
                     "name": {
                         "type": "string",
-                        "description": "A short name for the new subspace, or the exact existing name it matches.",
+                        "description": "For new_subspace/new_location: a short name for the new space. For matched_subspace/matched_location: the exact existing name it matches.",
+                    },
+                    "target_subspace_name": {
+                        "type": ["string", "null"],
+                        "description": "Only for new_location/matched_location: optionally, a specific subspace within that OTHER location to land in - an existing name from its list to reuse, or a new name to create there. Omit/null to just use that location's default space.",
                     },
                     "reasoning": {"type": "string"},
                 },
-                "required": ["warrants_subspace", "reasoning"],
+                "required": ["kind", "reasoning"],
             },
         }
     ]
     conversation = provider.new_conversation()
     provider.append_user_message(conversation, "Decide now.")
-    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_subspace")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_space")
     if usage_sink is not None and result.usage is not None:
         usage_sink.append(result.usage)
     if not result.tool_calls:
         return None
     decision = result.tool_calls[0]["input"]
-    if not decision.get("warrants_subspace"):
+    kind = decision.get("kind")
+    if kind is None or kind == "no_change":
         return None
     name = (decision.get("name") or "").strip()
     if not name:
         return None
-    if decision.get("matches_existing"):
-        return {"matched_existing_name": name}
-    return {"new_subspace_name": name}
+    target_subspace_name = (decision.get("target_subspace_name") or "").strip() or None
+    return {
+        "new_subspace": {"new_subspace_name": name},
+        "matched_subspace": {"matched_subspace_name": name},
+        "new_location": {"new_location_name": name, "target_subspace_name": target_subspace_name},
+        "matched_location": {"matched_location_name": name, "target_subspace_name": target_subspace_name},
+    }.get(kind)
 
 
 def resolve_action(provider, model, model_key, char_row, location_id, subspace_id, content, conversation,
@@ -502,17 +557,22 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
     """Resolves a multiplayer "action" - the mechanical resolution ALWAYS goes through
     engine.run_turn unchanged (dice/state stay app-owned via the same trusted, tested path
     single-player uses). This function's job is what happens around that call: turn-order enforcement
-    if the acting character is a combat participant, combat start/end detection afterward, and (new,
-    2026-08-22) checking whether the action warrants spawning/moving into a new subspace. Raises
-    CombatTurnError instead of resolving anything if it isn't the character's turn.
+    if the acting character is a combat participant, combat start/end detection afterward, and (2026-
+    08-22, widened 2026-08-23) checking whether the action warrants spawning/moving into a new
+    Subspace OR a whole new Location. Raises CombatTurnError instead of resolving anything if it
+    isn't the character's turn.
 
     Returns a dict: {"turn_id", "reply_turn_id", "narration", "debug_events", "combat_encounter_id",
-    "new_subspace_id", "moved_to_subspace_id"} - combat_encounter_id is set whenever this action
-    happened during (or just started) an active encounter, else None; new_subspace_id is set only
-    when this action's resolution just created a brand new subspace; moved_to_subspace_id is set
-    whenever the character's subspace changed as a result of this action (whether the subspace was
-    newly created or already existed) - the caller (server.py) uses this to tell the frontend it
-    needs to reload location detail for wherever the character actually ended up.
+    "new_subspace_id", "new_location_id", "moved_to_subspace_id", "moved_to_location_id"} -
+    combat_encounter_id is set whenever this action happened during (or just started) an active
+    encounter, else None; new_subspace_id/new_location_id are set only when this action's resolution
+    just created that brand new space (never both at once); moved_to_subspace_id is set whenever the
+    character's subspace changed as a result of this action, regardless of whether it's newly
+    created, matched by name, or the default subspace of a newly-created/matched Location;
+    moved_to_location_id is set alongside it, but only when the character's LOCATION also changed
+    (a Subspace-only move within the same Location leaves it None) - the caller (server.py) uses
+    these to tell the frontend it needs to reload location/subspace detail for wherever the character
+    actually ended up.
     """
     character_id = char_row["id"]
     game_id = char_row["game_id"]
@@ -560,7 +620,8 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
     result = {
         "turn_id": turn_id, "reply_turn_id": reply_turn_id,
         "narration": narration, "debug_events": debug_events, "combat_encounter_id": None,
-        "new_subspace_id": None, "moved_to_subspace_id": None,
+        "new_subspace_id": None, "new_location_id": None,
+        "moved_to_subspace_id": None, "moved_to_location_id": None,
     }
 
     if encounter:
@@ -582,24 +643,33 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
             encounter_id = _start_combat(location_id, subspace_id, char_row, new_participants)
             result["combat_encounter_id"] = encounter_id
 
-    # Dynamic subspace creation (2026-08-22) - only checked for a free (non-combat) action, since a
-    # fight in progress isn't the moment the world should be growing new geography, and only when a
-    # judge provider actually resolved (same graceful-skip pattern as everywhere else in this module).
+    # Dynamic space creation (2026-08-22, widened 2026-08-23 to also cover whole new Locations, not
+    # just Subspaces) - only checked for a free (non-combat) action, since a fight in progress isn't
+    # the moment the world should be growing new geography, and only when a judge provider actually
+    # resolved (same graceful-skip pattern as everywhere else in this module).
     if not result["combat_encounter_id"]:
         try:
             judge_provider, judge_model = providers.get_provider(JUDGE_MODEL_KEY)
         except providers.ProviderError:
             judge_provider, judge_model = None, None
         if judge_provider is not None:
-            existing_names = [s["name"] for s in db.list_subspaces(location_id)]
-            decision = detect_new_subspace(
-                judge_provider, judge_model, content, narration, existing_names, usage_sink=usage_sink,
+            # char_row (from db.get_character) has no server_id of its own - characters aren't scoped
+            # to a server directly, only via game_id - so this is always resolved from the location,
+            # not read off the character.
+            server_id = db.get_location(location_id)["server_id"]
+            setting_info = engine.SETTING_REGISTRY.get(char_row["setting_key"], {})
+            current_location = db.get_location(location_id)
+            all_locations_with_subspaces = {
+                l["name"]: [s["name"] for s in db.list_subspaces(l["id"])]
+                for l in db.list_locations(server_id)
+            }
+            decision = detect_new_space(
+                judge_provider, judge_model, content, narration,
+                setting_info.get("label", char_row["setting_key"]),
+                setting_info.get("location_scale_hint", ""),
+                all_locations_with_subspaces, current_location["name"], usage_sink=usage_sink,
             )
             if decision:
-                # char_row (from db.get_character) has no server_id of its own - characters aren't
-                # scoped to a server directly, only via game_id - so this is always resolved from the
-                # location, not read off the character.
-                server_id = db.get_location(location_id)["server_id"]
                 if "new_subspace_name" in decision:
                     new_subspace_id = db.create_subspace(
                         location_id, decision["new_subspace_name"], origin="dynamic",
@@ -608,13 +678,49 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
                     result["new_subspace_id"] = new_subspace_id
                     result["moved_to_subspace_id"] = new_subspace_id
                     db.move_character(character_id, server_id, location_id, new_subspace_id)
-                else:
-                    matched = db.find_subspace_by_name(location_id, decision["matched_existing_name"])
+                elif "matched_subspace_name" in decision:
+                    matched = db.find_subspace_by_name(location_id, decision["matched_subspace_name"])
                     if matched and matched["id"] != subspace_id:
                         result["moved_to_subspace_id"] = matched["id"]
                         db.move_character(character_id, server_id, location_id, matched["id"])
+                elif "new_location_name" in decision:
+                    new_location_id = db.create_location(server_id, decision["new_location_name"])
+                    landing_subspace = _resolve_target_subspace(
+                        new_location_id, decision.get("target_subspace_name"), character_id,
+                    )
+                    result["new_location_id"] = new_location_id
+                    result["moved_to_location_id"] = new_location_id
+                    result["moved_to_subspace_id"] = landing_subspace["id"]
+                    db.move_character(character_id, server_id, new_location_id, landing_subspace["id"])
+                elif "matched_location_name" in decision:
+                    matched_location = db.find_location_by_name(server_id, decision["matched_location_name"])
+                    if matched_location and matched_location["id"] != location_id:
+                        landing_subspace = _resolve_target_subspace(
+                            matched_location["id"], decision.get("target_subspace_name"), character_id,
+                        )
+                        result["moved_to_location_id"] = matched_location["id"]
+                        result["moved_to_subspace_id"] = landing_subspace["id"]
+                        db.move_character(character_id, server_id, matched_location["id"], landing_subspace["id"])
 
     return result
+
+
+def _resolve_target_subspace(location_id, target_subspace_name, character_id):
+    """Helper for resolve_action's new_location/matched_location branches: picks which subspace to
+    actually land the character in within that Location. No target_subspace_name given -> that
+    Location's default subspace (the common case). A name given -> reuse it if a subspace with that
+    name already exists there (case-insensitive), else create a new one - this is what lets the
+    classifier route "I head back to the telegraph room" straight to the SAME Telegraph Room subspace
+    under whichever Location it actually belongs to, instead of duplicating it under wherever the
+    character happened to be standing (see NOTES.md's launch-readiness entry for the real miscalibration
+    this fixes)."""
+    if not target_subspace_name:
+        return db.get_default_subspace(location_id)
+    existing = db.find_subspace_by_name(location_id, target_subspace_name)
+    if existing:
+        return existing
+    new_id = db.create_subspace(location_id, target_subspace_name, origin="dynamic", created_by_character_id=character_id)
+    return db.get_subspace(new_id)
 
 
 # ==================== subspace conclusion (mark-concluded / storm-out) ====================

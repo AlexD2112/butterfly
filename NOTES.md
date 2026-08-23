@@ -1,3 +1,89 @@
+# Multiplayer launch-readiness push: dynamic Locations, admin cleanup tools, real-model classifier testing (2026-08-23)
+
+Explicit priority for the night: get multiplayer to a state you could actually confidently launch,
+ahead of two other real but non-blocking asks (a clickable level-up UI, AI-generated historical
+character selection - both deferred, see their own section below). Four pieces, in the order you asked
+for them.
+
+## a) Dynamic Location creation, setting-aware granularity, auto-seed
+
+Extended the existing Subspace-only dynamic-creation classifier (`multiplayer.detect_new_subspace`,
+renamed `detect_new_space`) to also cover whole new Locations - same single cheap AI call per action,
+now a 5-way decision instead of 3-way: no_change / new_subspace / matched_subspace / new_location /
+matched_location. What counts as "a new Location" is setting-relative, per your direction ("have it
+consider the setting in that check") - each setting in `engine.SETTING_REGISTRY` now carries a
+`location_scale_hint` string (building-scale for single-city settings like Petrograd and Rome,
+settlement-scale for Britannia, city/region-scale for the Crusades' marching campaign), folded directly
+into the classifier prompt rather than a fixed universal threshold.
+
+Every new multiplayer server now auto-seeds one starting Location ("Starting Point", with its own
+default Subspace via `create_location`'s existing behavior) at the `api_admin_create_server` route
+level - deliberately not inside `db.create_multiplayer_server` itself, since a lot of tests build
+servers as raw fixtures via that function directly and manage their own locations explicitly; this is
+a product decision about the real admin-facing creation flow, not a schema invariant. An admin no
+longer needs to manually create a Location before a server is actually usable.
+
+## b) Admin cleanup toolkit - the safety net for bad/duplicate dynamic content
+
+New db.py functions: `find_location_by_name`, `rename_location`, `rename_subspace`, `delete_location`,
+`delete_subspace`, `merge_locations`, `merge_subspaces` - plus matching admin routes
+(`PATCH`/`DELETE`/`POST .../merge_into/<id>` on `/api/admin/locations/<id>` and
+`/api/admin/subspaces/<id>`) and inline lobby UI (Rename/Delete buttons, a "Merge into..." select, per
+Location and per Subspace, admin-only).
+
+Delete refuses (clean 400, not a raw FK integrity error) if anyone is currently present, or if it
+would remove a Location's last Subspace or a server's last Location. Merge moves occupants/NPCs/
+message history onto the survivor and deletes the source; for a Location merge, each of the source's
+Subspaces is either reparented onto the target (no name collision) or itself merged into an
+already-same-named Subspace under the target (collision) - not left as visible duplicates. Both merge
+operations refuse if either side has an active combat encounter, rather than trying to reconcile two
+live fights; a merge also clears conclusion marks on both sides rather than reconciling them, since a
+merge genuinely changes what "everyone here" means. This is what makes admin-free organic growth
+actually viable instead of a one-way ratchet toward accumulating junk - a bad AI-generated space is
+now a rename/merge/delete away from fixed, not a reason to nuke the whole server.
+
+## c) Real-model classifier testing - and a real bug it found
+
+The classifier had only ever run against mocked providers before tonight (necessarily, for ordinary
+test runs - see the provider-patching fix from the previous rename work). Priority (c) was explicitly
+to actually exercise it against a real model with real actions, on a throwaway scratch DB (never the
+real butterfly.db), and tune the prompt if the behavior didn't hold up. It didn't, on the first pass:
+
+A 5-action scripted sequence (routine talk -> move to a new room -> leave for a different building ->
+**return to the first room** -> a minor look-around) surfaced a real miscalibration on the 4th action.
+"I head back to the telegraph room" after having left for a different Location created a SECOND,
+duplicate "Telegraph Room" subspace under the character's new (wrong) Location, instead of routing
+back to the original one under the Location it actually belonged to. Root cause: the classifier's
+prompt only ever listed the CURRENT Location's own Subspace names - it had no way to recognize a
+same-named room that belonged to a different, previously-visited Location, so "matched_location" fired
+correctly (it did recognize this was about returning to Smolny) but with no way to also specify which
+Subspace there, defaulting to that Location's plain default Subspace and leaving the actual reused name
+to fall through into a spurious `new_subspace` under wherever the character currently stood instead.
+
+Fixed by widening the classifier's visibility to ALL Locations and their Subspaces (not just the
+current one) and adding an optional `target_subspace_name` field to the new_location/matched_location
+tool outputs, so the model can name a specific existing-or-new Subspace within whichever OTHER Location
+it's routing to - `multiplayer._resolve_target_subspace` applies it (reuse if a same-named Subspace
+already exists there, create it there if not). Re-ran the exact same 5-action sequence afterward: all
+five decisions were correct, including the previously-broken case (routed straight back to the
+original Telegraph Room under Smolny, no duplicate) and a bonus improvement - the very first arrival at
+a brand new Location now names a specific landing Subspace ("Factory Gates") instead of always
+bottoming out at a generic "Main." A conservatism stress test also passed cleanly: narration mentioning
+"Nevsky Prospekt" in passing (glimpsed through a window, not actually traveled to) correctly stayed
+`no_change` rather than treating every proper noun as a travel cue.
+
+New regression tests added for exactly this bug (`test_matched_location_with_a_target_subspace_lands_in_that_existing_subspace_not_the_default`)
+and the analogous new-Location case, in `tests/test_combat_initiative.py`. Full backend test count:
+244/244 (28 new tests since the previous rename-work commit: 17 db-level admin-ops tests, 6
+dynamic-space-creation/target-subspace tests, 5 admin-route tests).
+
+## d) Honest launch-readiness assessment
+
+[Written after the actual end-to-end walkthrough - see the entry immediately below this one, added
+once that pass was complete, not backdated into this summary.]
+
+---
+
 # Location/Subspace rename + dynamic subspace creation (2026-08-22)
 
 Real architectural change: rename the two-level multiplayer hierarchy from Server -> Room -> Location
