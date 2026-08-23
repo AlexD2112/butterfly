@@ -717,6 +717,7 @@ async function loadCharacterScreen() {
     <div class="opt-title">+ Create Custom Character</div>
     <div class="opt-desc">Build a new character for this setting.</div>
   </button>`;
+  html += historicalFigureOptionHtml('hf');
   document.getElementById('character-options').innerHTML = html;
 
   document.querySelectorAll('#character-options [data-resume]').forEach(btn => {
@@ -725,6 +726,69 @@ async function loadCharacterScreen() {
   const premadeBtn = document.querySelector('#character-options [data-premade]');
   if (premadeBtn) premadeBtn.addEventListener('click', createPremadeAndLaunch);
   document.getElementById('create-custom-btn').addEventListener('click', openCreationForm);
+  wireHistoricalFigureOption('hf');
+}
+
+// ---------------- historical figure creation - shared by single-player and multiplayer ----------------
+// A real person from the setting's exact time period, AI-generated on request (see
+// engine.generate_historical_character) - distinct from both the flagship premade and a custom
+// build. idPrefix keeps this reusable across the single-player character screen ('hf') and
+// multiplayer's new-character screen ('mp-hf') without id collisions, since both screens coexist in
+// the DOM at once (see openCreationForm's own back-button note for why that's the established
+// pattern here).
+function historicalFigureOptionHtml(idPrefix) {
+  return `
+    <button class="menu-option" id="${idPrefix}-historical-btn">
+      <div class="opt-title">Play a Historical Figure</div>
+      <div class="opt-desc">Name a real person from this setting's exact time period - the AI builds their sheet, or explains why it can't.</div>
+    </button>
+    <div class="mp-form" id="${idPrefix}-historical-form">
+      <div class="field-row"><input type="text" id="${idPrefix}-historical-name" placeholder="e.g. Nikolai Podvoisky"></div>
+      <div class="mp-form-error" id="${idPrefix}-historical-error"></div>
+      <button class="submit-btn" id="${idPrefix}-historical-submit">Generate</button>
+    </div>
+  `;
+}
+
+function wireHistoricalFigureOption(idPrefix) {
+  document.getElementById(`${idPrefix}-historical-btn`).addEventListener('click', () => {
+    document.getElementById(`${idPrefix}-historical-form`).classList.toggle('open');
+  });
+  document.getElementById(`${idPrefix}-historical-submit`).addEventListener('click', () => submitHistoricalFigure(idPrefix));
+}
+
+async function submitHistoricalFigure(idPrefix) {
+  const nameInput = document.getElementById(`${idPrefix}-historical-name`);
+  const figure_name = nameInput.value.trim();
+  const errEl = document.getElementById(`${idPrefix}-historical-error`);
+  errEl.textContent = '';
+  if (!figure_name) { errEl.textContent = 'Enter a name.'; return; }
+  const submitBtn = document.getElementById(`${idPrefix}-historical-submit`);
+  submitBtn.disabled = true;
+  errEl.textContent = 'Generating… this calls the AI and may take a few seconds.';
+  const body = { setting_key: SELECTED_SETTING.key, figure_name };
+  if (MP_SERVER_ID) body.multiplayer_server_id = MP_SERVER_ID;
+  try {
+    const res = await fetch('/api/characters/historical', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.status === 403 && data.discord_login_required) {
+      errEl.textContent = 'Log in with Discord to generate a historical character.';
+    } else if (data.error) {
+      errEl.textContent = data.error;
+    } else if (!data.eligible) {
+      errEl.textContent = data.reason || "That figure isn't eligible - try someone else, or build a custom character instead.";
+    } else {
+      if (MP_SERVER_ID) { await launchMpLobbyPostCreate(data.character_id, data.state.character.name); }
+      else { launchGame(data.character_id, true); }
+      return;
+    }
+  } catch (e) {
+    errEl.textContent = `Request failed: ${e}`;
+  }
+  submitBtn.disabled = false;
 }
 
 async function createPremadeAndLaunch() {
@@ -735,6 +799,9 @@ async function createPremadeAndLaunch() {
     body: JSON.stringify(body),
   });
   const data = await res.json();
+  // A 409 here means another player already claimed the flagship in this server (claim-lock,
+  // 2026-08-23) - surfaced as a status message rather than silently failing to launch.
+  if (data.error) { setStatus(data.error); return; }
   if (MP_SERVER_ID) launchMpLobbyPostCreate(data.character_id, data.state.character.name);
   else launchGame(data.character_id, true);
 }
@@ -1592,9 +1659,11 @@ document.getElementById('mp-new-character-btn').addEventListener('click', () => 
       <div class="opt-title">+ Create Custom Character</div>
       <div class="opt-desc">Build a new character for this setting.</div>
     </button>
+    ${historicalFigureOptionHtml('mp-hf')}
   `;
   document.getElementById('mp-premade-btn').addEventListener('click', createPremadeAndLaunch);
   document.getElementById('mp-custom-btn').addEventListener('click', openCreationForm);
+  wireHistoricalFigureOption('mp-hf');
   showScreen('screen-mp-new-character');
 });
 

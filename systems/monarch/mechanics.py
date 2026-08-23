@@ -141,3 +141,10 @@ def create_character(name, role, attribute_assignment, skill_tiers, feat_id, lia
         name, role, attribute_assignment, skill_tiers, feat_id, liability_ids,
         SKILLS, FEAT_CATALOG, LIABILITY_CATALOG,
     )
+
+
+def create_leveled_character(name, role, level, attribute_assignment, skill_tiers, feat_ids, liability_ids=None):
+    return core.validate_and_build_leveled_character(
+        name, role, level, attribute_assignment, skill_tiers, feat_ids, liability_ids,
+        SKILLS, FEAT_CATALOG, LIABILITY_CATALOG,
+    )

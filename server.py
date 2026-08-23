@@ -293,6 +293,12 @@ def api_create_character():
         state = engine.load_premade_character_state(setting_key)
         state.pop("_is_new", None)
         name = state["character"]["name"]
+        # Claim-lock (2026-08-23): the setting's flagship is a single, specific real figure, same as
+        # a generated historical character (see api_create_historical_character) - two players in the
+        # same multiplayer server shouldn't both end up playing Trotsky. Single-player is unaffected
+        # (game_id is None there, and find_character_by_name_in_game is never meaningful for it).
+        if game_id is not None and db.find_character_by_name_in_game(game_id, name) is not None:
+            return jsonify({"error": f'"{name}" is already claimed by another player in this server.'}), 409
         character_id = db.create_character(user["id"], setting_key, system_key, name, state, is_premade=True, game_id=game_id)
         return jsonify({"character_id": character_id, "state": engine.build_state_digest(state), "is_new": True})
 
@@ -318,6 +324,97 @@ def api_create_character():
         return jsonify({"character_id": character_id, "state": engine.build_state_digest(state), "is_new": True})
 
     return jsonify({"error": "body.type must be 'premade' or 'custom'"}), 400
+
+
+@app.route("/api/characters/historical", methods=["POST"])
+def api_create_historical_character():
+    """Generates a real historical figure (not the setting's flagship) as a playable character via
+    AI - unlike premade/custom creation, this makes a real model call, so it's gated the same way a
+    turn is (Discord login + budget), not free. See engine.generate_historical_character for the
+    actual eligibility/generation logic and its real refusal path - a "not eligible" response here is
+    an expected, successful outcome, not an error, and still costs whatever the judge call cost
+    (recorded either way, in the `finally` block below)."""
+    user = current_user()
+    if user["is_local"]:
+        return (
+            jsonify(
+                {
+                    "error": "Log in with Discord to generate a historical character - local/anonymous "
+                    "profiles can still play the premade or a custom character.",
+                    "discord_login_required": True,
+                }
+            ),
+            403,
+        )
+
+    body = request.get_json(force=True)
+    setting_key = body.get("setting_key")
+    if setting_key not in engine.SETTING_REGISTRY:
+        return jsonify({"error": f"Unknown setting: {setting_key}"}), 400
+    system_key = engine.SETTING_REGISTRY[setting_key]["system"]
+    figure_name = (body.get("figure_name") or "").strip()
+    if not figure_name:
+        return jsonify({"error": "figure_name is required."}), 400
+    model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
+    if model_key not in providers.MODEL_REGISTRY:
+        return jsonify({"error": f"Unknown model key: {model_key}"}), 400
+    if providers.ALLOWED_MODEL_KEYS is not None and model_key not in providers.ALLOWED_MODEL_KEYS:
+        return jsonify({"error": f"Model '{model_key}' isn't currently selectable."}), 400
+
+    game_id = None
+    multiplayer_server_id = body.get("multiplayer_server_id")
+    if multiplayer_server_id is not None:
+        mp_game = db.get_game_for_server(multiplayer_server_id)
+        if mp_game is None:
+            return jsonify({"error": f"Unknown multiplayer_server_id: {multiplayer_server_id}"}), 400
+        game_id = mp_game["id"]
+        # Cheap check before spending an AI call at all - re-checked again after generation too,
+        # below, since the figure's actual stored name could in principle differ in casing/whitespace
+        # from the raw request, and a second player could claim it in the gap between the two checks.
+        if db.find_character_by_name_in_game(game_id, figure_name) is not None:
+            return jsonify({"error": f'"{figure_name}" is already claimed by another player in this server.'}), 409
+
+    budget_before = db.get_budget_status(user["id"])
+    if budget_before["remaining_usd"] <= 0:
+        return jsonify({"error": "Out of usage budget for this account.", "budget": budget_before}), 402
+
+    try:
+        provider, model = providers.get_provider(model_key)
+    except providers.ProviderError as e:
+        return jsonify({"error": str(e)}), 400
+
+    usage_sink = []
+    try:
+        result = engine.generate_historical_character(
+            provider, model, setting_key, system_key, figure_name, usage_sink=usage_sink,
+        )
+    finally:
+        for usage in usage_sink:
+            cost = pricing.estimate_cost_usd(usage)
+            db.record_usage(
+                user["id"], None, usage["provider"], usage["model"],
+                usage["input_tokens"], usage["output_tokens"],
+                usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
+            )
+
+    budget_after = db.get_budget_status(user["id"])
+    if not result["eligible"]:
+        return jsonify({"eligible": False, "reason": result["reason"], "budget": budget_after})
+
+    character = result["character"]
+    if game_id is not None and db.find_character_by_name_in_game(game_id, character["name"]) is not None:
+        return jsonify({"error": f'"{character["name"]}" was just claimed by another player.', "budget": budget_after}), 409
+
+    fresh_setting = engine.load_premade_character_state(setting_key)
+    state = {k: v for k, v in fresh_setting.items() if k != "character" and not k.startswith("_")}
+    state["character"] = character
+    state["setting_pack"] = setting_key
+    state["system"] = system_key
+    character_id = db.create_character(user["id"], setting_key, system_key, character["name"], state, is_premade=False, game_id=game_id)
+    return jsonify({
+        "eligible": True, "character_id": character_id, "state": engine.build_state_digest(state),
+        "is_new": True, "budget": budget_after,
+    })
 
 
 @app.route("/api/character/<int:character_id>/state")

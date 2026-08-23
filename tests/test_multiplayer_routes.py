@@ -281,10 +281,14 @@ class TestMultiplayerRoutes(unittest.TestCase):
             f"/api/admin/locations/{location_id}/subspaces", json={"name": "Second Spot"}
         ).get_json()["subspace_id"]
         # A different character sends a message there - PlayerA's character was never present.
-        other_char_id = self.client.post(
-            "/api/characters",
-            json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id},
-        ).get_json()["character_id"]
+        # Built directly via db.create_character (not the /api/characters route) since this test
+        # isn't exercising character creation - the premade flagship is already claimed by PlayerA's
+        # character above, and this second character just needs to be someone else, any name.
+        admin_user = db.get_or_create_discord_user("1", "Admin", None)
+        game = db.get_game_for_server(server_id)
+        other_char_id = db.create_character(
+            admin_user["id"], "petrograd_1917", "red_admiral", "Second Character", {"turn_number": 0}, game_id=game["id"],
+        )
         self.client.post(
             f"/api/multiplayer/characters/{other_char_id}/move",
             json={"location_id": location_id, "subspace_id": second_subspace_id},

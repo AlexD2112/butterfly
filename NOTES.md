@@ -1,3 +1,92 @@
+# AI-generated historical characters, with a real refusal path and claim-locking (2026-08-23)
+
+Third-priority ask for the night, after launch-readiness and the level-up picker were both solid.
+Character creation gets a third option alongside the flagship premade and a custom build: name any
+real historical figure from the setting's exact time period, and the AI either builds a full
+character sheet for them or refuses - a genuine, meaningful refusal, not a formality, per direction.
+
+## Design decisions, as answered
+
+- **Freeform name, not a curated list** - matches the session's throughline (the world grows
+  dynamically, admins/devs don't hand-curate everything up front).
+- **Must fit the exact period**, not just the broad era - the prompt explicitly separates "same
+  century/region" from "this specific window," and is fed the setting's own canon timeline as
+  grounding, not just its one-line blurb.
+- **Same standard array as a custom character** - never stat-inflated the way the flagship is
+  (`STANDARD_ATTRIBUTE_ARRAY`, unchanged, just assigned by the AI based on the figure's known
+  strengths) - but the figure can start at a level above 1, with skills/feats scaled to that level,
+  representing real accomplishment without touching raw stats.
+- **A real refusal path** - the model is explicitly instructed to refuse when it doesn't have enough
+  reliable information, when the figure doesn't fit this exact period, when they're fictional, when
+  they're a living person too recent to depict responsibly, or when they're better served by a custom
+  build - "refuse when genuinely unsure" is stated directly, not left implicit.
+- **Claim-locking covers the flagship too** - confirmed explicitly: two players in the same
+  multiplayer server can no longer both play Trotsky, closing a pre-existing gap (checked - this was
+  never enforced before tonight) alongside the new rule for generated figures.
+
+## What's new
+
+- `systems/_shared/core.validate_and_build_leveled_character` - the level-1-and-up sibling of
+  `validate_and_build_character`. Same standard-array attribute rule; skill budget and Expertise cap
+  both scale linearly with level (`MAX_HISTORICAL_FIGURE_LEVEL = 6` - a deliberate simplification, not
+  a full N-1-level-ups replay, documented in the function's own docstring) rather than simulating each
+  individual level-up choice, which would also risk letting an attribute-type choice drift stats past
+  the standard array. Each system module (`red_admiral`/`monarch`/`apollo`) gained a matching
+  `create_leveled_character` wrapper.
+- `engine.generate_historical_character(provider, model, setting_key, system_key, figure_name)` - the
+  actual eligibility+generation call. Fed the setting's real canon timeline (not just its blurb) and
+  explicitly told the flagship character's own name is excluded (that's a separate, existing path).
+  Returns `{"eligible": True, "character": {...}}` or `{"eligible": False, "reason": str}` - a failed
+  validation on the model's own generated sheet is folded into the same "ineligible" shape, not
+  surfaced as a different kind of error to the caller.
+- `db.find_character_by_name_in_game` - the claim-lock primitive, a case-insensitive name check scoped
+  to one game. Enforced in both `POST /api/characters` (the existing premade path - closes the
+  pre-existing gap) and the new `POST /api/characters/historical`, checked once before spending an AI
+  call and again right after generation (closing the race window between two players requesting the
+  same figure nearly simultaneously). Single-player is unaffected either way (game_id is never shared
+  across single-player games).
+- New route `POST /api/characters/historical` - gated like a turn (Discord login + budget), since
+  unlike premade/custom creation this makes a real model call; usage is recorded in a `finally` block
+  regardless of eligible/refused/error, since a refusal still costs whatever the judge call cost.
+- Frontend: a shared "Play a Historical Figure" option (`historicalFigureOptionHtml`/
+  `wireHistoricalFigureOption`/`submitHistoricalFigure`, parameterized by an id prefix so the same
+  component works on both the single-player and multiplayer character-creation screens without id
+  collisions) - a text field + Generate button, surfacing the model's refusal reason directly if it
+  says no.
+
+## Real-model testing found and fixed a real bug (same pattern as the dynamic-space classifier)
+
+First live-model pass: **Nikolai Podvoisky** (a real, correctly-in-period figure) came back refused -
+not because he was ineligible, but because the model picked a level-3 sheet while also reaching for
+feats requiring level 5 and 13. The model isn't reliably self-consistent between the level it assigns
+and the feats it reaches for in one shot, and the original validation treated that mismatch as a hard
+failure, refusing an otherwise perfectly legitimate figure over one overreaching feat pick.
+
+Fixed by making feat *eligibility* mismatches (wrong `min_level`, unmet prerequisite) a silent prune
+rather than a hard error - the sheet still builds, just without that one feat. A genuinely unknown
+`feat_id` (hallucinated, not in the catalog at all) or an exact duplicate stays a hard error, since
+that's a real malformed-response signal, not an honest reach. Re-ran the same real-model test
+afterward across three figures spanning two settings (Podvoisky and Kerensky in Petrograd, Godfrey of
+Bouillon in the Crusades) - all three came back eligible with sensible levels (4), plausible
+role/skill/feat/liability choices, and attributes confirmed to be an exact permutation of the standard
+array every time. Separately confirmed the refusal path itself works as designed against three
+deliberate test cases: the setting's own flagship (Trotsky - explicitly excluded), a real person from
+entirely the wrong period (Napoleon Bonaparte), and a fictional character (Gandalf) - all three
+refused with clear, specific reasons, on the first pass, no prompt changes needed for those.
+
+22 new tests (`tests/test_historical_characters.py`) cover the validation function's budget/level/feat
+scaling and the soft-drop behavior specifically, the generation function's eligible/refused/
+failed-validation paths via a scripted provider, and the route's claim-lock (including the
+premade-flagship case) and Discord-login gating. Verified live in the browser: the option renders
+correctly on both character-creation screens with no id collisions, the empty-name and
+local-user-Discord-gating validation both surface correctly in the UI. Three pre-existing tests
+(`test_multiplayer_routes.py`, `test_subspace_conclusion.py`) had fixture helpers that created two
+premade characters in the same server as incidental setup - fixed to build the second character
+directly via `db.create_character` instead, since the claim-lock is now real, correct behavior.
+259/259 -> 281/281 across the night's work.
+
+---
+
 # Clickable level-up picker (2026-08-23)
 
 Second-priority ask for the night, after multiplayer launch-readiness was solid (see below) - a real

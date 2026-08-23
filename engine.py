@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 
 import council
+from systems._shared import core as shared_core
 
 ROOT = Path(__file__).parent
 SETTINGS_ROOT = ROOT / "settings"
@@ -286,3 +287,119 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     state["campaign_log_summary"].append({"turn": state["turn_number"], "summary": narration[:400]})
     state["turn_number"] += 1
     return narration, debug_events
+
+
+def generate_historical_character(provider, model, setting_key, system_key, figure_name, usage_sink=None):
+    """AI-driven generation of a playable historical figure who existed within setting_key's exact
+    time period (2026-08-23) - never the setting's own flagship premade character (players pick that
+    through a separate path). The model can and does refuse: not enough real information to generate
+    responsibly, doesn't actually fit this exact period, or a case better served by a custom
+    character build. This is a real, meaningful refusal path per direction, not a formality - the
+    prompt is written to make "no" the easy, expected answer whenever genuinely unsure.
+
+    Returns {"eligible": True, "character": {...validated dict, ready to store...}} or
+    {"eligible": False, "reason": str} - the latter covers both a real refusal AND a generated sheet
+    that failed validation (a malformed response, not treated differently from a legitimate "no" by
+    the caller - either way, nothing gets created)."""
+    system = get_system(system_key)
+    setting_info = SETTING_REGISTRY[setting_key]
+    canon = load_text(setting_key, "canon_timeline.md")
+    skill_list = [s for skills in system.SKILLS.values() for s in skills]
+    feat_ids = sorted(system.FEAT_CATALOG.keys())
+    liability_ids = sorted(system.LIABILITY_CATALOG.keys())
+
+    system_prompt = f"""You are deciding whether to generate a playable character sheet for a REAL
+historical figure a player has requested, for a historical RPG.
+
+# SETTING
+{setting_info['label']}
+{setting_info['blurb']}
+
+# CANON TIMELINE FOR THIS EXACT SETTING/PERIOD
+{canon}
+
+# REQUESTED FIGURE
+{figure_name}
+
+First decide whether this is eligible at all. Refuse (eligible=false) if ANY of these are true:
+- You don't have enough real, reliable information about this specific person to generate a
+  responsible, reasonably historically-grounded character sheet for them - don't guess or invent.
+- They did not actually exist within THIS setting's exact time period (the specific window above,
+  not just the same broad century or region) - a real person from the wrong decade or the wrong
+  country still doesn't fit.
+- They ARE this setting's own signature/flagship character ({setting_info['premade_character_name']})
+  - that one is picked through a separate path already.
+- They aren't a real historical person at all (fictional, legendary/mythical with no real basis, or a
+  living person too recent/sensitive to depict responsibly).
+- A custom character build would genuinely serve the player better than an attempt at this specific
+  historical likeness (e.g. the request is really "someone like X," not X themselves).
+
+When genuinely unsure, refuse - a missed valid figure is a much smaller problem than a fabricated or
+irresponsible one. This is a real decision point, not a formality: most requests for obscure or
+poorly-documented figures should be refused.
+
+If eligible, build a character sheet:
+- attribute_assignment: assign the standard array {shared_core.STANDARD_ATTRIBUTE_ARRAY} one-to-one
+  across all six attributes ({', '.join(shared_core.ATTRIBUTES)}), based on this figure's known real
+  strengths.
+- level: an integer from 1 to {shared_core.MAX_HISTORICAL_FIGURE_LEVEL}. Calibrate to be FAIRLY
+  LEVELED - balanced against other player characters, not wildly over- or under-powered. Most figures
+  should land in the low-to-middle of this range; reserve the top only for a case you can genuinely
+  justify from real historical accomplishment within this exact period.
+- skill_tiers: a {{skill_name: tier}} map, tiers 0 (untrained) / 1 (proficiency) / 2 (expertise), from
+  this system's skill list: {', '.join(skill_list)}. Reflects real documented competence, scaled
+  sensibly with the level you chose - do not use every skill, only the ones this figure would
+  plausibly be trained in.
+- feat_ids: zero or more feat ids from: {', '.join(feat_ids)} - each one you can plausibly justify for
+  this figure. Each has its own min_level and sometimes a prerequisite skill tier; the app validates
+  and rejects anything that doesn't actually qualify, so don't pick one just to fill a slot.
+- liability_ids: zero to two liability ids from: {', '.join(liability_ids)} - real narrative baggage
+  this figure plausibly carries, not a formality.
+- role: a short one-line real title/role for them in this setting.
+- reasoning: your reasoning for the eligibility decision either way (required).
+
+Submit via decide_historical_character."""
+
+    tool_specs = [
+        {
+            "name": "decide_historical_character",
+            "description": "Decide whether this figure is eligible, and if so, build their character sheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "eligible": {"type": "boolean"},
+                    "refusal_reason": {"type": ["string", "null"], "description": "Required if eligible is false - a clear, specific reason."},
+                    "role": {"type": "string"},
+                    "level": {"type": "integer"},
+                    "attribute_assignment": {"type": "object", "description": "e.g. {\"oration\": 16, \"intellect\": 14, ...}"},
+                    "skill_tiers": {"type": "object", "description": "e.g. {\"debate_and_public_argument\": 2, ...}"},
+                    "feat_ids": {"type": "array", "items": {"type": "string"}},
+                    "liability_ids": {"type": "array", "items": {"type": "string"}},
+                    "reasoning": {"type": "string"},
+                },
+                "required": ["eligible", "reasoning"],
+            },
+        }
+    ]
+
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Decide now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="decide_historical_character")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return {"eligible": False, "reason": "The model didn't return a usable decision - try again."}
+
+    decision = result.tool_calls[0]["input"]
+    if not decision.get("eligible"):
+        reason = (decision.get("refusal_reason") or "").strip()
+        return {"eligible": False, "reason": reason or "Not eligible - insufficient information or doesn't fit this setting's exact period."}
+
+    character, errors = system.create_leveled_character(
+        figure_name, decision.get("role", ""), decision.get("level"),
+        decision.get("attribute_assignment") or {}, decision.get("skill_tiers") or {},
+        decision.get("feat_ids") or [], decision.get("liability_ids") or [],
+    )
+    if errors:
+        return {"eligible": False, "reason": f"Generated sheet failed validation: {'; '.join(errors)}"}
+    return {"eligible": True, "character": character}

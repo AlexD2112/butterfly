@@ -522,6 +522,21 @@ def create_character(user_id, setting_key, system_key, name, state, is_premade=F
     return character_id
 
 
+def find_character_by_name_in_game(game_id, name):
+    """Case-insensitive exact-name lookup within one game - the claim-lock check for multiplayer
+    character creation (2026-08-23): no two characters in the same game may share a name, whether
+    that's the setting's flagship premade (picked by two different players) or two players
+    independently requesting the same generated historical figure. Single-player is unaffected -
+    nothing ever calls this with a single-player game_id."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM characters WHERE game_id = ? AND LOWER(name) = LOWER(?) LIMIT 1",
+        (game_id, name),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def create_game(mode, setting_key, system_key, multiplayer_server_id=None):
     """Direct game creation, for multiplayer (a game with many characters, all attached to the same
     game_id after the fact) - single-player games are still created inline by create_character()

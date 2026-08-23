@@ -205,8 +205,14 @@ class TestMarkConcludedRoute(unittest.TestCase):
         char_a = self.client.post("/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id}).get_json()["character_id"]
         self.client.post(f"/api/multiplayer/characters/{char_a}/move", json={"location_id": location_id})
 
-        self._login("3", "PlayerB")
-        char_b = self.client.post("/api/characters", json={"type": "premade", "setting_key": "petrograd_1917", "multiplayer_server_id": server_id}).get_json()["character_id"]
+        # PlayerB's character is built directly via db.create_character, not the /api/characters
+        # route - the premade flagship is already claimed by char_a above (claim-locked, 2026-08-23),
+        # and this test isn't exercising character creation, just needs a second distinct character.
+        player_b = self._login("3", "PlayerB")
+        game = db.get_game_for_server(server_id)
+        char_b = db.create_character(
+            player_b["id"], "petrograd_1917", "red_admiral", "PlayerB's Character", {"turn_number": 0}, game_id=game["id"],
+        )
         self.client.post(f"/api/multiplayer/characters/{char_b}/move", json={"location_id": location_id})
 
         return server_id, location_id, char_a, char_b

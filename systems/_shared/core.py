@@ -508,6 +508,117 @@ def validate_and_build_character(
     return character, []
 
 
+# "Fairly leveled" ceiling for an AI-generated historical figure (2026-08-23, see NOTES.md) - a
+# deliberate simplification, not a full level-up simulation: rather than replaying N-1 real level-up
+# choices through apply_level_up (which would also let attributes drift past the standard array via
+# an attribute-type choice), the skill/feat budget below scales linearly with level as a bounded
+# stand-in, while attributes stay locked to the same standard array a fresh custom character uses.
+MAX_HISTORICAL_FIGURE_LEVEL = 6
+
+
+def validate_and_build_leveled_character(
+    name, role, level, attribute_assignment, skill_tiers, feat_ids, liability_ids,
+    system_skills, feat_catalog, liability_catalog,
+):
+    """Builds a historical figure starting ABOVE level 1 - same standard-array attribute rule as
+    validate_and_build_character (never stat-inflated beyond the array, per direction), with a skill
+    budget and feat allowance that scale with level instead. Returns (character_dict, errors)."""
+    errors = []
+
+    if not name or not name.strip():
+        errors.append("A character name is required.")
+
+    if not isinstance(level, int) or not (1 <= level <= MAX_HISTORICAL_FIGURE_LEVEL):
+        errors.append(f"level must be an integer from 1 to {MAX_HISTORICAL_FIGURE_LEVEL}.")
+        level = clamp(level, 1, MAX_HISTORICAL_FIGURE_LEVEL) if isinstance(level, int) else 1
+
+    if set(attribute_assignment.keys()) != set(ATTRIBUTES) or sorted(attribute_assignment.values()) != sorted(STANDARD_ATTRIBUTE_ARRAY):
+        errors.append(f"Attributes must be the standard array {STANDARD_ATTRIBUTE_ARRAY}, assigned one-to-one across all six attributes.")
+
+    if liability_ids and len(liability_ids) > 2:
+        errors.append("At most 2 starting liabilities may be chosen.")
+    liability_entries = []
+    for lid in (liability_ids or []):
+        entry = liability_catalog.get(lid)
+        if not entry:
+            errors.append(f"Unknown liability: {lid}")
+        else:
+            liability_entries.append({"id": lid, "name": entry["name"], "description": entry["description"]})
+
+    # Same base budget as a fresh level-1 custom character, plus 2 skill points per level above 1 -
+    # an upper bound matching what a single "skill" level-up choice grants (2 tier-steps), standing
+    # in for levels this figure has plausibly already spent without simulating each one individually.
+    effective_skill_budget = SKILL_POINT_BUDGET + LIABILITY_BONUS_SKILL_POINTS * len(liability_entries) + 2 * (level - 1)
+    max_expertise = MAX_STARTING_EXPERTISE_SKILLS + (level - 1)
+
+    all_valid_skills = {s for skills in system_skills.values() for s in skills}
+    spent = 0
+    expertise_count = 0
+    for skill, tier in (skill_tiers or {}).items():
+        if skill not in all_valid_skills:
+            errors.append(f"Unknown skill: {skill}")
+            continue
+        if tier not in (0, 1, 2):
+            errors.append(f"Invalid tier for {skill}: {tier}")
+            continue
+        spent += tier
+        if tier == 2:
+            expertise_count += 1
+    if spent > effective_skill_budget:
+        errors.append(f"Skill points over budget: {spent}/{effective_skill_budget}")
+    if expertise_count > max_expertise:
+        errors.append(f"At most {max_expertise} skills may start at Expertise tier at level {level}.")
+
+    # Eligibility mismatches (wrong min_level, unmet prerequisite) are dropped, not hard errors - an
+    # AI generating this sheet in one shot isn't reliably self-consistent between the level it picked
+    # and the feats it reached for (observed for real: a real, otherwise-eligible figure got refused
+    # over a single overreaching feat pick - see NOTES.md). Only a genuinely UNKNOWN feat_id (a
+    # hallucinated id not in the catalog at all) or an exact duplicate is treated as a real error -
+    # that's a sign of a malformed response, not just an honest reach that should simply be pruned.
+    feat_entries = []
+    seen_feat_ids = set()
+    for feat_id in (feat_ids or []):
+        entry = feat_catalog.get(feat_id)
+        if not entry:
+            errors.append(f"Unknown feat: {feat_id}")
+            continue
+        if feat_id in seen_feat_ids:
+            errors.append(f"Duplicate feat: {feat_id}")
+            continue
+        if entry.get("min_level", 1) > level:
+            continue
+        prereq = entry.get("prerequisite_skill")
+        if prereq and (skill_tiers or {}).get(prereq["skill"], 0) < prereq["min_tier"]:
+            continue
+        seen_feat_ids.add(feat_id)
+        feat_entries.append({"id": feat_id, "name": entry["name"], "description": entry["description"]})
+
+    if errors:
+        return None, errors
+
+    skills_out = {}
+    for attr, skills in system_skills.items():
+        for s in skills:
+            skills_out[s] = {"attribute": attr, "tier": (skill_tiers or {}).get(s, 0)}
+
+    character = {
+        "name": name.strip(),
+        "role": (role or "").strip(),
+        "level": level,
+        "xp": 0,
+        "level_up_pending": False,
+        "next_level_xp_discount": 0.0,
+        "proficiency_bonus": proficiency_bonus_for_level(level),
+        "attributes": dict(attribute_assignment),
+        "skills": skills_out,
+        "feats": feat_entries,
+        "liabilities": liability_entries,
+        "flags": {},
+        "recent_check_usage": {"attributes": [], "skills": []},
+    }
+    return character, []
+
+
 def apply_level_up(state, update, feat_catalog):
     character = state["character"]
     if not character.get("level_up_pending"):
