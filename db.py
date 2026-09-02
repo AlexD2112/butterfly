@@ -21,11 +21,17 @@ at login time to find-or-create a user row, then never needs the token again.
 """
 
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
 
-DB_FILE = Path(__file__).parent / "butterfly.db"
+# BUTTERFLY_DB_PATH lets a real deployment point this at a persistent disk's mount path (e.g.
+# Render's "/var/data/butterfly.db") instead of the app's own code directory, which gets wiped
+# every redeploy on any host without a mounted volume - see local-site-tunnel/README.md and
+# NOTES.md. Defaults to the original repo-relative path when unset, so local dev/tests (which
+# override db.DB_FILE directly on the module anyway, not via this env var) are unaffected.
+DB_FILE = Path(os.environ.get("BUTTERFLY_DB_PATH") or (Path(__file__).parent / "butterfly.db"))
 
 _LOCAL_USER_DISCORD_ID = "__local__"  # sentinel, never a real Discord snowflake
 
