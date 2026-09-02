@@ -758,29 +758,39 @@ document.getElementById('mode-full').addEventListener('click', async () => {
 });
 
 // ==================== screen 4: character select ====================
+// Games list, not just "your character" - a setting can have any number of separate playthroughs
+// (premade included: previously only ever showed/allowed ONE premade character per setting at all,
+// an artificial limit with no backing rule - the database already allowed more, only this screen's
+// old .find()-then-hide logic didn't). Every entry here resumes straight into play, no re-running
+// character creation - the games table this already relies on (list_characters, game_id) existed
+// for multiplayer already; this is the single-player side finally using it the same way.
 async function loadCharacterScreen() {
   const res = await fetch(`/api/characters/${SELECTED_SETTING.key}`);
   const data = await res.json();
   const existing = data.characters;
-  const premade = existing.find(c => c.is_premade);
+  const premades = existing.filter(c => c.is_premade);
   const customs = existing.filter(c => !c.is_premade);
 
+  const gameSubtitle = c => {
+    const turns = c.turn_count === 1 ? '1 turn' : `${c.turn_count} turns`;
+    return `${turns} &middot; last played ${relativeTime(c.updated_at)}`;
+  };
+
   let html = '';
-  if (premade) {
-    html += `<button class="menu-option" data-resume="${premade.id}">
-      <div class="opt-title">Continue as ${escapeHtml(premade.name)}</div>
-      <div class="opt-desc char-list-item"><span>The setting's signature character</span></div>
+  premades.forEach(c => {
+    html += `<button class="menu-option" data-resume="${c.id}">
+      <div class="opt-title">Continue as ${escapeHtml(c.name)}</div>
+      <div class="opt-desc char-list-item"><span>${gameSubtitle(c)}</span></div>
     </button>`;
-  } else {
-    html += `<button class="menu-option" data-premade="1">
-      <div class="opt-title">Play as ${escapeHtml(data.premade_name)}</div>
-      <div class="opt-desc">The setting's signature character.</div>
-    </button>`;
-  }
+  });
+  html += `<button class="menu-option" data-premade="1">
+    <div class="opt-title">+ Play as ${escapeHtml(data.premade_name)}</div>
+    <div class="opt-desc">Start a new playthrough as the setting's signature character.</div>
+  </button>`;
   customs.forEach(c => {
     html += `<button class="menu-option" data-resume="${c.id}">
       <div class="opt-title">Continue as ${escapeHtml(c.name)}</div>
-      <div class="opt-desc">${escapeHtml(c.role || 'Custom character')}</div>
+      <div class="opt-desc char-list-item"><span>${gameSubtitle(c)}</span></div>
     </button>`;
   });
   html += `<button class="menu-option" id="create-custom-btn">
@@ -793,10 +803,26 @@ async function loadCharacterScreen() {
   document.querySelectorAll('#character-options [data-resume]').forEach(btn => {
     btn.addEventListener('click', () => launchGame(parseInt(btn.dataset.resume, 10)));
   });
-  const premadeBtn = document.querySelector('#character-options [data-premade]');
-  if (premadeBtn) premadeBtn.addEventListener('click', createPremadeAndLaunch);
+  document.querySelector('#character-options [data-premade]').addEventListener('click', createPremadeAndLaunch);
   document.getElementById('create-custom-btn').addEventListener('click', openCreationForm);
   wireHistoricalFigureOption('hf');
+}
+
+// "3 hours ago", "5 days ago", etc. - good enough resolution for telling apart playthroughs of the
+// same character without needing a full date/time render for anything recent.
+function relativeTime(unixSeconds) {
+  const diffSeconds = Math.max(0, Date.now() / 1000 - unixSeconds);
+  const mins = Math.round(diffSeconds / 60);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  const years = Math.round(months / 12);
+  return `${years} year${years === 1 ? '' : 's'} ago`;
 }
 
 // ---------------- historical figure creation - shared by single-player and multiplayer ----------------

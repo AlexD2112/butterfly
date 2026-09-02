@@ -493,10 +493,20 @@ def get_user_by_id(user_id):
 
 
 def list_characters(user_id):
+    """turn_count (2026-09-03) lets the frontend show real progress ("Turn 14") per playthrough in a
+    "my games" list, instead of every character of the same name looking identical - a subquery
+    rather than a JOIN+GROUP BY since most users have few enough characters that per-row cost here
+    is negligible, and it keeps this readable next to list_characters_with_turn_counts' own version
+    of the same pattern below."""
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, setting_key, system_key, name, is_premade, created_at, updated_at FROM characters "
-        "WHERE user_id = ? ORDER BY updated_at DESC",
+        """
+        SELECT c.id, c.setting_key, c.system_key, c.name, c.is_premade, c.created_at, c.updated_at,
+               (SELECT COUNT(*) FROM turns t WHERE t.character_id = c.id) AS turn_count
+        FROM characters c
+        WHERE c.user_id = ?
+        ORDER BY c.updated_at DESC
+        """,
         (user_id,),
     ).fetchall()
     conn.close()

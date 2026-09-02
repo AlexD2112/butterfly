@@ -1,3 +1,42 @@
+# Single-player "my games" list - multiple playthroughs, no re-creation to resume (2026-09-03)
+
+Second of three fronts from this round. The ask: single-player games sorted/listed by game, multiple
+separate playthroughs of the same setting allowed, and resuming an old one shouldn't require
+character creation again.
+
+**Turned out to be a narrower fix than it sounded.** Checked the actual data model first: every
+single-player character already gets its own `games` row (`create_character`'s `game_id is None`
+branch), `list_characters` already returns everything ordered by `updated_at DESC`, and resuming an
+EXISTING character already skipped creation entirely - custom characters already listed as many
+separate resumable entries as you had. The real bug was narrower and specific to premade characters:
+`loadCharacterScreen` used `existing.find(c => c.is_premade)` - grabbing only the FIRST premade
+character for a setting - and only ever showed a "Play as X" button when NONE existed yet. Nothing
+in the database enforced one-premade-per-setting; the frontend was the only thing artificially
+capping it, with no backing rule anywhere.
+
+**Fix**: `loadCharacterScreen` now lists every premade character as its own "Continue as" entry
+(same treatment customs already had) and shows "+ Play as [signature character]" unconditionally, so
+starting another parallel playthrough of the flagship never requires abandoning an existing one.
+`db.list_characters` gained a `turn_count` subquery (same pattern `list_characters_with_turn_counts`
+already used elsewhere, just applied here too) so multiple playthroughs of the same character name
+are actually distinguishable in the list ("2 turns · last played 7 minutes ago" vs "0 turns · last
+played 12 days ago") rather than looking identical.
+
+Also added `relativeTime()` (a small "3 hours ago"/"12 days ago" helper) - genuinely new, everything
+else here is exposing data that already existed.
+
+**Verification note**: this needed an actual restart to test properly, not just a browser reload -
+`db.py` is backend Python, loaded once at process start, unlike `static/index.html` which Flask
+re-reads from disk on every request. Caught this in the moment (turn counts showed literal
+"undefined" until the local waitress process was restarted) rather than assuming the change was live
+because the page reloaded cleanly - worth remembering for any future backend-touching change verified
+against the already-running local/production process. Confirmed live afterward: two premade
+playthroughs of the same setting, correctly distinct, correct turn counts and relative times, against
+both localhost and the real `forkingpaths.app` after restart. 281/281 tests still passing (no schema
+change, purely additive to an existing query).
+
+---
+
 # Forking Paths rebrand: Garden Labyrinth theme, interaction polish, progress markers (2026-09-03)
 
 First of three fronts from this round (the other two: a single-player "my games" list, and a Discord
