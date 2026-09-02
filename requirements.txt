@@ -12,3 +12,6 @@ openai
 # daily conclusion sweep) - see scheduler.py and NOTES.md. Gated behind ENABLE_TICK_SCHEDULER, off
 # by default (see .env.example), so importing server.py in tests never starts a background thread.
 apscheduler
+# The Discord bot (2026-09-03, see discord_bot.py/run_discord_bot.py and NOTES.md) - a separate
+# always-on process, not imported by server.py, so this being present never affects the web app.
+discord.py

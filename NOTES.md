@@ -1,3 +1,71 @@
+# Discord bot: foundation built and tested, real bot wiring intentionally held back (2026-09-03)
+
+Third of three fronts from this round, and the largest. Final direction confirmed: bot invited to an
+existing Discord server the user controls; Discord and the web UI are genuine, bidirectional live
+clients of the same game (not a separate parallel one); onboarding fully self-contained in
+Discord (no requirement to log into the website first); Category = multiplayer server,
+Channel = Location, Thread = non-default Subspace (a Location's default/"Main" subspace IS that
+Location's own channel, not a thread).
+
+## What's built and real-tested tonight
+
+- **Schema** (`db.py`): `discord_guild_id`/`discord_category_id` on `multiplayer_servers`,
+  `discord_channel_id`/`discord_webhook_id`/`discord_webhook_token` on `locations`,
+  `discord_thread_id` on `subspaces` - all nullable, all additive, same idempotent
+  ALTER-and-swallow pattern as every other column added to an existing table in this file. A
+  server/location/subspace with no Discord link just has NULL columns; nothing else changes or
+  requires a Discord presence. Webhooks live on the Location (channel), not per-subspace, since a
+  webhook created on a channel can post into any thread nested under it - one webhook per Location
+  covers every Subspace inside it, including ones spawned dynamically after the webhook already
+  exists.
+- **`discord_bot.py`** - deliberately discord.py-agnostic: every function takes/returns plain values
+  (ids, dicts), never a discord.py object, specifically so it's unit-testable without a real
+  connection. Covers: `resolve_or_create_user` (the entire self-contained-onboarding story - calls
+  the SAME `db.get_or_create_discord_user` web OAuth login already uses, so a Discord-originated
+  account and a web-originated account are never two different things - same `discord_id`, same
+  schema-level starting budget, whichever path reaches it first), channel/thread -> Location/Subspace
+  routing (including the fallback case: a message in an unlinked thread routes to its parent
+  channel's default Subspace, same as posting in the channel directly would), which character a
+  Discord user should act as in a game (most-recently-updated one if they have any, `None` if they
+  need to create one), and `discord_safe_name` (Discord channel/thread names are lowercase-hyphenated
+  with a 100-char cap - this app's free-text Location/Subspace names need sanitizing before they're
+  valid Discord API input at all).
+- **35 new tests** (`tests/test_discord_linking.py`, `tests/test_discord_bot_routing.py`) - the
+  linking accessors, identity resolution (including the "same account either way" guarantee
+  explicitly asserted, not just assumed), channel/thread routing with and without a link, and
+  `discord_safe_name`'s edge cases (apostrophes, all-punctuation input, 150-char names). 305/305
+  across the whole suite.
+- Verified the schema itself applied correctly to the REAL `butterfly.db` after a restart (not just
+  a test DB) - `PRAGMA table_info` confirms all seven new columns are actually there.
+
+## What's deliberately NOT built yet, and why
+
+The actual discord.py `Client`, event handlers, slash commands, category/channel/thread/webhook
+creation, and the web<->Discord mirroring hooks (`run_discord_bot.py`) - the layer that needs a real
+bot connected to Discord's gateway to mean anything. Every other piece of work tonight (and this
+whole session) got verified against something real before being called done - a real model call, a
+real browser, a real restart-and-curl-check. Writing several hundred lines of live-gateway
+integration code with zero ability to execute or verify any of it - discord.py's actual method
+signatures, async/await correctness, webhook/thread API behavior - would be the first genuinely
+unverified code shipped this session, and the kind of thing that accumulates undetected bugs exactly
+because nothing catches them until someone's actually testing against a live bot. Held back
+deliberately rather than guessing at scale.
+
+**What's needed to unblock this, concretely**: a Discord Application + Bot created in the
+[Discord Developer Portal](https://discord.com/developers/applications) (a real account action, not
+something doable on the user's behalf), its bot token (`DISCORD_BOT_TOKEN` - a different credential
+from `DISCORD_CLIENT_SECRET`, the existing OAuth *login* app's secret, even though both can live
+under the same Discord "Application"), and the bot invited to whichever existing Discord server it
+should manage. Once that exists, the remaining work (event handlers, `/join` and `/action` commands,
+category/channel/thread/webhook orchestration, the live-mirroring hooks) gets built and verified with
+the same rigor as everything else, not shipped blind.
+
+`discord.py` added to `requirements.txt`, imported only by `discord_bot.py`/the not-yet-built
+`run_discord_bot.py` - `server.py` never imports either, so the web app is completely unaffected by
+this dependency existing.
+
+---
+
 # Single-player "my games" list - multiple playthroughs, no re-creation to resume (2026-09-03)
 
 Second of three fronts from this round. The ask: single-player games sorted/listed by game, multiple

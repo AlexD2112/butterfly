@@ -225,6 +225,21 @@ def init_db():
         )
         """
     )
+    # Discord bot mapping (2026-09-03) - NULL/unset for every server until an admin actually links
+    # one to a Discord guild+category (see discord_bot.py) - a server never needs a Discord presence
+    # to work, this is purely additive. discord_guild_id is the Discord server the bot was invited
+    # to and posts into; discord_category_id is the Category created within it for this multiplayer
+    # server specifically (Category = multiplayer server, Channel = Location, Thread = non-default
+    # Subspace - see NOTES.md for why this maps more cleanly onto Discord's real structure than a
+    # channel-per-subspace design would).
+    for col_sql in [
+        "ALTER TABLE multiplayer_servers ADD COLUMN discord_guild_id TEXT",
+        "ALTER TABLE multiplayer_servers ADD COLUMN discord_category_id TEXT",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS locations (
@@ -236,6 +251,19 @@ def init_db():
         )
         """
     )
+    # discord_webhook_id/token live on the LOCATION (channel), not per-subspace - a webhook created
+    # on a channel can post into any thread nested under it (Discord's own API, not something this
+    # app has to reimplement), so one webhook per Location covers every Subspace inside it, including
+    # ones created dynamically after the webhook already exists.
+    for col_sql in [
+        "ALTER TABLE locations ADD COLUMN discord_channel_id TEXT",
+        "ALTER TABLE locations ADD COLUMN discord_webhook_id TEXT",
+        "ALTER TABLE locations ADD COLUMN discord_webhook_token TEXT",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     # origin distinguishes admin-authored subspaces from ones a player's action spawned through play
     # (2026-08-22) - 'admin' vs 'dynamic', purely for provenance (so an admin can later tell what the
     # AI invented vs what they built, and prune it if quality is inconsistent) - no mechanic treats
@@ -260,6 +288,10 @@ def init_db():
     for col_sql in [
         "ALTER TABLE subspaces ADD COLUMN origin TEXT NOT NULL DEFAULT 'admin'",
         "ALTER TABLE subspaces ADD COLUMN created_by_character_id INTEGER REFERENCES characters(id)",
+        # NULL for a location's default/"Main" subspace (which IS that Location's own Discord
+        # channel, not a thread within it) and for any subspace before the bot creates its thread -
+        # see discord_bot.py.
+        "ALTER TABLE subspaces ADD COLUMN discord_thread_id TEXT",
     ]:
         try:
             conn.execute(col_sql)
@@ -788,6 +820,59 @@ def get_default_subspace(location_id):
     automatically. Used when a move doesn't specify a subspace explicitly."""
     conn = get_db()
     row = conn.execute("SELECT * FROM subspaces WHERE location_id = ? ORDER BY id ASC LIMIT 1", (location_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# ==================== Discord bot linking (2026-09-03) ====================
+# See discord_bot.py's module docstring for the overall design. These are pure data accessors - no
+# Discord API calls happen here, this module stays as agnostic of Discord as it already is of any
+# other caller.
+
+def link_multiplayer_server_to_discord(server_id, guild_id, category_id):
+    conn = get_db()
+    conn.execute(
+        "UPDATE multiplayer_servers SET discord_guild_id = ?, discord_category_id = ? WHERE id = ?",
+        (guild_id, category_id, server_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def link_location_to_discord(location_id, channel_id, webhook_id, webhook_token):
+    conn = get_db()
+    conn.execute(
+        "UPDATE locations SET discord_channel_id = ?, discord_webhook_id = ?, discord_webhook_token = ? WHERE id = ?",
+        (channel_id, webhook_id, webhook_token, location_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def link_subspace_to_discord_thread(subspace_id, thread_id):
+    conn = get_db()
+    conn.execute("UPDATE subspaces SET discord_thread_id = ? WHERE id = ?", (thread_id, subspace_id))
+    conn.commit()
+    conn.close()
+
+
+def get_location_by_discord_channel(channel_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM locations WHERE discord_channel_id = ?", (channel_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_subspace_by_discord_thread(thread_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM subspaces WHERE discord_thread_id = ?", (thread_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_multiplayer_server_by_discord_category(category_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM multiplayer_servers WHERE discord_category_id = ?", (category_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
