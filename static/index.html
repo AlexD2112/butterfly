@@ -3,18 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Butterfly — Change History</title>
+<title>Forking Paths — Change History</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Crimson+Pro:wght@400;500;600&display=swap">
 <style>
   :root {
-    --bg: #14161a; --panel: #1c1f26; --panel-2: #232732; --border: #333844;
-    --text: #e8e6df; --muted: #9099a8; --accent: #b5482f; --accent-2: #d9c07a;
-    --ok: #6fa36f; --bad: #b5482f;
-    --font-serif: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, 'Times New Roman', serif;
+    /* Garden Labyrinth (2026-09-03) - moss/hedge palette, aged-brass secondary, replacing the old
+       rust/gold "Butterfly" theme now that the site is Forking Paths. See NOTES.md. */
+    --bg: #0e1512; --panel: #16201b; --panel-2: #1c2921; --border: #2b3a2f;
+    --text: #e7e8de; --muted: #8a9c86; --accent: #7a9b5f; --accent-2: #b08d4f;
+    --ok: #7a9b5f; --bad: #b5482f;
+    --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    --font-serif: 'Crimson Pro', Georgia, 'Times New Roman', serif;
     --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     --content-width: 720px;
+    /* One small hedge-corridor tile at a low baked-in opacity (sitewide texture, behind real
+       content, must never fight with it) - reused at full strength for the landing hero's bigger
+       motif below, which is a separate, unrepeated graphic, not this tile scaled up. */
+    --maze-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%237a9b5f' stroke-width='1.2' opacity='0.05'%3E%3Cpath d='M0 30H30V0'/%3E%3Cpath d='M0 90H60V60H90V120'/%3E%3Cpath d='M120 30H90V60'/%3E%3Cpath d='M120 90H105'/%3E%3Cpath d='M45 120V105H15'/%3E%3C/g%3E%3C/svg%3E");
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: var(--font-serif); background: var(--bg); color: var(--text); }
+  body { margin: 0; font-family: var(--font-serif); background: var(--bg) var(--maze-tile) repeat;
+    background-size: 120px 120px; color: var(--text); }
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-screen, .mp-turn, .turn { animation: fp-settle .35s ease both; }
+    @keyframes fp-settle { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  }
 
   /* ---------- start-menu screens ---------- */
   .menu-screen { display: none; flex-direction: column; align-items: center; justify-content: center;
@@ -22,13 +40,24 @@
   .menu-screen.active { display: flex; }
   .menu-screen .eyebrow { font-family: var(--font-ui); font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
     color: var(--muted); margin-bottom: 8px; }
-  .menu-screen h1 { font-size: 27px; font-weight: normal; letter-spacing: 0.3px; color: var(--accent-2); margin: 0 0 10px; }
+  .menu-screen h1 { font-family: var(--font-display); font-size: 30px; font-weight: 600; letter-spacing: 0.2px; color: var(--accent-2); margin: 0 0 10px; text-wrap: balance; }
   .menu-screen .subtitle { font-family: var(--font-ui); font-size: 13.5px; color: var(--muted); margin-bottom: 30px; line-height: 1.5; }
   .menu-options { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 480px; }
-  .menu-option { display: block; width: 100%; text-align: left; background: var(--panel-2);
+  /* Hedge-corner brackets: two corners of a maze-wall turn, appearing on hover/focus rather than
+     sitting on every card at rest - the labyrinth motif should announce itself as you engage with
+     the UI, not compete with it constantly. */
+  .menu-option { position: relative; display: block; width: 100%; text-align: left; background: var(--panel-2);
     border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; font-family: var(--font-ui);
-    color: var(--text); cursor: pointer; transition: border-color .15s; }
-  .menu-option:hover:not(:disabled) { border-color: var(--accent-2); }
+    color: var(--text); cursor: pointer; transition: border-color .18s ease, transform .18s ease, background-color .18s ease; }
+  .menu-option::before, .menu-option::after { content: ''; position: absolute; width: 14px; height: 14px;
+    border: 2px solid var(--accent-2); opacity: 0; transition: opacity .2s ease, width .2s ease, height .2s ease; }
+  .menu-option::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .menu-option::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+  .menu-option:hover:not(:disabled), .menu-option:focus-visible:not(:disabled) { border-color: var(--accent-2);
+    background: var(--panel); transform: translateY(-1px); }
+  .menu-option:hover:not(:disabled)::before, .menu-option:hover:not(:disabled)::after,
+  .menu-option:focus-visible:not(:disabled)::before, .menu-option:focus-visible:not(:disabled)::after { opacity: 1; width: 18px; height: 18px; }
+  .menu-option:active:not(:disabled) { transform: translateY(0); }
   .menu-option .opt-title { font-size: 14.5px; font-weight: bold; }
   .menu-option .opt-desc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
   .menu-option:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -44,7 +73,13 @@
   .discord-btn:hover { opacity: 0.9; }
 
   /* ---------- landing screen ---------- */
-  .landing-title { font-size: 38px; letter-spacing: 0.3px; }
+  .landing-title { font-family: var(--font-display); font-size: 44px; font-weight: 600; letter-spacing: 0.2px; text-wrap: balance; position: relative; z-index: 2; }
+  .landing-hero-motif { position: absolute; top: 50%; left: 50%; width: min(900px, 130vw); height: min(900px, 130vw);
+    transform: translate(-50%, -50%); z-index: 1; pointer-events: none; opacity: 0.5; }
+  .landing-hero-motif path { stroke-dasharray: 900; stroke-dashoffset: 900; animation: fp-draw 2.4s ease-out forwards; }
+  @keyframes fp-draw { to { stroke-dashoffset: 0; } }
+  @media (prefers-reduced-motion: reduce) { .landing-hero-motif path { animation: none; stroke-dashoffset: 0; } }
+  #screen-landing { position: relative; overflow: hidden; }
   .landing-pitch { font-family: var(--font-serif); font-size: 15px; color: var(--text); max-width: 520px;
     line-height: 1.65; margin: 0 0 24px; }
   .landing-begin { max-width: 480px; text-align: center; margin-top: 16px; }
@@ -93,8 +128,8 @@
   #app.active { display: grid; }
   header { grid-column: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; row-gap: 8px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
-  header h1 { font-family: var(--font-serif); font-size: 17px; margin: 0; font-weight: normal;
-    letter-spacing: 0.4px; color: var(--accent-2); }
+  header h1 { font-family: var(--font-display); font-size: 19px; margin: 0; font-weight: 600;
+    letter-spacing: 0.3px; color: var(--accent-2); }
   header .controls { display: flex; flex-wrap: wrap; gap: 10px; row-gap: 8px; align-items: center;
     font-family: var(--font-ui); font-size: 13px; }
   #header-budget { font-size: 11.5px; color: var(--muted); }
@@ -103,8 +138,12 @@
   #inputbar.exhausted #inputbox, #inputbar.exhausted #send-btn { opacity: 0.5; pointer-events: none; }
   select, button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
     border-radius: 4px; padding: 6px 10px; font-family: var(--font-ui); font-size: 13px; }
-  button { cursor: pointer; transition: border-color .15s, background .15s; }
-  button:hover { border-color: var(--accent-2); }
+  button { cursor: pointer; transition: border-color .15s ease, background-color .15s ease, transform .1s ease; }
+  button:hover:not(:disabled) { border-color: var(--accent-2); background: var(--panel); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  button:disabled { cursor: not-allowed; opacity: 0.5; }
+  select { transition: border-color .15s ease; }
+  select:hover { border-color: var(--accent-2); }
   #sheet-toggle-btn { display: flex; align-items: center; gap: 6px; }
   #sheet-toggle-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2);
     display: none; }
@@ -130,6 +169,17 @@
     letter-spacing: 0.3px; text-transform: uppercase; margin-bottom: 8px; opacity: 0.85; }
   .turn.narration { font-family: var(--font-serif); font-size: 16.5px; line-height: 1.75;
     white-space: pre-wrap; overflow-wrap: break-word; }
+  /* A message/action sits here from the instant it's sent until the real response lands - closes
+     the "did that actually go through" gap during a slow AI call, rather than only a small status
+     line at the bottom of the screen (see NOTES.md). */
+  .turn-pending { opacity: 0.6; }
+  .turn-pending .pending-status { font-family: var(--font-ui); font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 6px; }
+  .pending-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-2);
+    animation: fp-pulse 1.1s ease-in-out infinite; }
+  .pending-dot:nth-child(2) { animation-delay: .18s; } .pending-dot:nth-child(3) { animation-delay: .36s; }
+  @keyframes fp-pulse { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .pending-dot { animation: none; opacity: 0.6; } }
   .mechanics { margin-top: 10px; font-family: 'Courier New', monospace; font-size: 12px; color: var(--muted); }
   .mechanics summary { cursor: pointer; font-family: var(--font-ui); }
   .mechanics .line { padding: 3px 0 3px 14px; border-left: 2px solid var(--border); margin-top: 4px; }
@@ -166,9 +216,20 @@
   .canon-event { display: flex; justify-content: space-between; padding: 2px 0; }
   .canon-event.fired { color: var(--ok); }
   .canon-event.pending { color: var(--muted); }
-  .level-line { font-family: var(--font-serif); font-size: 14px; margin-bottom: 4px; }
+  .level-line { font-family: var(--font-display); font-weight: 600; font-size: 15.5px; margin-bottom: 4px; }
   .xp-bar-wrap { background: var(--panel-2); border-radius: 3px; height: 8px; margin: 4px 0 2px; overflow: hidden; }
-  .xp-bar-fill { height: 100%; background: var(--ok); }
+  .xp-bar-fill { height: 100%; background: var(--ok); transition: width .4s ease; }
+  /* Divergence badge - a lightweight, at-a-glance signal next to level/XP, so "how far off the
+     real timeline has this character strayed" doesn't require opening the Divergence Log section
+     to find out. Purely visual - divergence_score already existed, this just surfaces it. */
+  .divergence-badge { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-ui);
+    font-size: 10.5px; letter-spacing: 0.3px; color: var(--accent-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1px 8px 1px 6px; margin-left: 6px; vertical-align: middle; }
+  .divergence-badge svg { width: 9px; height: 9px; }
+  /* Tick countdown - how far through the current progression interval a multiplayer server is,
+     shown in the lobby next to its schedule text. */
+  .tick-bar-wrap { background: var(--panel); border-radius: 3px; height: 4px; margin-top: 5px; overflow: hidden; }
+  .tick-bar-fill { height: 100%; background: var(--accent); transition: width .4s ease; }
   .level-up-banner { background: var(--accent); color: #fff; border-radius: 4px; padding: 6px 8px;
     font-size: 11.5px; margin: 6px 0; text-align: center; display: block; width: 100%;
     border: none; font-family: var(--font-ui); cursor: pointer; }
@@ -222,8 +283,9 @@
     display: flex; justify-content: space-between; align-items: center; }
   .mp-section h3 .mp-toggle-btn { text-transform: none; letter-spacing: normal; font-size: 12px; padding: 4px 8px; }
   .mp-list-item { display: flex; justify-content: space-between; align-items: center; gap: 10px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; margin-bottom: 8px; }
-  .mp-list-item:hover { border-color: var(--accent-2); }
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; margin-bottom: 8px;
+    transition: border-color .15s ease, background-color .15s ease; }
+  .mp-list-item:hover { border-color: var(--accent-2); background: var(--panel-2); }
   .mp-item-title { font-weight: bold; font-size: 13.5px; }
   .mp-item-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
   .mp-empty { font-size: 12.5px; color: var(--muted); font-style: italic; }
@@ -275,6 +337,7 @@
   #mp-log { grid-column: 1; min-width: 0; overflow-y: auto; padding: 20px 24px 100px; line-height: 1.6;
     display: flex; flex-direction: column; align-items: center; }
   .mp-turn { width: 100%; max-width: var(--content-width); min-width: 0; margin-bottom: 16px; font-family: var(--font-ui); font-size: 14px; }
+  .mp-turn.turn-pending { opacity: 0.6; }
   .mp-turn .mp-speaker { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); margin-bottom: 3px; }
   .mp-turn.kind-message .mp-speaker { color: var(--accent-2); }
   .mp-turn.kind-action .mp-speaker { color: var(--accent-2); }
@@ -308,7 +371,14 @@
 
 <!-- Screen 0: Landing -->
 <div class="menu-screen active" id="screen-landing">
-  <div class="eyebrow">Butterfly</div>
+  <svg class="landing-hero-motif" viewBox="0 0 400 400" aria-hidden="true">
+    <g fill="none" stroke="#7a9b5f" stroke-width="1">
+      <path d="M200 40 V 100 M200 100 C 140 100, 120 140, 120 180 M200 100 C 260 100, 280 140, 280 180 M120 180 V 240 M280 180 V 240 M120 240 C 120 280, 80 300, 40 300 M120 240 C 140 270, 160 290, 200 300 M280 240 C 280 280, 320 300, 360 300 M280 240 C 260 270, 240 290, 200 300 M200 300 V 360"/>
+      <circle cx="200" cy="40" r="4" fill="#7a9b5f" stroke="none"/>
+      <circle cx="200" cy="300" r="4" fill="#b08d4f" stroke="none"/>
+    </g>
+  </svg>
+  <div class="eyebrow">Forking Paths</div>
   <h1 class="landing-title">Change history.</h1>
   <div class="subtitle">A game master narrates the story and plays every character you meet. Risky actions are resolved with a dice roll against your character's stats.</div>
   <p class="landing-pitch">Four settings so far: Leon Trotsky in Petrograd in 1917, Alfred the Great fighting off the Vikings in 876, Julius Caesar in Rome, and Bohemond of Taranto on the First Crusade. Play the setting's signature character, or build your own. Diverge from history, and the game tracks it as a real change to the story.</p>
@@ -323,7 +393,7 @@
 <!-- Screen 1: Start Menu -->
 <div class="menu-screen" id="screen-start">
   <div class="menu-back-row"><button class="menu-back" data-back="screen-landing">&larr; Back</button></div>
-  <div class="eyebrow">Butterfly</div>
+  <div class="eyebrow">Forking Paths</div>
   <h1>Begin a Campaign</h1>
   <div class="subtitle">Choose how you want to begin.</div>
   <div class="menu-options" style="margin-top:18px;">
@@ -460,7 +530,7 @@
 <div id="app">
   <header>
     <div class="header-left">
-      <h1 id="game-header">Butterfly</h1>
+      <h1 id="game-header">Forking Paths</h1>
       <div id="account-menu">
         <button id="account-btn">Account &#9662;</button>
         <div id="account-dropdown">
@@ -490,7 +560,7 @@
 <div id="mp-app">
   <header>
     <div class="header-left">
-      <h1 id="mp-game-header">Butterfly</h1>
+      <h1 id="mp-game-header">Forking Paths</h1>
       <div id="mp-account-menu"></div>
     </div>
     <div class="controls">
@@ -953,7 +1023,7 @@ function launchGame(characterId, isNew) {
   document.getElementById('app').classList.add('active');
   closeSheet();
   document.getElementById('game-header').textContent =
-    SELECTED_SETTING ? `Butterfly — ${SELECTED_SETTING.label}` : 'Butterfly';
+    SELECTED_SETTING ? `Forking Paths — ${SELECTED_SETTING.label}` : 'Forking Paths';
   logEl.innerHTML = '';
   loadModels();
   loadCharacterState(isNew);
@@ -1128,10 +1198,17 @@ function renderSidebar(state) {
   const section = (title, bodyHtml, isOpen) =>
     `<details${isOpen ? ' open' : ''}><summary>${title}</summary><div class="section-body">${bodyHtml}</div></details>`;
 
+  const divergenceScore = state.divergence_score || 0;
+  const divergenceBadge = divergenceScore > 0
+    ? `<span class="divergence-badge" title="${divergenceScore} logged divergence${divergenceScore === 1 ? '' : 's'} from real history">
+         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 1v3M6 4 3 7v4M6 4l3 3v4"/></svg>${divergenceScore}
+       </span>`
+    : '';
+
   sidebarEl.innerHTML = `
     <div id="sidebar-header">
       <div class="card-desc" style="text-transform:uppercase;letter-spacing:1px;">Turn ${state.turn_number} &mdash; ${state.date}</div>
-      <div class="level-line">${escapeHtml(c.name)} &middot; Level ${c.level} &middot; Proficiency ${fmtMod(pb)}</div>
+      <div class="level-line">${escapeHtml(c.name)} &middot; Level ${c.level} &middot; Proficiency ${fmtMod(pb)}${divergenceBadge}</div>
       <div class="xp-bar-wrap"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
       <div class="card-desc">${c.xp} / ${xpNeeded} XP</div>
       ${levelUpBanner}
@@ -1389,6 +1466,26 @@ function appendTurn(userText, narration, debugEvents) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+// Shown the instant a turn is sent, removed once the real response (success or error) lands -
+// closes the "did that actually go through" gap during a slow AI call. appendTurn's own error
+// branches already render a real, permanent [Error: ...] entry, so this is purely the in-flight
+// state, never a final one.
+function appendPendingTurn(userText) {
+  const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const div = document.createElement('div');
+  div.className = 'turn turn-pending';
+  div.id = id;
+  div.innerHTML = `<div class="user">&gt; ${escapeHtml(userText)}</div>` +
+    `<div class="pending-status"><span class="pending-dot"></span><span class="pending-dot"></span><span class="pending-dot"></span>Sent — resolving…</div>`;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+  return id;
+}
+function removePendingTurn(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
 function escapeHtml(s) {
   const d = document.createElement('div');
   d.innerText = s == null ? '' : s;
@@ -1443,6 +1540,7 @@ async function sendTurn() {
   if (!text || !CURRENT_CHARACTER_ID) return;
   inputBox.value = '';
   sendBtn.disabled = true;
+  const pendingId = appendPendingTurn(text);
   setStatus('Resolving…');
   try {
     const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/turn`, {
@@ -1451,6 +1549,7 @@ async function sendTurn() {
       body: JSON.stringify({ input: text, model_key: modelSelect.value }),
     });
     const data = await res.json();
+    removePendingTurn(pendingId);
     if (res.status === 403 && data.discord_login_required) {
       appendTurn(text, `[Log in with Discord to send turns — see the start menu or landing page.]`, []);
       setStatus('Discord login required.');
@@ -1477,6 +1576,7 @@ async function sendTurn() {
       if (!sidebarPanel.classList.contains('open')) sheetToggleBtn.classList.add('has-update');
     }
   } catch (e) {
+    removePendingTurn(pendingId);
     appendTurn(text, `[Request failed: ${e}]`, []);
     setStatus('Request failed.');
   }
@@ -1538,18 +1638,27 @@ async function loadMpServerList() {
   MP_SERVERS = data.servers;
   const isAdmin = CURRENT_USER && CURRENT_USER.is_admin;
   const el = document.getElementById('mp-server-list');
-  el.innerHTML = MP_SERVERS.length === 0 ? '<div class="mp-empty">No servers yet.</div>' : MP_SERVERS.map(s => `
-    <div class="mp-list-item">
-      <div>
-        <div class="mp-item-title">${escapeHtml(s.name)}</div>
-        <div class="mp-item-desc">${escapeHtml(settingLabel(s.setting_key))} &middot; current date ${escapeHtml(s.current_date || '?')} &middot; time advances by ${escapeHtml(s.progression_speed)} every ${s.progression_rate_hours}h</div>
+  el.innerHTML = MP_SERVERS.length === 0 ? '<div class="mp-empty">No servers yet.</div>' : MP_SERVERS.map(s => {
+    // How far through the current progression interval this server is, purely visual - the real
+    // tick still fires server-side on its own schedule (see scheduler.py), this is just a preview.
+    const elapsedH = s.last_tick_at ? Math.max(0, (Date.now() / 1000 - s.last_tick_at) / 3600) : 0;
+    const tickPct = s.progression_rate_hours > 0 ? Math.max(0, Math.min(100, Math.round(100 * elapsedH / s.progression_rate_hours))) : 0;
+    return `
+    <div class="mp-list-item" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div class="mp-item-title">${escapeHtml(s.name)}</div>
+          <div class="mp-item-desc">${escapeHtml(settingLabel(s.setting_key))} &middot; current date ${escapeHtml(s.current_date || '?')} &middot; time advances by ${escapeHtml(s.progression_speed)} every ${s.progression_rate_hours}h</div>
+          <div class="tick-bar-wrap" title="${tickPct}% through the current tick interval"><div class="tick-bar-fill" style="width:${tickPct}%"></div></div>
+        </div>
+        <span>
+          <button data-enter="${s.id}">Enter</button>
+          ${isAdmin ? `<button data-delete-server="${s.id}" class="danger-btn" title="Permanently delete this server and everything in it">Delete</button>` : ''}
+        </span>
       </div>
-      <span>
-        <button data-enter="${s.id}">Enter</button>
-        ${isAdmin ? `<button data-delete-server="${s.id}" class="danger-btn" title="Permanently delete this server and everything in it">Delete</button>` : ''}
-      </span>
     </div>
-  `).join('');
+  `;
+  }).join('');
   el.querySelectorAll('[data-enter]').forEach(btn => {
     btn.addEventListener('click', () => enterMpServerLobby(parseInt(btn.dataset.enter, 10)));
   });
@@ -1976,7 +2085,7 @@ async function enterMpSubspace(locationId, subspaceId) {
   document.getElementById('mp-app').classList.add('active');
   closeSheet();
   mpLogEl.innerHTML = '';
-  document.getElementById('mp-game-header').textContent = `Butterfly — ${MP_SELECTED_SERVER.name}`;
+  document.getElementById('mp-game-header').textContent = `Forking Paths — ${MP_SELECTED_SERVER.name}`;
   updateMpReplyChip();
   setMpKind('message');
   renderMpAccountMenu();
@@ -2145,6 +2254,26 @@ function appendMpTurn(row) {
   }
 }
 
+// Same "did that actually go through" fix as single-player's appendPendingTurn, for the
+// multiplayer log - shown from the instant a message/action is sent until either the real turn
+// (via loadMpMessages/SSE) or an inline error status replaces it.
+function appendMpPendingTurn(userText) {
+  const id = `mp-pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const div = document.createElement('div');
+  div.className = 'mp-turn turn-pending';
+  div.id = id;
+  div.innerHTML = `<div class="mp-speaker">${escapeHtml(MP_CHARACTER_NAME || 'You')}</div>` +
+    `<div class="mp-body">${escapeHtml(userText)}</div>` +
+    `<div class="pending-status"><span class="pending-dot"></span><span class="pending-dot"></span><span class="pending-dot"></span>Sending…</div>`;
+  mpLogEl.appendChild(div);
+  mpLogEl.scrollTop = mpLogEl.scrollHeight;
+  return id;
+}
+function removeMpPendingTurn(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
 function appendPeekTurn(row, containerEl, replyLookup) {
   const { html } = buildMpTurnInnerHtml(row, replyLookup, false);
   const div = document.createElement('div');
@@ -2248,6 +2377,7 @@ async function sendMpMessage() {
   if (!text || !MP_CHARACTER_ID) return;
   mpInputBox.value = '';
   mpSendBtn.disabled = true;
+  const pendingId = appendMpPendingTurn(text);
   setStatus(MP_KIND === 'action' ? 'Resolving…' : 'Sending…');
   try {
     const body = { kind: MP_KIND, content: text, model_key: mpModelSelect.value };
@@ -2257,6 +2387,7 @@ async function sendMpMessage() {
       body: JSON.stringify(body),
     });
     const data = await res.json();
+    removeMpPendingTurn(pendingId);
     if (res.status === 403 && data.discord_login_required) {
       setStatus('Log in with Discord to send messages.');
       renderBudget(null);
@@ -2296,7 +2427,9 @@ async function sendMpMessage() {
       }
     }
   } catch (e) {
+    removeMpPendingTurn(pendingId);
     setStatus(`Request failed: ${e}`);
+    mpInputBox.value = text;
   }
   mpSendBtn.disabled = false;
   mpInputBox.focus();

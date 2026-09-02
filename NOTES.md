@@ -1,3 +1,84 @@
+# Forking Paths rebrand: Garden Labyrinth theme, interaction polish, progress markers (2026-09-03)
+
+First of three fronts from this round (the other two: a single-player "my games" list, and a Discord
+bot - both scoped/in progress separately, see their own entries). Confirmed direction from a
+3-option moodboard shown earlier: **Garden Labyrinth**, pushed further than the mockup - "a lot more
+labyrinthy," not just a palette swap.
+
+## The redesign itself
+
+`:root`'s tokens are the only thing most of the CSS actually depends on (confirmed by reading the
+whole stylesheet before starting - every rule already referenced `var(--bg)`/`var(--accent)`/etc.,
+nothing hardcoded), so the palette/type swap was low-risk: moss/near-black ground (`#0e1512`), hedge
+green accent (`#7a9b5f`), aged brass secondary (`#b08d4f`), replacing the old rust/gold. Type split
+into two roles instead of one - Cormorant Garamond (`--font-display`) for headings/big moments,
+Crimson Pro (`--font-serif`, keeping the old variable name so most of the stylesheet needed zero
+changes) for narrative body text, which stays readable at paragraph length in a way a display face
+alone wouldn't.
+
+**The maze motif, concretely:**
+- A hedge-corridor SVG tile, baked-in low opacity (`0.05`, in the SVG itself, not a CSS opacity that
+  would need a separate layer), tiled sitewide as the actual page background - present everywhere,
+  never fighting with text.
+- A much bolder, single (non-tiling) branching-path graphic as the landing screen's hero, animated
+  drawing in on load via `stroke-dashoffset` (one orchestrated moment, respects
+  `prefers-reduced-motion`) - this is the "a lot more labyrinthy" ask, placed where it has the most
+  impact instead of diluted everywhere.
+- Hedge-corner brackets on `.menu-option` cards - two L-shaped corner accents, hidden at rest,
+  revealed on hover/focus - so the labyrinth motif announces itself as you engage with a card rather
+  than sitting on every card permanently and competing with the actual choice being presented.
+
+Visible "Butterfly" branding text replaced with "Forking Paths" throughout (page title, both
+in-game headers, both eyebrow labels) - internal identifiers (file names, table names, the actual
+git repo name, `systems/` package names) untouched; that's a much bigger, purely-cosmetic-benefit
+undertaking not implied by "redesign the site."
+
+## Interaction polish
+
+Consistent transitions on buttons/menu-options/list-items (border, background, a subtle lift/press on
+menu options, `scale(0.97)` on button press) - previously only `border-color` transitioned, hover
+otherwise snapped. `prefers-reduced-motion: reduce` is respected globally (one media query collapses
+every animation/transition duration near-zero), not just for the new landing animation specifically.
+
+## The message-confirmation gap - a real bug, not just polish
+
+Checked `sendTurn`/`sendMpMessage` directly: both cleared the input and disabled the send button
+immediately, but nothing appeared in the actual log until the full round-trip (including the AI
+call) completed - for several seconds, the only feedback was a small status line easy to miss, with
+the user's own just-sent text not visible anywhere. Fixed with an optimistic pending entry
+(`appendPendingTurn`/`appendMpPendingTurn`) shown the instant a message/action is sent - the
+sent text, dimmed, with a pulsing "Sent — resolving…" indicator - removed the moment the real
+response (success or error) lands and gets rendered normally. Verified live: the pending state
+renders correctly, clears correctly, and (network-failure catch block) the typed text is no longer
+silently lost on a request exception in the multiplayer path - a small, real pre-existing gap found
+while touching this code, fixed alongside it.
+
+## Progress markers
+
+Two, both surfacing state that already existed but had no visual signal:
+- **Divergence badge** - a small pill next to Level/Proficiency in the character sheet header,
+  showing `divergence_score` with a tiny forking-path glyph, only rendered once it's non-zero (no
+  "Divergence: 0" clutter on a character who hasn't diverged yet).
+- **Tick progress bar** - a thin bar under each server's listing in the multiplayer lobby, showing
+  how far through the current progression interval it is (`(now - last_tick_at) / progression_rate_hours`)
+  - purely a client-side preview; the real tick still fires on scheduler.py's own schedule
+  regardless of what this shows.
+
+Deliberately did NOT build a new dedicated "progress" feature/screen - both markers reuse data the
+backend already tracks, surfaced with minimal new UI, per direction not to over-scope this into
+something bigger than a visual-polish pass.
+
+## Verification
+
+Pure frontend change (one file, `static/index.html`), no schema/backend changes, so no Python test
+impact - verified entirely live in the browser against the real local server: landing hero motif
+renders and animates correctly, divergence badge appears with a real nonzero score, tick bar shows a
+real partial fill against a real server's `last_tick_at`, corner-bracket hover state confirmed on a
+real menu card, pending-message state confirmed appearing and clearing correctly for a real sent
+turn. JS syntax checked via `node --check` before all of the above.
+
+---
+
 # AI-generated historical characters, with a real refusal path and claim-locking (2026-08-23)
 
 Third-priority ask for the night, after launch-readiness and the level-up picker were both solid.
