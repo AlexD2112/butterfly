@@ -1,94 +1,113 @@
-# Local site hosting + Render pass-through
+# Local site hosting + a permanent domain
 
 Moves the real Butterfly app (`server.py`, `butterfly.db`) off Render's free tier and onto this
 machine, so SQLite data stops getting wiped on every Render redeploy (Render's free web services
 have no persistent disk - confirmed by evidence in request logs: character IDs kept resetting to 1
-across sessions). Render keeps serving the existing public URL
-(`https://butterfly-haa9.onrender.com`) as a thin pass-through (`proxy_app.py` at the repo root)
-instead of running the real app - see `proxy_app.py`'s own docstring and `NOTES.md` for the full
-reasoning.
+across sessions). The real, permanent public address is now **https://forkingpaths.app**, served by
+a NAMED Cloudflare Tunnel (not the free quick-tunnel this setup originally used - see "From quick
+tunnel to a named tunnel" below). Render still answers the old
+`https://butterfly-haa9.onrender.com` URL, but only as a redirect shim (`proxy_app.py` at the repo
+root) pointing old links at the new domain - see that file's own docstring and `NOTES.md` for the
+full reasoning.
 
-**Architecture** - same shape as `local-ollama-proxy/`, just one hop simpler (no auth layer needed
-here; the real app already has its own via Discord login + the per-account budget):
+**Architecture:**
 
 ```
-Browser --https--> Render (proxy_app.py)
-                        --https--> Cloudflare edge --tunnel--> cloudflared (this machine)
-                                                                    |
-                                                                    v
-                                                      server.py (waitress, 127.0.0.1:5000)
-                                                          - the real app, real butterfly.db
+Browser --https--> Cloudflare edge (forkingpaths.app) --tunnel--> cloudflared (this machine)
+                                                                       |
+                                                                       v
+                                                         server.py (waitress, 127.0.0.1:5000)
+                                                             - the real app, real butterfly.db
+
+Browser --https--> Render (proxy_app.py, butterfly-haa9.onrender.com)
+                        --301 redirect--> https://forkingpaths.app/<same path+query>
 ```
 
 Cloudflare Tunnel is outbound-only from this machine - no inbound port ever opens on your router.
-Render's pass-through (not players' browsers) calls the resulting public HTTPS URL
-server-to-server.
+The browser talks to `forkingpaths.app` directly now; Render is no longer in the request path at
+all for anyone using the current domain, only for old links.
 
-## One-time setup
+## One-time setup (already done on this machine - kept here for reference/rebuilding elsewhere)
 
-1. Make sure `cloudflared` is installed (already true if you've used `local-ollama-proxy/` - this
-   reuses the same install, no second install needed).
-2. Install `waitress` if you haven't already (it's in the repo's root `requirements.txt`):
+1. Install `cloudflared` (already true if you've used `local-ollama-proxy/` - reuses the same
+   install).
+2. Install `waitress` (in the repo's root `requirements.txt`):
    ```
    pip install -r requirements.txt
    ```
-   `waitress` is a pure-Python production WSGI server - used here specifically because **gunicorn
-   doesn't run on Windows** (it depends on `fcntl`, a Unix-only module). Render still uses gunicorn
-   for the pass-through (that half runs on Render's own Linux infrastructure); this machine uses
-   waitress for the real app instead. Never run the public-facing instance via plain
-   `python server.py` - that starts Flask's own dev server, which defaults `FLASK_DEBUG` on and
-   would expose Werkzeug's interactive debugger (arbitrary code execution if anything throws) to the
-   whole internet the moment a request errors. Serving `server:app` through a real WSGI server
-   (waitress or gunicorn) never invokes that debug-mode code path at all, regardless of the
-   `FLASK_DEBUG` env var, so this is the actually-safe way to expose it publicly.
-3. On Render's dashboard (`butterfly` service):
-   - Change **Start Command** to `gunicorn proxy_app:app --timeout 900 --worker-class gthread
-     --threads 4` (matches the updated `render.yaml`/`Procfile` in this repo - re-syncing the
-     blueprint should also pick this up, but a manual dashboard change works too and is more likely
-     to actually take effect on an already-running service).
-   - Add environment variable `LOCAL_TUNNEL_URL` (blank for now - filled in every time you start the
-     tunnel, step 2 below).
-   - The existing `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`DISCORD_*`/`OLLAMA_TUNNEL_*` env vars on
-     Render are no longer used by the pass-through (it does no LLM calls or DB access of its own) -
-     `render.yaml` now keeps them commented-out rather than deleting them, so switching back to
-     Render-hosted is just uncommenting + restoring the old start command, not re-entering every
-     secret from scratch. The real app now reads all of these from **this machine's** `.env`
-     instead (see repo root `.env.example`).
+   `waitress` is a pure-Python production WSGI server - used specifically because **gunicorn doesn't
+   run on Windows** (it depends on `fcntl`, a Unix-only module). Render's redirect shim still uses
+   gunicorn (that runs on Render's own Linux infrastructure); this machine uses waitress for the real
+   app instead. Never run the public-facing instance via plain `python server.py` - that starts
+   Flask's own dev server, which defaults `FLASK_DEBUG` on and would expose Werkzeug's interactive
+   debugger (arbitrary code execution if anything throws) to the whole internet the moment a request
+   errors. Serving `server:app` through a real WSGI server (waitress or gunicorn) never invokes that
+   debug-mode code path at all, regardless of the `FLASK_DEBUG` env var, so this is the actually-safe
+   way to expose it publicly.
+3. Buy/own a domain and add it to a Cloudflare account (buying directly through Cloudflare Registrar
+   skips a nameserver-propagation wait that buying elsewhere and adding it afterward doesn't - see
+   NOTES.md).
+4. `cloudflared tunnel login` - the ONE interactive step in this whole setup. Opens a browser, you
+   log into Cloudflare and authorize, which writes `~/.cloudflared/cert.pem`. Everything after this
+   is non-interactive.
+5. `cloudflared tunnel create butterfly` - creates the named tunnel (id
+   `bf9a4147-6252-4b3e-8911-1dfe7d9257db`) and its credentials file.
+6. `~/.cloudflared/config.yml` (NOT in this repo - host-machine config, not app code):
+   ```yaml
+   tunnel: bf9a4147-6252-4b3e-8911-1dfe7d9257db
+   credentials-file: C:\Users\atdan\.cloudflared\bf9a4147-6252-4b3e-8911-1dfe7d9257db.json
+
+   ingress:
+     - hostname: forkingpaths.app
+       service: http://localhost:5000
+     - hostname: www.forkingpaths.app
+       service: http://localhost:5000
+     - service: http_status:404
+   ```
+7. `cloudflared tunnel route dns butterfly forkingpaths.app` and again for
+   `www.forkingpaths.app` - creates the CNAME records pointing the domain at the tunnel.
+8. On Render's dashboard (`butterfly` service): Start Command is `gunicorn proxy_app:app --timeout
+   900 --worker-class gthread --threads 4` (see `render.yaml`/`Procfile`) - no env vars needed
+   anymore (the old `LOCAL_TUNNEL_URL` is gone, see below).
 
 ## Every time you want the live site backed by this machine
 
-1. Make sure this machine's `.env` (repo root, not this folder) has real values - `FLASK_SECRET_KEY`
-   especially, so logins survive a restart of the app; Discord OAuth vars if you want Discord login;
-   `OLLAMA_TUNNEL_URL`/`OLLAMA_TUNNEL_SECRET` if you want the free local model available too (see
-   "Note on the local model" below).
+1. Make sure this machine's `.env` (repo root, not this folder) has real values -
+   `FLASK_SECRET_KEY` especially, so logins survive a restart; Discord OAuth vars if you want Discord
+   login; `OLLAMA_TUNNEL_URL`/`OLLAMA_TUNNEL_SECRET` if you want the free local model available too
+   (see "Note on the local model" below).
 
-   **`DISCORD_REDIRECT_URI` specifically must be the PUBLIC address testers actually use**
-   (`https://butterfly-haa9.onrender.com/auth/discord/callback`), even though the real app now runs
-   locally - NOT `http://127.0.0.1:5000/auth/discord/callback` (that's what `.env.example` ships as
-   its default, meant for plain local dev before this tunnel setup existed - easy to leave unedited
-   by mistake now that "running locally" also means "serving the public site"). Discord OAuth is
-   configured entirely from THIS machine's `.env` now (`discord_oauth.py` reads it straight from the
-   environment) - Render's copy of these variables, if still present in its dashboard, is unused and
-   irrelevant. If the login button redirects to Discord but then fails (either Discord itself
-   rejects it as an unregistered redirect, or your browser can't reach `127.0.0.1` after you
-   approve), this is almost always why - fix the `.env` value, no code change needed, no Discord
-   dashboard change needed either as long as the public URL was already registered there from before
-   this tunnel setup existed (see `README.md`'s "Setting up Discord login" section).
+   **`DISCORD_REDIRECT_URI` is deliberately still `https://butterfly-haa9.onrender.com/auth/discord/callback`**
+   - NOT `https://forkingpaths.app/auth/discord/callback` - even though the real app runs at the new
+     domain now. This isn't a bug: Discord's OAuth2 app only has the OLD address registered as a
+     valid redirect right now, and `proxy_app.py`'s redirect preserves the full path+query, so the
+     login flow still completes correctly through that one extra hop (see `proxy_app.py`'s own
+     docstring for exactly why this works). To fully retire this dependency, add
+     `https://forkingpaths.app/auth/discord/callback` as an additional registered redirect in
+     Discord's Developer Portal (requires the account owner's own Discord login - not something
+     done on anyone's behalf) and then switch `DISCORD_REDIRECT_URI` in `.env` - not done yet, not
+     urgent, tracked in NOTES.md.
 2. Run `start_local_site.ps1` in this folder (double-click it, or
-   `powershell -File start_local_site.ps1`). This opens two windows: the app (via waitress), and a
-   Cloudflare quick tunnel pointed at it.
-3. **Copy the tunnel's public URL** into Render's `LOCAL_TUNNEL_URL` environment variable, then
-   save/redeploy on Render's side so it picks up the change.
+   `powershell -File start_local_site.ps1`). This opens two windows: the app (via waitress), and the
+   named Cloudflare tunnel.
+3. That's it. `https://forkingpaths.app` is live - **nothing to copy-paste anywhere**, unlike the old
+   quick-tunnel setup (see below). If this machine restarts, the script restarts, or the tunnel
+   drops, restarting `start_local_site.ps1` reconnects the SAME tunnel to the SAME domain
+   automatically.
 
-**The tunnel URL changes every single time you run step 2** - same ephemeral-quick-tunnel tradeoff
-as `local-ollama-proxy/`. If this machine restarts, the script restarts, or the tunnel drops, you'll
-get a new URL and need to update Render's `LOCAL_TUNNEL_URL` again. A named/persistent Cloudflare
-tunnel (needs a registered domain) would remove this step but is out of scope for now, same call as
-the Ollama tunnel.
+**If this machine is off or asleep**, the domain simply stops resolving to anything live - an
+accepted tradeoff (same as the free local model's availability) until/unless the site moves to
+always-on hosting (see NOTES.md's migration-scoping entry).
 
-**If this machine is off or asleep**, `proxy_app.py` answers Render's public URL with a clear 503
-instead of a broken or blank response - the site is only fully live while this machine is on and
-awake, an accepted tradeoff (same as the free local model's availability).
+## From quick tunnel to a named tunnel (2026-09-02)
+
+This setup originally used a Cloudflare **quick** tunnel (`cloudflared tunnel --url ...`) - a fresh
+random `*.trycloudflare.com` URL every time the script ran, requiring a manual copy-paste of that
+URL into Render's `LOCAL_TUNNEL_URL` environment variable (and a Render redeploy) every single
+restart. Once a real domain was bought, that whole category of manual step went away: a **named**
+tunnel gets a permanent hostname (`forkingpaths.app`) that survives restarts, machine reboots, and
+tunnel reconnects without ever needing to touch Render again. `LOCAL_TUNNEL_URL` no longer exists as
+a concept - Render's service needs zero environment variables now.
 
 ## Note on the local model, now that the whole app runs here too
 
@@ -106,7 +125,7 @@ outside this change's scope and nothing is actually broken by leaving it as-is.
   not losing it (see `ROADMAP.md`'s "Backups/export" item - still not built).
 - Local/Discord account separation, the $0.10 budget, Council Mode, the free local model option -
   none of that logic changes; it's the exact same `server.py` running in a different place.
-- Render's env vars for the real app (API keys etc.) are unused while the pass-through is deployed,
+- Render's env vars for the real app (API keys etc.) are unused while the redirect shim is deployed,
   but left in place (commented in `render.yaml`) so switching back is just a Start Command change,
   not a re-entry of every secret.
 

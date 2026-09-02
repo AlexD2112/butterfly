@@ -4,23 +4,14 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    # As of 2026-08-21, Render no longer runs the real app (server:app) - it runs proxy_app:app, a
-    # thin reverse proxy that forwards every request to LOCAL_TUNNEL_URL below, where the real app
-    # is now hosted (this machine, via a Cloudflare tunnel - see start_local_site.ps1 and NOTES.md).
-    # This keeps the existing public URL (butterfly-haa9.onrender.com) working for anyone who already
-    # has that link, without them needing a new address. --timeout 900 / --worker-class gthread
-    # --threads 4: same reasoning as before (see git history) - a forwarded local-model turn can
-    # legitimately take minutes, and threads keep one slow forwarded request from blocking every
-    # other player's request while it waits.
+    # As of 2026-09-02, Render runs proxy_app:app purely as a redirect shim (see that file's own
+    # docstring) - the real app is hosted on the player's own machine behind a permanent named
+    # Cloudflare tunnel at https://forkingpaths.app (see start_local_site.ps1 and NOTES.md). No env
+    # var to keep updating here anymore - the redirect target is a fixed domain now, not an
+    # ephemeral tunnel URL (LOCAL_TUNNEL_URL, previously required here, is gone - the quick-tunnel
+    # era it belonged to is over).
     startCommand: gunicorn proxy_app:app --timeout 900 --worker-class gthread --threads 4
     envVars:
-      # The ONLY env var this service actually needs now - the current Cloudflare tunnel URL pointed
-      # at the real app running locally. Changes every time the local tunnel restarts (see
-      # start_local_site.ps1's output) and must be updated here + redeployed each time, same
-      # operational reality as OLLAMA_TUNNEL_URL below always was. Leave blank and this service
-      # answers every request with a clear "host machine not configured" message instead of erroring.
-      - key: LOCAL_TUNNEL_URL
-        sync: false
       # Everything below this line (API keys, FLASK_SECRET_KEY, Discord OAuth settings, the Ollama
       # tunnel settings) is now only relevant to the LOCAL machine's own .env - proxy_app.py has no
       # database, no provider calls, and no session logic of its own, so none of these are read by

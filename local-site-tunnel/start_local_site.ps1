@@ -1,16 +1,29 @@
 # Starts the real Butterfly app (server.py) via waitress - NOT `python server.py`'s own dev server,
 # which defaults FLASK_DEBUG on and would expose Werkzeug's interactive debugger (an RCE risk) to
 # the public internet the moment a request throws, and NOT gunicorn (Linux-only, depends on fcntl -
-# that's what Render's proxy_app.py uses instead, on Render's own Linux infrastructure) - and a
-# Cloudflare quick tunnel pointed at it, each in its own visible window. Mirrors
-# local-ollama-proxy/start_local_llm.ps1's pattern.
+# that's what Render's proxy_app.py used instead, on Render's own Linux infrastructure, back when
+# Render was in the loop at all - see below) - and a NAMED Cloudflare tunnel pointed at it, each in
+# its own visible window. Mirrors local-ollama-proxy/start_local_llm.ps1's pattern.
 #
 # Run this instead of `python server.py` whenever you want the live site backed by this machine.
-# After running, copy the "https://....trycloudflare.com" URL cloudflared prints into Render's
-# LOCAL_TUNNEL_URL environment variable (Render dashboard -> butterfly service -> Environment), on
-# the service whose Start Command has been switched to `gunicorn proxy_app:app` - see README.md in
-# this folder. The URL is different every time this script runs; there's no fixed address with a
-# free Cloudflare quick tunnel.
+#
+# 2026-09-02: switched from a Cloudflare QUICK tunnel (`cloudflared tunnel --url ...`, a fresh
+# ephemeral trycloudflare.com URL every run, requiring a manual copy-paste into Render's
+# LOCAL_TUNNEL_URL env var each time) to a NAMED tunnel ("butterfly", id
+# bf9a4147-6252-4b3e-8911-1dfe7d9257db) permanently routed to https://forkingpaths.app and
+# https://www.forkingpaths.app via `cloudflared tunnel route dns` - a fixed hostname that never
+# changes across restarts. This needed a one-time `cloudflared tunnel login` (the only step that
+# ever requires a human at a real browser - produces ~/.cloudflared/cert.pem) and `cloudflared
+# tunnel create butterfly`, both already done; this script just runs the tunnel that already
+# exists. The ingress config (which hostnames route to localhost:$port) lives in the default
+# location, ~/.cloudflared/config.yml, not in this repo - it's host-machine config, not app code.
+#
+# Render (proxy_app.py) is RETIRED from the real hosting path now that the tunnel itself has a
+# permanent address - it added an extra network hop, a request-timeout ceiling, and the manual
+# LOCAL_TUNNEL_URL update this script used to remind you about, all to solve a problem (the quick
+# tunnel's URL changing every restart) that a named tunnel no longer has. The old
+# butterfly-haa9.onrender.com URL now 301-redirects to forkingpaths.app (proxy_app.py rewritten to
+# just do that) rather than being decommissioned outright, so existing bookmarks/links don't break.
 #
 # butterfly.db lives on this machine's own disk from here on, so it persists normally across
 # restarts of this script - no more resets on every Render redeploy (see NOTES.md).
@@ -48,13 +61,13 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$repoRoot'; p
 
 Start-Sleep -Seconds 3
 
-Write-Host "Starting the Cloudflare quick tunnel - watch this window for the public URL." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "& '$cloudflared' tunnel --url http://localhost:$port"
+Write-Host "Starting the named Cloudflare tunnel (forkingpaths.app) - watch this window for connection status." -ForegroundColor Cyan
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "& '$cloudflared' tunnel run butterfly"
 
 Write-Host ""
 Write-Host "Two windows should now be open: the app (waitress), and the tunnel." -ForegroundColor Green
-Write-Host "Copy the https://....trycloudflare.com URL from the tunnel window into Render's" -ForegroundColor Green
-Write-Host "LOCAL_TUNNEL_URL environment variable, on the service running proxy_app.py." -ForegroundColor Green
+Write-Host "The site is live at https://forkingpaths.app - that address is permanent now, nothing to" -ForegroundColor Green
+Write-Host "copy-paste anywhere after a restart." -ForegroundColor Green
 Write-Host ""
 Write-Host "Butterfly is also reachable directly at http://localhost:$port on this machine right now," -ForegroundColor Green
-Write-Host "without waiting on the tunnel or Render at all." -ForegroundColor Green
+Write-Host "without waiting on the tunnel at all." -ForegroundColor Green
