@@ -233,6 +233,7 @@ def api_settings():
             "system": info["system"],
             "system_label": engine.SYSTEM_REGISTRY[info["system"]]["label"],
             "premade_character_name": info["premade_character_name"],
+            "sort_year": info["sort_year"],
         }
         for key, info in engine.SETTING_REGISTRY.items()
     ]
@@ -268,6 +269,17 @@ def api_characters(setting_key):
     user = current_user()
     rows = [c for c in db.list_characters(user["id"]) if c["setting_key"] == setting_key]
     return jsonify({"characters": rows, "premade_name": engine.SETTING_REGISTRY[setting_key]["premade_character_name"]})
+
+
+@app.route("/api/characters")
+def api_my_characters():
+    """Every single-player game this account has, across every setting - not filtered to one
+    setting_key like the route above. Backs the new landing nav's top-level "Your Games" list
+    (2026-09-03): pick Singleplayer and see everything at once, period-tagged, rather than choosing a
+    setting first and only then finding out what you'd already started there. db.list_characters
+    itself is scoped to mode='single' games, so a multiplayer character never shows up here."""
+    user = current_user()
+    return jsonify({"characters": db.list_characters(user["id"])})
 
 
 @app.route("/api/characters", methods=["POST"])

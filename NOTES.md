@@ -1,3 +1,100 @@
+# Landing page rebuild + nav restructure (2026-09-03)
+
+The "full site redesign" ask from earlier this round, fully scoped/confirmed then, built now:
+a real scrollable landing page with a "How It Works" section, the "Four settings so far" copy block
+cut entirely (not relocated), and the nav restructured to Singleplayer/Multiplayer first - each a
+flat, period-tagged list, not grouped by setting the way choosing a setting first used to imply.
+
+## Landing page
+
+`#screen-landing` is no longer one centered card - `.landing-hero` (title, tagline, the Singleplayer/
+Multiplayer nav, the motif SVG) fills the viewport and centers itself exactly as the old landing
+did, but the screen itself is now a plain block below it, so a `#how-it-works` section flows
+naturally underneath and the page just scrolls - confirmed live, no layout hack needed since
+`.menu-screen` was already `min-height: 100vh` rather than a fixed height.
+
+The exact "Four settings so far: Leon Trotsky in Petrograd..." paragraph is gone, full stop - not
+moved into How It Works or anywhere else, per direction ("I actually dont want 'Four settings so
+far' block anywhere"). The four settings are still fully discoverable, just through the game flow
+itself (the setting-choice screen already lists all four with blurbs) rather than as landing-page
+marketing copy.
+
+The old subtitle ("A game master narrates the story and plays every character you meet. Risky
+actions are resolved with a dice roll against your character's stats.") was rewritten, in different
+words, into two of the four How It Works cards - split across "A Game Master For Everything" and
+"The Dice Decide the Risky Moments" rather than kept as one sentence, since How It Works has room to
+actually explain each half instead of compressing both into one dense subtitle line. Two more cards
+("History Remembers", "Alone, or Together") cover divergence tracking and singleplayer/multiplayer
+existing at all - genuinely new copy, not reused from anywhere that got cut.
+
+## Nav restructure
+
+Old flow: Landing -> Start Menu (Preset / Custom / Multiplayer) -> choose a Setting -> choose a
+Gameplay Mode -> choose a Character (which, as of the earlier "my games" pass, already listed every
+existing playthrough IN that one setting). Choosing a setting was unavoidably the first real choice,
+so browsing your own games always meant browsing by setting first.
+
+New flow: Landing now offers Singleplayer/Multiplayer directly. **Singleplayer** leads to a new
+`screen-sp-games` - every one of your single-player games, across every setting at once, flat, each
+row carrying a small `.period-badge` pill (e.g. "Rome, 59 BCE") instead of being grouped under a
+per-setting section header (explicitly rejected earlier as "too much UI"), sorted chronologically by
+the setting's real period - a new `sort_year` field on `engine.SETTING_REGISTRY` (negative for BCE),
+since neither dict insertion order nor the label text sorts a timeline correctly. "+ Start New Game"
+is its own row here, leading into the UNCHANGED setting -> gameplay-mode -> character-creation
+sub-flow (gameplay mode selection stays exactly where it was, confirmed explicitly to stay in the
+new-game sub-flow rather than gating the games list). Resuming an existing game now happens directly
+from this top-level list; `screen-character` (reached only via "+ Start New Game" now) dropped its
+own "Continue as X" resume listing, since that's redundant with the cross-setting list one level up -
+it now only ever offers ways to start something new (premade / custom / historical figure).
+**Multiplayer** is unchanged in structure (it already listed servers flat, no setting-first gate) but
+now sorts by the same `sort_year` and shows the same `.period-badge` per row instead of plain inline
+text, for visual consistency with the singleplayer list.
+
+## Backend, to support this
+
+- `engine.SETTING_REGISTRY` gained `sort_year` per setting (1917, 876, -59, 1097) - exposed via
+  `/api/settings`.
+- New `GET /api/characters` (no setting_key) - every single-player game the account has, across every
+  setting, backing `screen-sp-games`. `db.list_characters` gained a `JOIN games` + `WHERE g.mode =
+  'single'` filter it was missing before - a real, if minor, pre-existing gap: a Discord user who
+  also plays multiplayer would previously have had their multiplayer characters silently mixed into
+  what was supposed to be a single-player list (the per-setting route was never checked against a
+  user with both). Fixed as part of adding the new cross-setting route, not a separate pass, since
+  both routes share this same underlying query.
+
+## A real bug caught in verification, not shipped blind
+
+The new `GET /api/characters` route returned 405 on first live check - not a code bug, the established
+gotcha from earlier this session: `server.py` route changes need an actual process restart, unlike
+`static/index.html` which Flask re-reads on every request. Caught immediately via the browser's
+network log rather than assumed working, fixed with a restart, re-verified 200 afterward.
+
+**Browser-automation quirk, not an app bug, also caught along the way**: coordinate-based clicks via
+the `computer` tool silently landed without firing the target button's listener on this page (no
+error, no network request, screen just didn't change) - worked correctly every time via a direct
+`.click()` call on the resolved element instead. Verification below used that approach; flagging the
+tool quirk so it doesn't get mistaken for an app bug in a future session.
+
+## Verification
+
+Full backend suite: 306/306 (no test file changes needed - `list_characters`'s new JOIN has no
+existing caller that constructs a multiplayer character for the same user in the same test, so
+nothing broke; new behavior is exercised live below, not by a new unit test, since this is a routing/
+nav change more than a new backend rule). Live in the browser against the real local server, restarted
+after the route addition: landing hero renders with no "Four settings" text anywhere and a working
+"How it works" scroll-anchor into a real 4-card grid; Singleplayer lists all 6 of this account's real
+existing games flat and correctly chronologically ordered (Rome 59 BCE -> Britannia 876 -> Crusade
+1097 -> Petrograd 1917) with period badges; "+ Start New Game" walks through setting (all 4 plus a
+disabled "Custom Setting" placeholder) -> gameplay mode -> character screen (creation options only, no
+resume list) -> created a real new Rome character -> launched into actual play; the in-game "back to
+menu" button (a real regression I caught and fixed before it shipped - it still pointed at the removed
+`screen-start` id) now correctly returns to the games list; clicking that same new character's row
+resumed it directly into play with zero character-creation screens shown; Multiplayer's server list
+renders with a period badge per row. Zero new console errors at any point in the flow (checked
+explicitly, not assumed).
+
+---
+
 # Discord bot: the real gateway connection, live-verified end to end (2026-09-03)
 
 Direct follow-up to the foundation below, once the user provided a real bot token + Application ID

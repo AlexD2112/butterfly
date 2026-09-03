@@ -529,14 +529,23 @@ def list_characters(user_id):
     "my games" list, instead of every character of the same name looking identical - a subquery
     rather than a JOIN+GROUP BY since most users have few enough characters that per-row cost here
     is negligible, and it keeps this readable next to list_characters_with_turn_counts' own version
-    of the same pattern below."""
+    of the same pattern below.
+
+    Scoped to mode='single' games only (2026-09-03, via the games JOIN) - this is "your single-player
+    games," used both per-setting and, now, across every setting at once (see /api/characters, the
+    new no-setting-key route) for the landing nav's top-level games list. Without this filter, a
+    Discord user who also plays multiplayer would see their multiplayer characters mixed in here too -
+    every character has a user_id regardless of which kind of game it's in, and nothing else about
+    this query distinguished them before. character.game_id is never NULL (create_character always
+    creates or is given a real games row), so this is a safe INNER JOIN, not a LEFT JOIN."""
     conn = get_db()
     rows = conn.execute(
         """
         SELECT c.id, c.setting_key, c.system_key, c.name, c.is_premade, c.created_at, c.updated_at,
                (SELECT COUNT(*) FROM turns t WHERE t.character_id = c.id) AS turn_count
         FROM characters c
-        WHERE c.user_id = ?
+        JOIN games g ON g.id = c.game_id
+        WHERE c.user_id = ? AND g.mode = 'single'
         ORDER BY c.updated_at DESC
         """,
         (user_id,),

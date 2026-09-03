@@ -46,6 +46,11 @@ SETTING_REGISTRY = {
     "petrograd_1917": {
         "system": "red_admiral",
         "label": "Petrograd, 1917",
+        # sort_year (2026-09-03): a real chronological value (negative = BCE) for the frontend to
+        # sort games/servers by period - dict insertion order below isn't chronological (Petrograd
+        # comes first for historical/narrative reasons, not date order), and the label string alone
+        # ("Rome, 59 BCE" vs "Petrograd, 1917") doesn't sort correctly as text either.
+        "sort_year": 1917,
         "blurb": "Leon Trotsky, Chairman of the Petrograd Soviet. It's September 1917, and Kerensky's government is barely holding on.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Leon Trotsky",
@@ -59,6 +64,7 @@ SETTING_REGISTRY = {
     "britannia_876": {
         "system": "monarch",
         "label": "Britannia, 876",
+        "sort_year": 876,
         "blurb": "Alfred, King of the West Saxons. Guthrum's Vikings have a camp in the west and aren't going anywhere.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Alfred, King of the West Saxons",
@@ -72,6 +78,7 @@ SETTING_REGISTRY = {
     "rome_59_bce": {
         "system": "apollo",
         "label": "Rome, 59 BCE",
+        "sort_year": -59,
         "blurb": "Julius Caesar, at the height of his power as Consul, with Pompey and Crassus watching his every move.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Julius Caesar",
@@ -85,6 +92,7 @@ SETTING_REGISTRY = {
     "crusades_1097": {
         "system": "monarch",
         "label": "The First Crusade, 1097",
+        "sort_year": 1097,
         "blurb": "Bohemond of Taranto, marching on Antioch, having sworn an oath he's already thinking about breaking.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Bohemond of Taranto",

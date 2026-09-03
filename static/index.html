@@ -72,20 +72,37 @@
     font-family: var(--font-ui); font-size: 12.5px; cursor: pointer; margin-top: 10px; }
   .discord-btn:hover { opacity: 0.9; }
 
-  /* ---------- landing screen ---------- */
+  /* ---------- landing screen: hero + scrollable "How It Works" (2026-09-03) ---------- */
+  /* #screen-landing itself is now a plain block (overriding .menu-screen.active's flex-center) so
+     the hero and How It Works stack as normal document flow and the page just scrolls - the hero
+     alone still fills the viewport and centers its own content via .landing-hero below. */
+  #screen-landing.active { display: block; }
+  #screen-landing { padding: 0; }
+  .landing-hero { position: relative; overflow: hidden; min-height: 100vh; display: flex;
+    flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
   .landing-title { font-family: var(--font-display); font-size: 44px; font-weight: 600; letter-spacing: 0.2px; text-wrap: balance; position: relative; z-index: 2; }
   .landing-hero-motif { position: absolute; top: 50%; left: 50%; width: min(900px, 130vw); height: min(900px, 130vw);
     transform: translate(-50%, -50%); z-index: 1; pointer-events: none; opacity: 0.5; }
   .landing-hero-motif path { stroke-dasharray: 900; stroke-dashoffset: 900; animation: fp-draw 2.4s ease-out forwards; }
   @keyframes fp-draw { to { stroke-dashoffset: 0; } }
   @media (prefers-reduced-motion: reduce) { .landing-hero-motif path { animation: none; stroke-dashoffset: 0; } }
-  #screen-landing { position: relative; overflow: hidden; }
-  .landing-pitch { font-family: var(--font-serif); font-size: 15px; color: var(--text); max-width: 520px;
-    line-height: 1.65; margin: 0 0 24px; }
-  .landing-begin { max-width: 480px; text-align: center; margin-top: 16px; }
-  .budget-chip { font-family: var(--font-ui); font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .landing-tagline { font-family: var(--font-ui); font-size: 14.5px; color: var(--muted); max-width: 480px;
+    line-height: 1.6; margin: 10px 0 26px; position: relative; z-index: 2; }
+  .landing-nav { position: relative; z-index: 2; width: 100%; max-width: 420px; margin-top: 4px; }
+  .landing-scroll-cue { display: inline-block; margin-top: 40px; font-family: var(--font-ui); font-size: 11px;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--muted); text-decoration: none; opacity: 0.7;
+    transition: opacity .18s ease, color .18s ease; position: relative; z-index: 2; }
+  .landing-scroll-cue:hover { opacity: 1; color: var(--accent-2); }
+  .budget-chip { font-family: var(--font-ui); font-size: 11.5px; color: var(--muted); margin-top: 8px; position: relative; z-index: 2; }
   .budget-chip.low { color: var(--accent-2); }
   .budget-chip.exhausted { color: var(--bad); }
+  .how-it-works { max-width: var(--content-width); margin: 0 auto; padding: 10px 24px 90px; text-align: left; }
+  .how-it-works h2 { font-family: var(--font-display); font-size: 15px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); text-align: center; margin: 0 0 34px; font-weight: 600; }
+  .hiw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; }
+  .hiw-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 18px; }
+  .hiw-item h3 { font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--accent-2); margin: 0 0 8px; }
+  .hiw-item p { font-family: var(--font-serif); font-size: 13.5px; color: var(--text); line-height: 1.65; margin: 0; }
 
   /* ---------- character creation ---------- */
   .creation-wrap { width: 100%; max-width: 640px; text-align: left; font-family: var(--font-ui); }
@@ -226,6 +243,11 @@
     font-size: 10.5px; letter-spacing: 0.3px; color: var(--accent-2); border: 1px solid var(--border);
     border-radius: 10px; padding: 1px 8px 1px 6px; margin-left: 6px; vertical-align: middle; }
   .divergence-badge svg { width: 9px; height: 9px; }
+  /* Period badge (2026-09-03) - the small per-row tag that replaces section headers in the new flat,
+     cross-period games/servers lists (singleplayer "Your Games", multiplayer server list) - see
+     NOTES.md's nav-restructure entry for why a flat list + inline tag was chosen over grouping. */
+  .period-badge { display: inline-block; font-family: var(--font-ui); font-size: 10px; letter-spacing: 0.3px;
+    color: var(--accent-2); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; }
   /* Tick countdown - how far through the current progression interval a multiplayer server is,
      shown in the lobby next to its schedule text. */
   .tick-bar-wrap { background: var(--panel); border-radius: 3px; height: 4px; margin-top: 5px; overflow: hidden; }
@@ -369,53 +391,80 @@
 </head>
 <body>
 
-<!-- Screen 0: Landing -->
+<!-- Screen 0: Landing - a minimal hero (title/tagline/nav) plus a real scrollable How It Works
+     section below it, not a single centered card (2026-09-03 redesign - see NOTES.md). -->
 <div class="menu-screen active" id="screen-landing">
-  <svg class="landing-hero-motif" viewBox="0 0 400 400" aria-hidden="true">
-    <g fill="none" stroke="#7a9b5f" stroke-width="1">
-      <path d="M200 40 V 100 M200 100 C 140 100, 120 140, 120 180 M200 100 C 260 100, 280 140, 280 180 M120 180 V 240 M280 180 V 240 M120 240 C 120 280, 80 300, 40 300 M120 240 C 140 270, 160 290, 200 300 M280 240 C 280 280, 320 300, 360 300 M280 240 C 260 270, 240 290, 200 300 M200 300 V 360"/>
-      <circle cx="200" cy="40" r="4" fill="#7a9b5f" stroke="none"/>
-      <circle cx="200" cy="300" r="4" fill="#b08d4f" stroke="none"/>
-    </g>
-  </svg>
-  <div class="eyebrow">Forking Paths</div>
-  <h1 class="landing-title">Change history.</h1>
-  <div class="subtitle">A game master narrates the story and plays every character you meet. Risky actions are resolved with a dice roll against your character's stats.</div>
-  <p class="landing-pitch">Four settings so far: Leon Trotsky in Petrograd in 1917, Alfred the Great fighting off the Vikings in 876, Julius Caesar in Rome, and Bohemond of Taranto on the First Crusade. Play the setting's signature character, or build your own. Diverge from history, and the game tracks it as a real change to the story.</p>
-  <div id="user-status" class="user-chip"></div>
-  <div id="landing-budget" class="budget-chip"></div>
-  <button class="menu-option landing-begin" id="opt-begin">
-    <div class="opt-title">Begin</div>
-    <div class="opt-desc">Choose a setting and a character.</div>
-  </button>
-</div>
+  <div class="landing-hero">
+    <svg class="landing-hero-motif" viewBox="0 0 400 400" aria-hidden="true">
+      <g fill="none" stroke="#7a9b5f" stroke-width="1">
+        <path d="M200 40 V 100 M200 100 C 140 100, 120 140, 120 180 M200 100 C 260 100, 280 140, 280 180 M120 180 V 240 M280 180 V 240 M120 240 C 120 280, 80 300, 40 300 M120 240 C 140 270, 160 290, 200 300 M280 240 C 280 280, 320 300, 360 300 M280 240 C 260 270, 240 290, 200 300 M200 300 V 360"/>
+        <circle cx="200" cy="40" r="4" fill="#7a9b5f" stroke="none"/>
+        <circle cx="200" cy="300" r="4" fill="#b08d4f" stroke="none"/>
+      </g>
+    </svg>
+    <div class="eyebrow">Forking Paths</div>
+    <h1 class="landing-title">Change history.</h1>
+    <div class="landing-tagline">An AI game master runs the world and everyone in it. Play alone at your own pace, or join others on a shared server — either way, every real risk comes down to the dice.</div>
+    <div id="user-status" class="user-chip"></div>
+    <div id="landing-budget" class="budget-chip"></div>
+    <div class="menu-options landing-nav">
+      <button class="menu-option" id="opt-singleplayer">
+        <div class="opt-title">Singleplayer</div>
+        <div class="opt-desc">Play alone, at your own pace.</div>
+      </button>
+      <button class="menu-option" id="opt-multiplayer">
+        <div class="opt-title">Multiplayer</div>
+        <div class="opt-desc">Join a shared server — talk and act with other players.</div>
+      </button>
+    </div>
+    <a href="#how-it-works" class="landing-scroll-cue">How it works &darr;</a>
+  </div>
 
-<!-- Screen 1: Start Menu -->
-<div class="menu-screen" id="screen-start">
-  <div class="menu-back-row"><button class="menu-back" data-back="screen-landing">&larr; Back</button></div>
-  <div class="eyebrow">Forking Paths</div>
-  <h1>Begin a Campaign</h1>
-  <div class="subtitle">Choose how you want to begin.</div>
-  <div class="menu-options" style="margin-top:18px;">
-    <button class="menu-option" id="opt-preset">
-      <div class="opt-title">Preset</div>
-      <div class="opt-desc">Choose a setting, then a ready-made or custom character.</div>
-    </button>
-    <button class="menu-option" id="opt-custom" disabled>
-      <div class="opt-title">Custom</div>
-      <div class="opt-desc coming-later">Build your own setting and world — coming later.</div>
-    </button>
-    <button class="menu-option" id="opt-multiplayer">
-      <div class="opt-title">Multiplayer</div>
-      <div class="opt-desc">Join a shared server — talk and act with other players.</div>
-    </button>
+  <div class="how-it-works" id="how-it-works">
+    <h2>How It Works</h2>
+    <div class="hiw-grid">
+      <div class="hiw-item">
+        <h3>A Game Master For Everything</h3>
+        <p>An AI narrates every scene and speaks for every character you meet, reacting to whatever you actually try rather than following a fixed script.</p>
+      </div>
+      <div class="hiw-item">
+        <h3>The Dice Decide the Risky Moments</h3>
+        <p>Ordinary conversation just plays out. Anything genuinely risky is resolved with a roll against your own character's stats, not narrated however it happens to feel in the moment.</p>
+      </div>
+      <div class="hiw-item">
+        <h3>History Remembers</h3>
+        <p>Step outside the record and the game logs it as a real divergence — part of your character's permanent story from then on, not a passing line of flavor text.</p>
+      </div>
+      <div class="hiw-item">
+        <h3>Alone, or Together</h3>
+        <p>Play solo at your own pace, or join a shared server where everyone's choices shape the same unfolding world alongside yours.</p>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- Screen 2: Setting selection -->
+<!-- Screen 1: Singleplayer - every game across every setting, flat and period-tagged, not grouped
+     under per-setting section headers (2026-09-03 - explicitly rejected as "too much UI"). Starting
+     a brand new game is its own row here, leading into the existing setting -> mode -> character
+     sub-flow below rather than gating this list. -->
+<div class="menu-screen" id="screen-sp-games">
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-landing">&larr; Back</button></div>
+  <div class="eyebrow">Singleplayer</div>
+  <h1>Your Games</h1>
+  <div class="subtitle">Resume a playthrough, or start a new one.</div>
+  <div class="menu-options">
+    <button class="menu-option" id="sp-new-game-btn">
+      <div class="opt-title">+ Start New Game</div>
+      <div class="opt-desc">Choose a setting and a character.</div>
+    </button>
+  </div>
+  <div class="menu-options" id="sp-games-list" style="margin-top:12px;"></div>
+</div>
+
+<!-- Screen 2: Setting selection (part of the "start a new game" sub-flow only - see screen-sp-games) -->
 <div class="menu-screen" id="screen-setting">
-  <div class="menu-back-row"><button class="menu-back" data-back="screen-start">&larr; Back</button></div>
-  <div class="eyebrow">Preset</div>
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-sp-games">&larr; Back</button></div>
+  <div class="eyebrow">New Game</div>
   <h1>Choose a Setting</h1>
   <div class="subtitle">Where and when do you want to play?</div>
   <div class="menu-options" id="setting-options"></div>
@@ -448,7 +497,7 @@
   <div class="menu-back-row"><button class="menu-back" data-back="screen-mode">&larr; Back</button></div>
   <div class="eyebrow" id="character-eyebrow">Full System</div>
   <h1>Choose a Character</h1>
-  <div class="subtitle">Play the setting's signature character, resume one of your own, or build someone new.</div>
+  <div class="subtitle">Play the setting's signature character, or build someone new.</div>
   <div class="menu-options" id="character-options"></div>
 </div>
 
@@ -462,7 +511,7 @@
 
 <!-- Screen M1: multiplayer server list -->
 <div class="menu-screen" id="screen-mp-servers">
-  <div class="menu-back-row"><button class="menu-back" data-back="screen-start">&larr; Back</button></div>
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-landing">&larr; Back</button></div>
   <div class="eyebrow">Multiplayer</div>
   <h1>Choose a Server</h1>
   <div class="subtitle">Each server is its own shared world, with its own locations and pace of time.</div>
@@ -713,14 +762,16 @@ async function loadMe() {
   });
 }
 
-document.getElementById('opt-begin').addEventListener('click', () => {
-  showScreen('screen-start');
+// Reset unconditionally, regardless of how we got here - the single, reliable point where
+// single-player character creation begins, so a multiplayer context from an earlier visit (set by
+// the "+ New Character" button in a server lobby) can never leak into a single-player character.
+document.getElementById('opt-singleplayer').addEventListener('click', async () => {
+  MP_SERVER_ID = null;
+  await loadSpGamesScreen();
+  showScreen('screen-sp-games');
 });
 
-document.getElementById('opt-preset').addEventListener('click', async () => {
-  // Reset unconditionally, regardless of how we got here - the single, reliable point where
-  // single-player character creation begins, so a multiplayer context from an earlier visit (set by
-  // the "+ New Character" button in a server lobby) can never leak into a single-player character.
+document.getElementById('sp-new-game-btn').addEventListener('click', async () => {
   MP_SERVER_ID = null;
   if (SETTINGS.length === 0) await loadSettings();
   showScreen('screen-setting');
@@ -741,13 +792,51 @@ async function loadSettings() {
       <div class="opt-title">${escapeHtml(s.label)}</div>
       <div class="opt-desc">${escapeHtml(s.blurb)}<br><em>${escapeHtml(s.system_label)}</em></div>
     </button>
-  `).join('');
-  document.querySelectorAll('#setting-options .menu-option').forEach(btn => {
+  `).join('') + `
+    <button class="menu-option" disabled>
+      <div class="opt-title">Custom Setting</div>
+      <div class="opt-desc coming-later">Build your own setting and world — coming later.</div>
+    </button>
+  `;
+  document.querySelectorAll('#setting-options .menu-option[data-setting]').forEach(btn => {
     btn.addEventListener('click', () => {
       SELECTED_SETTING = SETTINGS.find(s => s.key === btn.dataset.setting);
       document.getElementById('mode-eyebrow').textContent = SELECTED_SETTING.label;
       showScreen('screen-mode');
     });
+  });
+}
+
+// ==================== screen 1: singleplayer "Your Games" (every setting, flat, period-tagged -
+// no per-setting section headers, see NOTES.md's nav-restructure entry) ====================
+function gameSubtitle(c) {
+  const turns = c.turn_count === 1 ? '1 turn' : `${c.turn_count} turns`;
+  return `${turns} &middot; last played ${relativeTime(c.updated_at)}`;
+}
+
+async function loadSpGamesScreen() {
+  if (SETTINGS.length === 0) await loadSettings();
+  const res = await fetch('/api/characters');
+  const data = await res.json();
+  // Chronological by the setting's real period (sort_year), not by settings-registry order or by
+  // most-recently-played - "sorted by period" was the explicit ask, distinct from a recency sort.
+  const games = [...data.characters].sort((a, b) => {
+    const ay = (SETTINGS.find(s => s.key === a.setting_key) || {}).sort_year ?? 0;
+    const by = (SETTINGS.find(s => s.key === b.setting_key) || {}).sort_year ?? 0;
+    return ay - by;
+  });
+  const el = document.getElementById('sp-games-list');
+  el.innerHTML = games.length === 0 ? '<div class="mp-empty">No games yet — start one above.</div>' : games.map(c => `
+    <button class="menu-option" data-resume="${c.id}">
+      <div class="opt-title">${escapeHtml(c.name)}</div>
+      <div class="opt-desc char-list-item">
+        <span>${gameSubtitle(c)}</span>
+        <span class="period-badge">${escapeHtml(settingLabel(c.setting_key))}</span>
+      </div>
+    </button>
+  `).join('');
+  el.querySelectorAll('[data-resume]').forEach(btn => {
+    btn.addEventListener('click', () => launchGame(parseInt(btn.dataset.resume, 10)));
   });
 }
 
@@ -757,42 +846,17 @@ document.getElementById('mode-full').addEventListener('click', async () => {
   showScreen('screen-character');
 });
 
-// ==================== screen 4: character select ====================
-// Games list, not just "your character" - a setting can have any number of separate playthroughs
-// (premade included: previously only ever showed/allowed ONE premade character per setting at all,
-// an artificial limit with no backing rule - the database already allowed more, only this screen's
-// old .find()-then-hide logic didn't). Every entry here resumes straight into play, no re-running
-// character creation - the games table this already relies on (list_characters, game_id) existed
-// for multiplayer already; this is the single-player side finally using it the same way.
+// ==================== screen 4: character select (the "start a new game" sub-flow only - resuming
+// an existing game happens from screen-sp-games' cross-setting list now, not here; see NOTES.md's
+// nav-restructure entry) ====================
 async function loadCharacterScreen() {
   const res = await fetch(`/api/characters/${SELECTED_SETTING.key}`);
   const data = await res.json();
-  const existing = data.characters;
-  const premades = existing.filter(c => c.is_premade);
-  const customs = existing.filter(c => !c.is_premade);
 
-  const gameSubtitle = c => {
-    const turns = c.turn_count === 1 ? '1 turn' : `${c.turn_count} turns`;
-    return `${turns} &middot; last played ${relativeTime(c.updated_at)}`;
-  };
-
-  let html = '';
-  premades.forEach(c => {
-    html += `<button class="menu-option" data-resume="${c.id}">
-      <div class="opt-title">Continue as ${escapeHtml(c.name)}</div>
-      <div class="opt-desc char-list-item"><span>${gameSubtitle(c)}</span></div>
-    </button>`;
-  });
-  html += `<button class="menu-option" data-premade="1">
+  let html = `<button class="menu-option" data-premade="1">
     <div class="opt-title">+ Play as ${escapeHtml(data.premade_name)}</div>
     <div class="opt-desc">Start a new playthrough as the setting's signature character.</div>
   </button>`;
-  customs.forEach(c => {
-    html += `<button class="menu-option" data-resume="${c.id}">
-      <div class="opt-title">Continue as ${escapeHtml(c.name)}</div>
-      <div class="opt-desc char-list-item"><span>${gameSubtitle(c)}</span></div>
-    </button>`;
-  });
   html += `<button class="menu-option" id="create-custom-btn">
     <div class="opt-title">+ Create Custom Character</div>
     <div class="opt-desc">Build a new character for this setting.</div>
@@ -800,9 +864,6 @@ async function loadCharacterScreen() {
   html += historicalFigureOptionHtml('hf');
   document.getElementById('character-options').innerHTML = html;
 
-  document.querySelectorAll('#character-options [data-resume]').forEach(btn => {
-    btn.addEventListener('click', () => launchGame(parseInt(btn.dataset.resume, 10)));
-  });
   document.querySelector('#character-options [data-premade]').addEventListener('click', createPremadeAndLaunch);
   document.getElementById('create-custom-btn').addEventListener('click', openCreationForm);
   wireHistoricalFigureOption('hf');
@@ -1057,10 +1118,11 @@ function launchGame(characterId, isNew) {
   renderAccountMenu();
 }
 
-document.getElementById('menu-btn').addEventListener('click', () => {
+document.getElementById('menu-btn').addEventListener('click', async () => {
   document.getElementById('app').classList.remove('active');
   CURRENT_CHARACTER_ID = null;
-  showScreen('screen-start');
+  await loadSpGamesScreen();
+  showScreen('screen-sp-games');
 });
 
 // ---------------- game logic ----------------
@@ -1661,7 +1723,13 @@ function formatTimestamp(unixSeconds) {
 async function loadMpServerList() {
   const res = await fetch('/api/multiplayer/servers');
   const data = await res.json();
-  MP_SERVERS = data.servers;
+  // Chronological by the setting's real period (sort_year), flat with a period tag per row - not
+  // grouped under section headers (2026-09-03, explicitly rejected as "too much UI" - see NOTES.md).
+  MP_SERVERS = [...data.servers].sort((a, b) => {
+    const ay = (SETTINGS.find(s => s.key === a.setting_key) || {}).sort_year ?? 0;
+    const by = (SETTINGS.find(s => s.key === b.setting_key) || {}).sort_year ?? 0;
+    return ay - by;
+  });
   const isAdmin = CURRENT_USER && CURRENT_USER.is_admin;
   const el = document.getElementById('mp-server-list');
   el.innerHTML = MP_SERVERS.length === 0 ? '<div class="mp-empty">No servers yet.</div>' : MP_SERVERS.map(s => {
@@ -1673,8 +1741,8 @@ async function loadMpServerList() {
     <div class="mp-list-item" style="flex-direction:column;align-items:stretch;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
         <div style="flex:1;min-width:0;">
-          <div class="mp-item-title">${escapeHtml(s.name)}</div>
-          <div class="mp-item-desc">${escapeHtml(settingLabel(s.setting_key))} &middot; current date ${escapeHtml(s.current_date || '?')} &middot; time advances by ${escapeHtml(s.progression_speed)} every ${s.progression_rate_hours}h</div>
+          <div class="mp-item-title">${escapeHtml(s.name)} <span class="period-badge" style="margin-left:6px;">${escapeHtml(settingLabel(s.setting_key))}</span></div>
+          <div class="mp-item-desc">Current date ${escapeHtml(s.current_date || '?')} &middot; time advances by ${escapeHtml(s.progression_speed)} every ${s.progression_rate_hours}h</div>
           <div class="tick-bar-wrap" title="${tickPct}% through the current tick interval"><div class="tick-bar-fill" style="width:${tickPct}%"></div></div>
         </div>
         <span>
