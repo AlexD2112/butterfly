@@ -13,13 +13,14 @@ as local-site-tunnel/start_local_site.ps1 - its own window, separate process fro
    or more than one, rather than silently guessing).
 2. A background loop (sync_discord_structure, every SYNC_INTERVAL_SECONDS - see _sync_once) walks
    every multiplayer server/location/subspace in the SAME SQLite database server.py uses and creates
-   whatever Discord structure is missing: a Category per server, a Channel per Location (plus a
-   webhook on it), a Thread per non-default Subspace - exactly the Category/Channel/Thread mapping
-   discord_bot.py's docstring describes. This is fully automatic and dynamic by design (2026-09-03,
-   per direction) - it runs on its own timer regardless of whether a Location/Subspace was created by
-   an admin on the website or spawned dynamically by the AI classifier during play; nobody ever has to
-   trigger it. /refresh (below) is the one deliberately manual thing, and it's optional - a safety net
-   that forces one pass immediately instead of waiting up to SYNC_INTERVAL_SECONDS, not a requirement.
+   whatever Discord structure is missing: a Category per server, a #rumors channel+webhook per server
+   (2026-09-03), a Channel per Location (plus a webhook on it), a Thread per non-default Subspace -
+   exactly the Category/Channel/Thread mapping discord_bot.py's docstring describes. This is fully
+   automatic and dynamic by design (2026-09-03, per direction) - it runs on its own timer regardless of
+   whether a Location/Subspace was created by an admin on the website or spawned dynamically by the AI
+   classifier during play; nobody ever has to trigger it. /refresh (below) is the one deliberately
+   manual thing, and it's optional - a safety net that forces one pass immediately instead of waiting
+   up to SYNC_INTERVAL_SECONDS, not a requirement.
 3. on_message: a plain message typed in a linked channel/thread is treated as a "message" (in-scene
    talk, judged by the AI for whether an NPC/the GM responds) - the exact same
    multiplayer.handle_message pipeline api_multiplayer_send uses for the web "message" toggle.
@@ -28,7 +29,16 @@ as local-site-tunnel/start_local_site.ps1 - its own window, separate process fro
 5. /join: the entire self-contained-onboarding story from discord_bot.py's docstring - links (or
    creates) the caller's account via the same db.get_or_create_discord_user web login already uses,
    and reports whether they already have a character in this server.
-6. /refresh: admin-only (Discord's own Manage Server permission, not the app's web is_admin flag -
+6. /sheet (2026-09-03): a compact embed of the caller's own character - attributes, notable skills,
+   feats, liabilities, and whether a level-up is pending. Not a full replica of the web sheet panel
+   (resources/relationships/enmity/commitments/canon/divergence-log stay web-only) - a quick reference,
+   not a second UI to maintain in lockstep with the real one.
+7. /levelup (2026-09-03): a real interactive equivalent of the web's level-up picker, via chained
+   Discord Select menus (skill/feat/attribute, then the specific choice) - same eligibility rules and
+   the same system.apply_level_up call the web route uses, via multiplayer.level_up_options_for_character
+   so the two can't silently drift apart. One simplification, not hidden: attribute points are
+   1-per-selected-attribute (up to 3), not "put multiple points on one attribute" like the web allows.
+8. /refresh: admin-only (Discord's own Manage Server permission, not the app's web is_admin flag -
    there's no web session in a Discord interaction to check that against), forces one immediate
    _sync_once() pass and reports what it created. The ONLY manual Discord-structure action in this
    whole app, and explicitly optional.
@@ -74,9 +84,11 @@ load_dotenv(Path(__file__).parent / ".env")
 import db
 import discord_bot
 import discord_webhook
+import engine
 import multiplayer
 import pricing
 import providers
+from systems._shared import core as shared_core
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("forking_paths_bot")
@@ -166,7 +178,7 @@ async def _sync_once():
     structure (Category/Channel+webhook/Thread) is missing. Returns how many of each it actually
     created THIS pass, so a manual /refresh has something concrete to report - "nothing needed
     creating" vs a real count, not just "done"."""
-    counts = {"categories": 0, "channels": 0, "threads": 0}
+    counts = {"categories": 0, "channels": 0, "threads": 0, "rumors_channels": 0}
     if client.guild is None:
         return counts
     guild = client.guild
@@ -181,6 +193,14 @@ async def _sync_once():
             continue
         if not had_category:
             counts["categories"] += 1
+        had_rumors_channel = bool(server.get("discord_rumors_channel_id"))
+        try:
+            await _ensure_rumors_channel(guild, category, server)
+        except discord.HTTPException as e:
+            log.warning("Couldn't create/find rumors channel for server %s: %s", server["name"], e)
+        else:
+            if not had_rumors_channel:
+                counts["rumors_channels"] += 1
         for location in db.list_locations(server["id"]):
             had_channel = bool(location.get("discord_channel_id"))
             try:
@@ -224,6 +244,31 @@ async def _ensure_category(guild, server):
     db.link_multiplayer_server_to_discord(server["id"], str(guild.id), str(category.id))
     log.info("Created Discord category '%s' for server #%s.", category.name, server["id"])
     return category
+
+
+RUMORS_WEBHOOK_NAME = "Forking Paths - News"
+RUMORS_CHANNEL_NAME = "rumors"
+
+
+async def _ensure_rumors_channel(guild, category, server):
+    """A dedicated #rumors channel per server (2026-09-03), sibling to the per-Location channels -
+    every compiled rumor broadcast posts here via discord_webhook.post_rumor_broadcast, called from
+    scheduler.py's tick in the WEB process, not this one - same "just a webhook, no gateway needed"
+    reasoning as Location channels."""
+    if server.get("discord_rumors_channel_id"):
+        existing = guild.get_channel(int(server["discord_rumors_channel_id"]))
+        if existing is not None:
+            return existing
+        log.warning("Server %s's linked rumors channel %s is gone - not auto-recreating.",
+                    server["name"], server["discord_rumors_channel_id"])
+        return None
+    channel = await guild.create_text_channel(
+        name=RUMORS_CHANNEL_NAME, category=category, reason="Forking Paths: server rumors/news feed",
+    )
+    webhook = await channel.create_webhook(name=RUMORS_WEBHOOK_NAME, reason="Forking Paths: rumor broadcast identity")
+    db.link_server_rumors_channel_to_discord(server["id"], str(channel.id), str(webhook.id), webhook.token)
+    log.info("Created Discord rumors channel #%s for server #%s.", channel.name, server["id"])
+    return channel
 
 
 async def _ensure_channel(guild, category, location):
@@ -285,6 +330,29 @@ def _resolve_play_context(discord_user, location, subspace):
     if budget["remaining_usd"] <= 0:
         raise PlayContextError("This account is out of usage budget.")
     db.move_character(character["id"], server["id"], location["id"], subspace["id"])
+    return user_row, server, game, character
+
+
+def _resolve_own_character_by_category(discord_user, channel):
+    """Lighter-weight resolution for /sheet and /levelup - neither needs a specific location/subspace
+    (a character sheet isn't tied to where you're standing), just which SERVER this channel/thread's
+    category belongs to, same as /join's own lookup. No budget check either - looking at your own
+    sheet or applying an already-earned level-up doesn't cost anything, unlike a real AI-resolved
+    turn."""
+    category_id = getattr(channel, "category_id", None)
+    server = discord_bot.server_for_category(str(category_id)) if category_id else None
+    if server is None:
+        raise PlayContextError("Run this inside one of a game's own channels (under its category), not here.")
+    user_row = discord_bot.resolve_or_create_user(
+        discord_user.id, str(discord_user), str(discord_user.display_avatar.url) if discord_user.display_avatar else None,
+    )
+    game = db.get_game_for_server(server["id"])
+    character = discord_bot.resolve_character_for_user_in_game(user_row["id"], game["id"])
+    if character is None:
+        raise PlayContextError(
+            f"You don't have a character in **{server['name']}** yet. Create one at {WEBSITE_URL} "
+            f"(log in with this same Discord account, then Multiplayer -> {server['name']})."
+        )
     return user_row, server, game, character
 
 
@@ -402,6 +470,198 @@ async def join_command(interaction: discord.Interaction):
         )
 
 
+def _build_sheet_embed(char_row):
+    """A compact Discord embed for /sheet - deliberately NOT a full replica of the web sheet panel
+    (resources, relationships, enmity, commitments, canon events, divergence log all stay web-only) -
+    just what's useful as a quick reference from Discord: attributes, skills worth knowing about
+    (Expertise/Proficiency - Untrained is skipped, it's just the attribute modifier alone), feats,
+    liabilities, and whether a level-up is waiting."""
+    c = char_row["state"]["character"]
+    xp_needed = 100 + (c["level"] - 1) * 50
+    embed = discord.Embed(
+        title=c["name"],
+        description=f"Level {c['level']} · Proficiency +{c['proficiency_bonus']} · {c['xp']}/{xp_needed} XP",
+        color=0x7A9B5F,
+    )
+    attrs = c.get("attributes") or {}
+    attr_lines = "\n".join(f"**{name}** {score} ({shared_core.attribute_modifier(score):+d})" for name, score in attrs.items())
+    embed.add_field(name="Attributes", value=attr_lines or "-", inline=False)
+
+    skills = c.get("skills") or {}
+    expertise = sorted(name.replace("_", " ") for name, s in skills.items() if s.get("tier") == 2)
+    proficiency = sorted(name.replace("_", " ") for name, s in skills.items() if s.get("tier") == 1)
+    embed.add_field(name="Expertise", value=", ".join(expertise) or "None yet", inline=True)
+    embed.add_field(name="Proficiency", value=", ".join(proficiency) or "None yet", inline=True)
+
+    feats = c.get("feats") or []
+    embed.add_field(name="Feats", value=", ".join(f["name"] for f in feats) or "None yet", inline=False)
+
+    liabilities = c.get("liabilities") or []
+    embed.add_field(name="Liabilities", value=", ".join(l["name"] for l in liabilities) or "None", inline=False)
+
+    if c.get("level_up_pending"):
+        embed.add_field(name="\U0001F389 Level-up available", value="Use /levelup to apply it.", inline=False)
+    return embed
+
+
+@client.tree.command(name="sheet", description="View your own character sheet for this server.")
+async def sheet_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        user_row, server, game, character = _resolve_own_character_by_category(interaction.user, interaction.channel)
+    except PlayContextError as e:
+        await interaction.followup.send(str(e))
+        return
+    char_row = db.get_character(character["id"], user_row["id"])
+    await interaction.followup.send(embed=_build_sheet_embed(char_row))
+
+
+# ==================== /levelup: a real, interactive Discord equivalent of the web's level-up picker
+# (2026-09-03) - three Select menus (skill/feat/attribute), same eligibility rules and same
+# system.apply_level_up call the web route uses, via multiplayer.level_up_options_for_character so
+# neither side can silently drift from the other. One simplification from the web picker, called out
+# here rather than hidden: attribute points are 1-per-selected-attribute (pick up to 3 attributes),
+# not "put up to 3 points on one attribute" - a Discord Select can't express "how many" per option
+# without a second picker per attribute, which felt like more UI than this was worth for now. ====================
+
+def _describe_level_up_change(c):
+    kind = c.get("kind")
+    if kind == "skill_upgrade":
+        return f"{c['skill'].replace('_', ' ')}: {c['before']} → {c['after']}"
+    if kind == "skill_upgrade_rejected":
+        return f"{c['skill'].replace('_', ' ')} not upgraded ({c['reason']})"
+    if kind == "feat_gained":
+        return f"gained {c['name']}"
+    if kind == "feat_rejected":
+        return f"feat not gained ({c['reason']})"
+    if kind == "attribute_improvement":
+        return f"{c['attribute']}: {c['before']} → {c['after']}"
+    if kind == "level_up_rejected":
+        return c.get("reason", "no change")
+    return kind or "no change"
+
+
+async def _apply_level_up_and_reply(interaction, character_id, user_id, body):
+    char_row = db.get_character(character_id, user_id)
+    state = char_row["state"]
+    system = engine.get_system(char_row["system_key"])
+    changes = system.apply_level_up(state, body)
+    db.save_character_state(character_id, user_id, state)
+    applied = not state["character"]["level_up_pending"]
+
+    if applied:
+        presence = db.get_character_presence(character_id)
+        if presence is not None:
+            turn_id = db.record_subspace_message(
+                char_row["game_id"], presence["location_id"], presence["subspace_id"], character_id, "level_up",
+                f"{state['character']['name']} reached level {state['character']['level']}.",
+            )
+            turn = db.get_turn_by_id(turn_id)
+            discord_webhook.mirror_turn(turn)
+            _notify_web_live(turn_id)
+
+    summary = "; ".join(_describe_level_up_change(c) for c in changes)
+    prefix = "Applied" if applied else "Not applied"
+    await interaction.response.edit_message(content=f"{prefix}: {summary}", view=None)
+
+
+class SkillUpgradeSelect(discord.ui.Select):
+    def __init__(self, character_id, user_id, eligible_skills):
+        options = [
+            discord.SelectOption(
+                label=s["skill"].replace("_", " ")[:100], value=s["skill"],
+                description=f"{s['attribute']} · currently {shared_core.TIER_NAMES[s['tier']]}"[:100],
+            )
+            for s in eligible_skills[:25]
+        ]
+        super().__init__(placeholder="Pick up to 2 skills to upgrade one tier...", options=options,
+                          min_values=1, max_values=min(2, len(options)))
+        self.character_id = character_id
+        self.user_id = user_id
+        self.by_name = {s["skill"]: s for s in eligible_skills}
+
+    async def callback(self, interaction: discord.Interaction):
+        upgrades = [{"skill": name, "attribute": self.by_name[name]["attribute"]} for name in self.values]
+        await _apply_level_up_and_reply(interaction, self.character_id, self.user_id, {"choice": "skill", "skill_upgrades": upgrades})
+
+
+class FeatSelect(discord.ui.Select):
+    def __init__(self, character_id, user_id, feats):
+        options = [
+            discord.SelectOption(label=f["name"][:100], value=f["id"], description=(f.get("description") or "")[:100])
+            for f in feats[:25]
+        ]
+        super().__init__(placeholder="Pick a feat...", options=options, min_values=1, max_values=1)
+        self.character_id = character_id
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        await _apply_level_up_and_reply(interaction, self.character_id, self.user_id, {"choice": "feat", "feat_id": self.values[0]})
+
+
+class AttributeSelect(discord.ui.Select):
+    def __init__(self, character_id, user_id, attributes):
+        options = [discord.SelectOption(label=name, value=name, description=f"currently {score}") for name, score in attributes.items()]
+        super().__init__(placeholder="Pick up to 3 attributes (+1 each)...", options=options,
+                          min_values=1, max_values=min(3, len(options)))
+        self.character_id = character_id
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        points = {name: 1 for name in self.values}
+        await _apply_level_up_and_reply(interaction, self.character_id, self.user_id, {"choice": "attribute", "attribute_points": points})
+
+
+class LevelUpTypeSelect(discord.ui.Select):
+    def __init__(self, character_id, user_id, options_data):
+        options = [
+            discord.SelectOption(label="Upgrade a Skill", value="skill", description="Raise up to 2 skills one tier each"),
+            discord.SelectOption(label="Learn a Feat", value="feat", description="Gain one eligible feat"),
+            discord.SelectOption(label="Increase Attributes", value="attribute", description="+1 to up to 3 attributes"),
+        ]
+        super().__init__(placeholder="Choose what to spend this level-up on...", options=options, min_values=1, max_values=1)
+        self.character_id = character_id
+        self.user_id = user_id
+        self.options_data = options_data
+
+    async def callback(self, interaction: discord.Interaction):
+        choice = self.values[0]
+        if choice == "skill":
+            eligible = [s for s in self.options_data["skills"] if s["tier"] < 2]
+            if not eligible:
+                await interaction.response.edit_message(content="No eligible skills to upgrade (everything's already at Expertise).", view=None)
+                return
+            select = SkillUpgradeSelect(self.character_id, self.user_id, eligible)
+        elif choice == "feat":
+            if not self.options_data["feats"]:
+                await interaction.response.edit_message(content="No eligible feats right now.", view=None)
+                return
+            select = FeatSelect(self.character_id, self.user_id, self.options_data["feats"])
+        else:
+            select = AttributeSelect(self.character_id, self.user_id, self.options_data["attributes"])
+        next_view = discord.ui.View(timeout=120)
+        next_view.add_item(select)
+        await interaction.response.edit_message(content="Now choose specifically:", view=next_view)
+
+
+@client.tree.command(name="levelup", description="Apply a pending level-up for your character here.")
+async def levelup_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        user_row, server, game, character = _resolve_own_character_by_category(interaction.user, interaction.channel)
+    except PlayContextError as e:
+        await interaction.followup.send(str(e))
+        return
+    char_row = db.get_character(character["id"], user_row["id"])
+    if not char_row["state"]["character"].get("level_up_pending"):
+        await interaction.followup.send("No level-up is pending for your character right now.")
+        return
+    options_data = multiplayer.level_up_options_for_character(char_row)
+    view = discord.ui.View(timeout=120)
+    view.add_item(LevelUpTypeSelect(character["id"], user_row["id"], options_data))
+    await interaction.followup.send("Level-up available - choose what to spend it on:", view=view)
+
+
 @client.tree.command(name="refresh", description="Admin: immediately check for any missing category/channel/thread and create it now.")
 async def refresh_command(interaction: discord.Interaction):
     """Optional safety-net only - see _sync_once's own comment. Never required for normal play; the
@@ -426,7 +686,8 @@ async def refresh_command(interaction: discord.Interaction):
     else:
         await interaction.followup.send(
             f"Synced: created {counts['categories']} categor{'y' if counts['categories'] == 1 else 'ies'}, "
-            f"{counts['channels']} channel(s), {counts['threads']} thread(s)."
+            f"{counts['channels']} channel(s), {counts['threads']} thread(s), "
+            f"{counts['rumors_channels']} rumors channel(s)."
         )
 
 

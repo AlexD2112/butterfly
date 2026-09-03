@@ -29,6 +29,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 import db
 import discord_oauth
+import discord_webhook
 import engine
 import live
 import multiplayer
@@ -453,26 +454,10 @@ def api_character_level_up_options(character_id):
     if not character.get("level_up_pending"):
         return jsonify({"pending": False})
 
-    system = engine.get_system(row["system_key"])
-    skills = [
-        {"skill": name, "attribute": entry["attribute"], "tier": entry["tier"]}
-        for name, entry in (character.get("skills") or {}).items()
-    ]
-    existing_feat_ids = {f.get("id") for f in character.get("feats", [])}
-    feats = []
-    for feat_id, entry in system.FEAT_CATALOG.items():
-        if feat_id in existing_feat_ids or entry.get("min_level", 1) > character["level"]:
-            continue
-        prereq = entry.get("prerequisite_skill")
-        if prereq:
-            have = (character.get("skills") or {}).get(prereq["skill"])
-            if (have["tier"] if have else 0) < prereq["min_tier"]:
-                continue
-        feats.append({"id": feat_id, "name": entry["name"], "description": entry["description"]})
-
+    options = multiplayer.level_up_options_for_character(row)
     return jsonify({
         "pending": True, "level": character["level"],
-        "skills": skills, "feats": feats, "attributes": character["attributes"],
+        "skills": options["skills"], "feats": options["feats"], "attributes": options["attributes"],
     })
 
 
@@ -507,7 +492,15 @@ def api_character_apply_level_up(character_id):
                 row["game_id"], presence["location_id"], presence["subspace_id"], character_id, "level_up",
                 f"{state['character']['name']} reached level {state['character']['level']}.",
             )
-            live.publish_subspace_event(presence["subspace_id"], db.get_turn_by_id(turn_id))
+            turn = db.get_turn_by_id(turn_id)
+            live.publish_subspace_event(presence["subspace_id"], turn)
+            # Real pre-existing gap, closed alongside Discord's own /levelup (2026-09-03): this route
+            # records the announcement via db.record_subspace_message directly rather than through
+            # multiplayer.handle_message/resolve_action, so it never went through those functions'
+            # discord_webhook.mirror_turn call either - a level-up applied on the web never showed up
+            # in Discord at all, even though discord_webhook._display_for_turn already had a "level_up"
+            # branch ready for exactly this.
+            discord_webhook.mirror_turn(turn)
 
     return jsonify({"changes": changes, "applied": applied, "state": engine.build_state_digest(state)})
 

@@ -1103,4 +1103,34 @@ Write only the broadcast text, nothing else."""
         return None
     broadcast_id = db.publish_rumor_broadcast(server_id, content, len(unpublished))
     live.publish_server_event(server_id, {"type": "rumor_broadcast", "id": broadcast_id, "content": content})
+    discord_webhook.post_rumor_broadcast(server_id, content)
     return broadcast_id
+
+
+# ==================== level-up options (shared by the web picker and Discord's /levelup) ====================
+
+def level_up_options_for_character(char_row):
+    """The eligible skill/feat/attribute choices for a character's pending level-up - the same logic
+    server.py's GET /api/character/<id>/level_up_options exposes to the web picker, extracted here
+    (2026-09-03) so run_discord_bot.py's /levelup command uses the EXACT same eligibility rules
+    instead of a second, driftable copy of them. Returns {"skills", "feats", "attributes"} - callers
+    are responsible for checking character.level_up_pending themselves first (this doesn't gate on
+    it, since some callers already know it's pending by the time they get here)."""
+    character = char_row["state"]["character"]
+    system = engine.get_system(char_row["system_key"])
+    skills = [
+        {"skill": name, "attribute": entry["attribute"], "tier": entry["tier"]}
+        for name, entry in (character.get("skills") or {}).items()
+    ]
+    existing_feat_ids = {f.get("id") for f in character.get("feats", [])}
+    feats = []
+    for feat_id, entry in system.FEAT_CATALOG.items():
+        if feat_id in existing_feat_ids or entry.get("min_level", 1) > character["level"]:
+            continue
+        prereq = entry.get("prerequisite_skill")
+        if prereq:
+            have = (character.get("skills") or {}).get(prereq["skill"])
+            if (have["tier"] if have else 0) < prereq["min_tier"]:
+                continue
+        feats.append({"id": feat_id, "name": entry["name"], "description": entry["description"]})
+    return {"skills": skills, "feats": feats, "attributes": character["attributes"]}

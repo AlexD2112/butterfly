@@ -1,3 +1,84 @@
+# Dedicated rumors channel/screen + Discord /sheet and /levelup (2026-09-03)
+
+Two new asks after the bug-fix round, scoped via clarifying questions first (both had real ambiguity
+worth checking rather than guessing): a dedicated home for rumor broadcasts on both site and Discord,
+and a way to check a character sheet / apply a level-up from Discord.
+
+## Dedicated rumors channel/screen
+
+Confirmed answers: Discord gets a real `#rumors` channel per server, auto-created by the sync loop
+alongside Location channels (not manual); the website gets a REAL SEPARATE SCREEN, not a bigger
+embedded list; no specific complaint about broadcast quality/frequency - just wanted the dedicated
+home first.
+
+- **Schema**: `discord_rumors_channel_id`/`discord_rumors_webhook_id`/`discord_rumors_webhook_token`
+  on `multiplayer_servers` (nullable, additive, same pattern as everything else Discord-side).
+- **Discord**: `run_discord_bot.py`'s `_sync_once` now also ensures a `#rumors` channel + webhook per
+  server, same automatic/dynamic sync as everything else - no manual step.
+- **Posting**: `discord_webhook.post_rumor_broadcast(server_id, content)` - a plain webhook POST, no
+  gateway dependency, called from `multiplayer.compile_and_publish_rumors` right after
+  `db.publish_rumor_broadcast` succeeds. This matters because `compile_and_publish_rumors` only ever
+  runs inside scheduler.py's tick, which only ever runs in the WEB process - so this has to be a plain
+  HTTP webhook call like everything else in discord_webhook.py, not something routed through the bot's
+  gateway connection.
+- **Website**: new `screen-mp-rumors` - its own nav destination off the server lobby (a "View All →"
+  button replacing the old embedded list), showing every broadcast for that server. The lobby itself
+  now shows just the single most recent broadcast as a preview, not the full history.
+
+**Verified live**: the sync loop created a real `#rumors` channel for the real "Butterfly- EA Test 1"
+server (independently confirmed via Discord's REST API); a direct call to `post_rumor_broadcast`
+landed a real message in it with the right "Forking Paths - News" identity (posted and then deleted -
+a real test message, not left behind); the website's new dedicated screen was walked live in the
+browser (empty state, then a real broadcast row added and confirmed rendering, then cleaned up).
+
+## Discord /sheet and /levelup
+
+Confirmed answer: /sheet (own character, compact) PLUS a real level-up flow, acknowledged as the
+bigger of the two options.
+
+- **`/sheet`**: a compact Discord embed - attributes, notable skills (Expertise/Proficiency, Untrained
+  skipped), feats, liabilities, and a level-up-pending flag. Deliberately NOT a full replica of the web
+  sheet panel (resources/relationships/enmity/commitments/canon/divergence-log stay web-only) - a quick
+  reference, not a second UI to keep in lockstep with the real one.
+- **`/levelup`**: a real interactive flow via chained Discord Select menus (skill/feat/attribute, then
+  the specific choice), calling the exact same `system.apply_level_up` the web picker uses. Extracted
+  `multiplayer.level_up_options_for_character` out of the web route (`GET
+  .../level_up_options`) so both sides use the identical eligibility logic instead of two copies that
+  could drift. One real simplification, called out rather than hidden: attribute points are
+  1-per-selected-attribute (pick up to 3), not "put multiple points on one attribute" like the web
+  allows - a Select menu can't express "how many" per option without a second picker per attribute,
+  which felt like more UI than this pass was worth.
+- **A real pre-existing gap fixed along the way**: the web's own `apply_level_up` route recorded its
+  level-up announcement via `db.record_subspace_message` directly, bypassing `multiplayer.py`'s
+  functions entirely - so it never got mirrored to Discord either, even though
+  `discord_webhook._display_for_turn` already had a `"level_up"` branch sitting there unused. Added
+  the missing `discord_webhook.mirror_turn` call to that route; Discord's own `/levelup` command mirrors
+  and live-notifies the website the same way `/action` does.
+
+**Verified live**: `/sheet`'s data logic checked against a real character (Bohemond of Taranto, read-
+only - level/attributes/skills/feats all correct). `/levelup`'s full mutation path tested against a
+throwaway test character in the real server (never a real player's own character): a real
+`system.apply_level_up` call correctly upgraded two skills, the resulting announcement posted to the
+real Discord channel via the webhook mirror, and the underlying options logic
+(`level_up_options_for_character`) returned the correct eligible skills/feats/attributes for a real
+character sheet. All test data cleaned up afterward. All five slash commands (`join`, `action`,
+`refresh`, `sheet`, `levelup`) independently confirmed registered via Discord's own API.
+
+**What's honestly not tested**: the actual Select-menu click-through UI, same limitation as always -
+no Discord login, won't impersonate a user. The logic every Select's callback runs was tested directly
+via the real functions; the multi-step UI itself (does the second dropdown actually populate right
+when you click it) needs a real person clicking through it once.
+
+**Also caught mid-verification, not disruptive**: a real player was actively using the bot live while
+this was being tested (real turns landing seconds apart) - confirmed Bug 2's fix is already holding up
+in real, unprompted play ("Who am I?" correctly stayed grounded at "Main Camp" instead of narrating
+anywhere else). Testing was done read-only or against clearly-separate throwaway characters throughout,
+specifically to avoid interfering with their real session.
+
+306/306 tests passing throughout. Pushed.
+
+---
+
 # Two real bugs from real Discord play, found and fixed (2026-09-03)
 
 The user found both of these testing the live bot for real, not throwaway data - both investigated

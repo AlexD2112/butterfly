@@ -39,6 +39,23 @@ def _display_for_turn(turn):
     return None, None
 
 
+def post_rumor_broadcast(server_id, content):
+    """Posts a compiled rumor broadcast into the server's dedicated #rumors channel (2026-09-03),
+    same plain-webhook mechanism as mirror_turn - called from multiplayer.compile_and_publish_rumors,
+    which only ever runs inside scheduler.py's tick in the web process, so this has no dependency on
+    the bot process being up either. Silent no-op if the server has no rumors channel linked yet (the
+    bot's sync loop creates one lazily, same as everything else Discord-side) or the call fails."""
+    server = db.get_multiplayer_server(server_id)
+    if not server or not server.get("discord_rumors_webhook_id"):
+        return
+    url = f"https://discord.com/api/webhooks/{server['discord_rumors_webhook_id']}/{server['discord_rumors_webhook_token']}"
+    payload = {"content": content[:_DISCORD_CONTENT_LIMIT], "username": "Forking Paths - News"}
+    try:
+        requests.post(url, json=payload, timeout=_WEBHOOK_TIMEOUT)
+    except requests.RequestException:
+        pass
+
+
 def mirror_turn(turn):
     """Posts a turn into Discord if its location is linked; a silent no-op otherwise (unlinked
     location, a subspace whose thread the sync loop hasn't created yet, or the HTTP call itself

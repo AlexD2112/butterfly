@@ -560,7 +560,21 @@
       </div>
     </div>
     <div class="mp-section">
-      <h3>Recent Rumors</h3>
+      <h3>Rumors &amp; News <button class="mp-toggle-btn" id="mp-view-rumors-btn">View All &rarr;</button></h3>
+      <div id="mp-rumor-preview"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Screen M2b: dedicated rumors/news feed for this server (2026-09-03 - its own screen, not just a
+     small section embedded in the lobby, per direction) -->
+<div class="menu-screen" id="screen-mp-rumors">
+  <div class="menu-back-row"><button class="menu-back" data-back="screen-mp-lobby">&larr; Back</button></div>
+  <div class="eyebrow" id="mp-rumors-eyebrow">Server</div>
+  <h1>Rumors &amp; News</h1>
+  <div class="subtitle">Every broadcast compiled from what's happened across the server so far.</div>
+  <div class="mp-wrap">
+    <div class="mp-section">
       <div id="mp-rumor-list"></div>
     </div>
   </div>
@@ -2124,17 +2138,35 @@ document.getElementById('mpl-submit').addEventListener('click', async () => {
   await loadMpLocationList();
 });
 
-async function loadMpRumors() {
-  const res = await fetch(`/api/multiplayer/servers/${MP_SELECTED_SERVER.id}/rumors`);
-  const data = await res.json();
-  const el = document.getElementById('mp-rumor-list');
-  el.innerHTML = data.broadcasts.length === 0 ? '<div class="mp-empty">No rumors have circulated yet.</div>' : data.broadcasts.map(b => `
+function renderRumorEntries(broadcasts) {
+  return broadcasts.length === 0 ? '<div class="mp-empty">No rumors have circulated yet.</div>' : broadcasts.map(b => `
     <div class="rumor-entry">
       <div class="rumor-date">${escapeHtml(formatTimestamp(b.published_at))}</div>
       <div>${escapeHtml(b.content)}</div>
     </div>
   `).join('');
 }
+
+// Lobby preview - just the single most recent broadcast, so the lobby itself stays a short summary
+// screen; the full history lives on its own dedicated screen (screen-mp-rumors) now, not embedded
+// here (2026-09-03, per direction - "a real separate screen", not just a bigger embedded list).
+async function loadMpRumors() {
+  const res = await fetch(`/api/multiplayer/servers/${MP_SELECTED_SERVER.id}/rumors`);
+  const data = await res.json();
+  document.getElementById('mp-rumor-preview').innerHTML = renderRumorEntries(data.broadcasts.slice(0, 1));
+}
+
+async function loadMpRumorsScreen() {
+  document.getElementById('mp-rumors-eyebrow').textContent = MP_SELECTED_SERVER.name;
+  const res = await fetch(`/api/multiplayer/servers/${MP_SELECTED_SERVER.id}/rumors`);
+  const data = await res.json();
+  document.getElementById('mp-rumor-list').innerHTML = renderRumorEntries(data.broadcasts);
+}
+
+document.getElementById('mp-view-rumors-btn').addEventListener('click', async () => {
+  await loadMpRumorsScreen();
+  showScreen('screen-mp-rumors');
+});
 
 // A character with no location yet just gets selected (pending a location pick below); one that's
 // already somewhere resumes straight into that subspace - subspace_messages doubles as the presence
