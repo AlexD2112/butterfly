@@ -669,7 +669,16 @@ def delete_multiplayer_server(server_id):
 
     Single-player data can't be touched by this: everything here is scoped by this server's own id,
     its location ids, or its one games row (multiplayer_server_id = server_id) - a single-player
-    game's multiplayer_server_id is always NULL, so it never matches."""
+    game's multiplayer_server_id is always NULL, so it never matches.
+
+    Real bug found and fixed here (2026-09-03), live: subspaces.created_by_character_id (provenance
+    for a dynamically-created subspace - see create_subspace) also REFERENCES characters(id), but
+    characters were being deleted before that reference was cleared, exactly like usage_events would
+    have been had it not already been nulled above. Any server that ever had even one
+    dynamically-created subspace (which is most of them - see multiplayer.detect_new_space) would
+    hit a real FK integrity error on delete. Caught mid-session testing the Discord bot's live action
+    pipeline, not by the existing test suite - test_delete_multiplayer_server.py's fixture never
+    happened to include a dynamically-created subspace."""
     conn = get_db()
     game_row = conn.execute("SELECT id FROM games WHERE multiplayer_server_id = ?", (server_id,)).fetchone()
     game_id = game_row["id"] if game_row else None
@@ -700,6 +709,10 @@ def delete_multiplayer_server(server_id):
     if character_ids:
         placeholders = ",".join("?" * len(character_ids))
         conn.execute(f"UPDATE usage_events SET character_id = NULL WHERE character_id IN ({placeholders})", character_ids)
+        conn.execute(
+            f"UPDATE subspaces SET created_by_character_id = NULL WHERE created_by_character_id IN ({placeholders})",
+            character_ids,
+        )
 
     if game_id is not None:
         conn.execute("DELETE FROM npcs WHERE game_id = ?", (game_id,))

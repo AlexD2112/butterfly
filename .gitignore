@@ -6,3 +6,4 @@ __pycache__/
 butterfly.db
 butterfly.db-journal
 save.json
+discord_bot_run.log

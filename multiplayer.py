@@ -78,6 +78,7 @@ import random
 
 import council
 import db
+import discord_webhook
 import engine
 import live
 import pricing
@@ -221,15 +222,26 @@ Write only your in-character response, nothing else."""
 
 
 def handle_message(provider, model, game_id, location_id, subspace_id, character_id, content,
-                    reply_to_turn_id=None, usage_sink=None):
+                    reply_to_turn_id=None, usage_sink=None, origin="web"):
     """The full flow for a "message"-kind send: record it, decide (via reply-threading shortcuts or
     the judge) whether/who responds, generate that reply if any, record it, and update NPC memory if
     an NPC replied. Returns (message_turn_id, reply_turn_id_or_None, responder_or_None) - responder
-    is None whenever nobody responds, which is a real, expected outcome now, not a failure."""
+    is None whenever nobody responds, which is a real, expected outcome now, not a failure.
+
+    origin (2026-09-03): "web" (default, from server.py's route) also mirrors the player's own
+    message into the location's linked Discord channel/thread, if any - see discord_webhook.py.
+    "discord" (from run_discord_bot.py) skips ONLY that part, since a Discord-originated message is
+    already visible in Discord as the player's own message there - no need to mirror it back to
+    itself. Either way, any AI reply this produces IS always mirrored (below) - a Discord-originated
+    message still needs its GM/NPC reply posted into Discord, since that reply doesn't exist there
+    yet until this call creates it."""
     message_turn_id = db.record_subspace_message(
         game_id, location_id, subspace_id, character_id, "message", content, reply_to_turn_id=reply_to_turn_id,
     )
-    live.publish_subspace_event(subspace_id, db.get_turn_by_id(message_turn_id))
+    message_turn = db.get_turn_by_id(message_turn_id)
+    live.publish_subspace_event(subspace_id, message_turn)
+    if origin != "discord":
+        discord_webhook.mirror_turn(message_turn)
 
     responder = None
     if reply_to_turn_id:
@@ -263,7 +275,9 @@ def handle_message(provider, model, game_id, location_id, subspace_id, character
         game_id, location_id, subspace_id, character_id, reply_kind, reply_text,
         reply_to_turn_id=message_turn_id, responder=responder,
     )
-    live.publish_subspace_event(subspace_id, db.get_turn_by_id(reply_turn_id))
+    reply_turn = db.get_turn_by_id(reply_turn_id)
+    live.publish_subspace_event(subspace_id, reply_turn)
+    discord_webhook.mirror_turn(reply_turn)  # both origins want the reply mirrored - see docstring above
 
     if responder != "gm":
         npcs = db.npcs_at_subspace(subspace_id)
@@ -553,7 +567,7 @@ Be conservative throughout. If it's unclear, decide no_change. Submit via decide
 
 
 def resolve_action(provider, model, model_key, char_row, location_id, subspace_id, content, conversation,
-                    usage_sink=None, budget_ok=None):
+                    usage_sink=None, budget_ok=None, origin="web"):
     """Resolves a multiplayer "action" - the mechanical resolution ALWAYS goes through
     engine.run_turn unchanged (dice/state stay app-owned via the same trusted, tested path
     single-player uses). This function's job is what happens around that call: turn-order enforcement
@@ -573,6 +587,9 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
     (a Subspace-only move within the same Location leaves it None) - the caller (server.py) uses
     these to tell the frontend it needs to reload location/subspace detail for wherever the character
     actually ended up.
+
+    origin (2026-09-03): see handle_message's docstring - same meaning, same "always mirror the
+    reply, only skip mirroring the player's own turn when it's already visible in Discord" rule.
     """
     character_id = char_row["id"]
     game_id = char_row["game_id"]
@@ -610,12 +627,17 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
         game_id, location_id, subspace_id, character_id, "action", content, model_key=model_key,
         debug_events=debug_events, flagged=flagged, flag_reason=flag_reason,
     )
-    live.publish_subspace_event(subspace_id, db.get_turn_by_id(turn_id))
+    action_turn = db.get_turn_by_id(turn_id)
+    live.publish_subspace_event(subspace_id, action_turn)
+    if origin != "discord":
+        discord_webhook.mirror_turn(action_turn)
     reply_turn_id = db.record_subspace_message(
         game_id, location_id, subspace_id, character_id, "gm_reply", narration,
         reply_to_turn_id=turn_id, responder="gm", model_key=model_key,
     )
-    live.publish_subspace_event(subspace_id, db.get_turn_by_id(reply_turn_id))
+    reply_turn = db.get_turn_by_id(reply_turn_id)
+    live.publish_subspace_event(subspace_id, reply_turn)
+    discord_webhook.mirror_turn(reply_turn)
 
     result = {
         "turn_id": turn_id, "reply_turn_id": reply_turn_id,

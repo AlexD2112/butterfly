@@ -103,6 +103,32 @@ class TestDeleteMultiplayerServerCascade(unittest.TestCase):
         # "never existed" (server.py's route is what returns 404 for a client-facing unknown id).
         db.delete_multiplayer_server(999999)
 
+    def test_delete_succeeds_when_a_character_dynamically_created_a_subspace(self):
+        """Real bug, found live (2026-09-03) while testing the Discord bot's action pipeline against a
+        real server: subspaces.created_by_character_id (set on a dynamically-created subspace - see
+        create_subspace/multiplayer.detect_new_space) also REFERENCES characters(id), but characters
+        were deleted before that reference was cleared, same as usage_events would have been had it
+        not already been nulled - any server that ever had even one dynamically-created subspace threw
+        a real sqlite3.IntegrityError on delete. This fixture is exactly what
+        test_delete_cascades_through_everything_and_preserves_billing_history's didn't happen to
+        cover: a subspace created via the 'dynamic' path, attributed to a character being deleted."""
+        admin = db.get_or_create_discord_user("2", "Admin2", None)
+        server_id = db.create_multiplayer_server(
+            "Doomed Server 2", "petrograd_1917", "red_admiral", "day", 24.0, admin["id"], initial_date="1917-09-25",
+        )
+        game = db.get_game_for_server(server_id)
+        location_id = db.create_location(server_id, "Location A")
+        char_id = self._make_character(admin["id"], game["id"], "Explorer")
+        dynamic_subspace_id = db.create_subspace(location_id, "A Hidden Alcove", origin="dynamic", created_by_character_id=char_id)
+
+        db.delete_multiplayer_server(server_id)  # must not raise
+
+        conn = db.get_db()
+        self.assertIsNone(conn.execute("SELECT id FROM multiplayer_servers WHERE id = ?", (server_id,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT id FROM subspaces WHERE id = ?", (dynamic_subspace_id,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT id FROM characters WHERE id = ?", (char_id,)).fetchone())
+        conn.close()
+
 
 class TestDeleteMultiplayerServerRoute(unittest.TestCase):
     """Route-level: admin gating, 404 on unknown server, and that a deleted server actually

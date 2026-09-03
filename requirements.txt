@@ -14,4 +14,4 @@ openai
 apscheduler
 # The Discord bot (2026-09-03, see discord_bot.py/run_discord_bot.py and NOTES.md) - a separate
 # always-on process, not imported by server.py, so this being present never affects the web app.
-discord.py
+discord.py>=2.4,<3
