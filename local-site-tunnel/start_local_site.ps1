@@ -64,8 +64,17 @@ Start-Sleep -Seconds 3
 Write-Host "Starting the named Cloudflare tunnel (forkingpaths.app) - watch this window for connection status." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "& '$cloudflared' tunnel run butterfly"
 
+# The Discord bot (2026-09-03, run_discord_bot.py) - its own always-on process alongside the web app,
+# same reasoning as the tunnel: started here too so "run this one script" is enough to bring up the
+# whole thing, not something to separately remember. Safe to always attempt: if DISCORD_BOT_TOKEN
+# isn't set in .env, run_discord_bot.py exits immediately with a clear message in its own window and
+# the site is completely unaffected either way - neither process imports the other. Use
+# start_discord_bot.ps1 on its own if you ever want to restart just the bot without touching the site.
+Write-Host "Starting the Discord bot..." -ForegroundColor Cyan
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$repoRoot'; python run_discord_bot.py"
+
 Write-Host ""
-Write-Host "Two windows should now be open: the app (waitress), and the tunnel." -ForegroundColor Green
+Write-Host "Three windows should now be open: the app (waitress), the tunnel, and the Discord bot." -ForegroundColor Green
 Write-Host "The site is live at https://forkingpaths.app - that address is permanent now, nothing to" -ForegroundColor Green
 Write-Host "copy-paste anywhere after a restart." -ForegroundColor Green
 Write-Host ""
