@@ -166,5 +166,59 @@ class TestMultiplayerJudging(unittest.TestCase):
         self.assertIsNotNone(reply_id)
 
 
+class ScriptedClassifyProvider:
+    """Stands in for the classifier call multiplayer.classify_message_or_action makes - always
+    responds to the forced 'classify' tool with a scripted kind, or (kind=None) a malformed/empty
+    response, to exercise the fail-safe-to-"message" path."""
+
+    def __init__(self, kind="action"):
+        self.kind = kind
+        self.calls = []
+
+    def new_conversation(self):
+        return []
+
+    def append_user_message(self, conversation, text):
+        conversation.append(("user", text))
+
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+        self.calls.append(force_tool_name)
+        if self.kind is None:
+            return providers.TurnResult(text_parts=[], tool_calls=[], usage=usage())
+        return providers.TurnResult(
+            text_parts=[], tool_calls=[{"id": "c1", "name": "classify", "input": {"kind": self.kind, "reasoning": "scripted"}}],
+            usage=usage(),
+        )
+
+
+class TestClassifyMessageOrAction(unittest.TestCase):
+    """Pure function of a scripted provider - no DB needed. Real bug this exists to close (2026-09-03,
+    per direction): Discord has no Message/Action toggle like the website, so a plain-typed message
+    that reads as an attempted move/action was silently always handled as talk-only, with no
+    mechanical resolution and no dynamic-space detection - see NOTES.md."""
+
+    def test_scripted_action_response_returns_action(self):
+        fake = ScriptedClassifyProvider(kind="action")
+        kind = multiplayer.classify_message_or_action(fake, "gpt-5.6-luna", "I charge at the guard!")
+        self.assertEqual(kind, "action")
+        self.assertEqual(fake.calls, ["classify"])
+
+    def test_scripted_message_response_returns_message(self):
+        fake = ScriptedClassifyProvider(kind="message")
+        kind = multiplayer.classify_message_or_action(fake, "gpt-5.6-luna", "Nice weather today, isn't it?")
+        self.assertEqual(kind, "message")
+
+    def test_malformed_response_fails_safe_to_message(self):
+        fake = ScriptedClassifyProvider(kind=None)
+        kind = multiplayer.classify_message_or_action(fake, "gpt-5.6-luna", "Whatever this is.")
+        self.assertEqual(kind, "message")
+
+    def test_usage_sink_records_the_call(self):
+        fake = ScriptedClassifyProvider(kind="action")
+        sink = []
+        multiplayer.classify_message_or_action(fake, "gpt-5.6-luna", "I attack.", usage_sink=sink)
+        self.assertEqual(len(sink), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

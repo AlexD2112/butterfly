@@ -1,3 +1,82 @@
+# Shared-scene awareness fix + Discord auto-classified message/action (2026-09-03)
+
+A real, structural multiplayer bug found via real Discord play, investigated properly rather than
+prompt-patched, plus a related UX request that closes the gap that made it easy to hit in the first
+place.
+
+## The bug: a character's action narrated as if no one else was in the scene
+
+User's real transcript: Terrance Wildebear stripped down and announced he'd lather himself in butter
+to predict the future. Right after, "Game Master" narrated Tatikios pouring olive oil on himself,
+starting a whole different scene, with zero reference to Terrance or what he'd just done - as if
+Tatikios were alone. First read as a possible routing/cross-thread bug; the user corrected this
+directly: Tatikios really was present in the same shared scene, so the real bug is narrower and more
+specific - the narration for one character's action showed no awareness that another character had
+just acted in the very same subspace.
+
+**Root cause, confirmed by reading the actual code path**, not guessed: `multiplayer.resolve_action`
+"deliberately reuses `engine.run_turn` UNCHANGED" (its own docstring's words) for the actual mechanical
+resolution - the same single-player-shaped function loop.py's solo CLI uses. `build_system_prompt`
+builds its prompt from ONE character's own state and nothing else; `run_turn`'s `conversation` object
+is that same character's own private dialogue history. Neither one has ever had any way to know another
+character was even in the room, let alone what they just did - single-player has no "other characters"
+concept, and multiplayer's action path never added one. Contrast: the "message" (talk) pipeline
+(`judge_responder`/`generate_reply`) already pulls in `_recent_subspace_context` - genuinely shared,
+subspace-wide activity, not tied to one character - which is exactly why THAT pipeline never had this
+problem. `resolve_action` just never got the same treatment.
+
+**Fix**: `engine.build_system_prompt`/`run_turn` gained an optional `extra_context` parameter (None
+for every existing caller - single-player's own routes and loop.py are byte-for-byte unaffected).
+`multiplayer.resolve_action` now passes `_recent_subspace_context(subspace_id)` as that context - the
+exact same helper the message pipeline already trusted, now feeding the mechanical pipeline too, so a
+character's action is resolved with real awareness of what else has recently happened in their shared
+scene. Skips the section entirely (not the placeholder string) when there's genuinely no prior
+activity, so a first action in an empty subspace doesn't get padded with an empty "other characters"
+section. `_recent_subspace_context` itself also gained real character NAMES (was "player #<id>",
+which meant a prompt could never actually reference someone by name even where it obviously mattered) -
+a bonus fix, and part of why the fix reads naturally now ("Terrance Wildebear" rather than "player
+#39").
+
+**Verified two ways**: a new scripted-provider unit test (`test_an_action_after_another_characters_
+recent_turn_gets_shared_scene_context_by_name`) asserts the real other character's name and their
+recent action text actually appear in the system prompt sent for the main narration call - and,
+separately, a REAL model call against the real server: two throwaway characters, one does an eccentric
+goose-fat stunt, the other pours olive oil right after in the same subspace - the second narration
+now explicitly says "the goose fat already shining across your chest" and has the character declare
+"Mine was pressed beneath the sun. Mine is holier!" directly engaging with what the first character
+just did, not narrating in isolation. Real, dramatic, confirmed difference from the reported bug.
+
+## Related: Discord plain messages are now dynamically classified as message/action
+
+Direct follow-up ask, since it's the same root cause's other half: Discord has no Message/Action
+toggle the way the website does, so a plain-typed move ("go to the greek side camp," from the earlier
+bug entry) was silently ALWAYS treated as talk-only - no mechanical resolution, no dynamic-space
+detection, no error, nothing telling the player anything was different from what they expected.
+
+New `multiplayer.classify_message_or_action(provider, model, content, usage_sink=None)` - a cheap,
+forced-tool-call classification (same shape as every other judge-style function in this module),
+fails safe to "message" (the lower-stakes default) on any malformed response. `run_discord_bot.py`'s
+`on_message` now classifies every plain-typed message before routing it, instead of always calling
+`handle_message`. `/action` and `/message` (new - the explicit equivalent of the web's Message toggle,
+previously only `/action` existed) both bypass classification entirely and always get their literal
+kind - not just as a policy, but structurally: a slash-command interaction never reaches `on_message`
+at all, so there's no reclassification step to bypass in the first place.
+
+Refactored the actual execution into two shared async helpers, `_run_action`/`_run_message`, used
+identically by on_message's classified routing AND both explicit commands - one real code path per
+kind, not three near-duplicates that could drift.
+
+**Verified live**: 4 real classification samples against the real judge model, all correct (two
+clearly physical actions, two clearly conversational lines); then a real end-to-end run of a
+classified "action" ('I search the nearby crates for anything useful') through the full pipeline
+against the real server - correctly classified, then correctly resolved with a REAL dice check and
+state update (`debug_events: ['check', 'state_update']`), not just narrated. All 6 slash commands
+(`join`, `action`, `message`, `refresh`, `sheet`, `levelup`) confirmed registered via Discord's own
+API after restart. 312/312 tests passing (4 new). All test data cleaned up from the real server
+afterward.
+
+---
+
 # Dedicated rumors channel/screen + Discord /sheet and /levelup (2026-09-03)
 
 Two new asks after the bug-fix round, scoped via clarifying questions first (both had real ambiguity

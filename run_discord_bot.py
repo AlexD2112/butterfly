@@ -21,11 +21,19 @@ as local-site-tunnel/start_local_site.ps1 - its own window, separate process fro
    classifier during play; nobody ever has to trigger it. /refresh (below) is the one deliberately
    manual thing, and it's optional - a safety net that forces one pass immediately instead of waiting
    up to SYNC_INTERVAL_SECONDS, not a requirement.
-3. on_message: a plain message typed in a linked channel/thread is treated as a "message" (in-scene
-   talk, judged by the AI for whether an NPC/the GM responds) - the exact same
-   multiplayer.handle_message pipeline api_multiplayer_send uses for the web "message" toggle.
-4. /action: the mechanical-resolution equivalent of the web's "action" toggle - resolved through
-   multiplayer.resolve_action, same as the web route.
+3. on_message: a plain message typed in a linked channel/thread is dynamically classified by a cheap
+   AI call (multiplayer.classify_message_or_action, 2026-09-03, per direction) as "message" (in-scene
+   talk - multiplayer.handle_message, same as the web "message" toggle) or "action" (mechanical -
+   multiplayer.resolve_action, same as the web "action" toggle), then routed accordingly - see
+   _run_message/_run_action below, the one shared execution path per kind used by BOTH this classified
+   routing and the explicit commands below it. Discord has no visible Message/Action toggle the way
+   the website does, so a plain-typed message needs classifying instead of always defaulting to
+   "message" - the earlier, silent gap (see NOTES.md): a typed move got talk-only handling, no
+   mechanical resolution, no dynamic-space detection, with no error and no visible sign anything was
+   wrong.
+4. /action and /message: the explicit, always-honored equivalents of the web's Action/Message toggle -
+   bypass classification entirely, since a slash-command interaction never reaches on_message at all
+   (Discord dispatches interactions and message events separately).
 5. /join: the entire self-contained-onboarding story from discord_bot.py's docstring - links (or
    creates) the caller's account via the same db.get_or_create_discord_user web login already uses,
    and reports whether they already have a character in this server.
@@ -356,62 +364,6 @@ def _resolve_own_character_by_category(discord_user, channel):
     return user_row, server, game, character
 
 
-# ==================== on_message: plain chat = "message" (talk) ====================
-
-@client.event
-async def on_message(message):
-    if message.author.bot or message.webhook_id is not None:
-        return
-    content = message.content.strip()
-    if not content:
-        return
-    routed = _route_for_channel(message.channel)
-    if routed is None:
-        return
-    location, subspace = routed
-    if location is None or subspace is None:
-        return
-
-    try:
-        user_row, server, game, character = _resolve_play_context(message.author, location, subspace)
-    except PlayContextError as e:
-        await message.reply(str(e), mention_author=False)
-        return
-
-    try:
-        provider, model = providers.get_provider(providers.DEFAULT_MODEL_KEY)
-    except providers.ProviderError as e:
-        await message.reply(f"Model provider isn't configured: {e}", mention_author=False)
-        return
-
-    usage_sink = []
-    loop = asyncio.get_running_loop()
-    try:
-        async with message.channel.typing():
-            result = await loop.run_in_executor(
-                None,
-                lambda: multiplayer.handle_message(
-                    provider, model, game["id"], location["id"], subspace["id"], character["id"], content,
-                    usage_sink=usage_sink, origin="discord",
-                ),
-            )
-    except Exception:
-        log.exception("handle_message failed for character %s in location %s", character["id"], location["id"])
-        await message.reply("Something went wrong resolving that - the game master's been notified.", mention_author=False)
-        return
-    finally:
-        _record_usage(usage_sink, user_row["id"], character["id"])
-    # No explicit reply needed here even when nobody responded (result[2] is None) - the player's own
-    # message is already visible in Discord as the message they just sent; nothing else to show.
-    # Both turns still need pushing to any real web viewer watching this subspace live (see
-    # _notify_web_live) - origin="discord" only ever controlled the Discord-side webhook mirror
-    # (correctly skipped for the player's own message, which is already visible in Discord itself),
-    # never the website's own SSE push, which this bot process can't reach on its own.
-    message_turn_id, reply_turn_id, _responder = result
-    _notify_web_live(message_turn_id)
-    _notify_web_live(reply_turn_id)
-
-
 def _record_usage(usage_sink, user_id, character_id):
     for usage in usage_sink:
         cost = pricing.estimate_cost_usd(usage)
@@ -438,6 +390,143 @@ def _notify_web_live(turn_id):
         )
     except requests.RequestException:
         pass
+
+
+# ==================== shared action/message execution - one real code path per kind, used by
+# on_message's auto-classified routing AND the explicit /action and /message commands, so all three
+# entry points behave identically (2026-09-03) ====================
+
+async def _run_action(user_row, character, location, subspace, content):
+    """Runs a real mechanical action through resolve_action. Returns (result_dict, error_message) -
+    exactly one is None. Handles usage billing and the website live-notify bridge itself."""
+    try:
+        provider, model = providers.get_provider(providers.DEFAULT_MODEL_KEY)
+    except providers.ProviderError as e:
+        return None, f"Model provider isn't configured: {e}"
+
+    char_row = db.get_character(character["id"], user_row["id"])
+    conversation = client.conversation_for(character["id"], providers.MODEL_REGISTRY[providers.DEFAULT_MODEL_KEY]["provider"], provider)
+    usage_sink = []
+    budget = db.get_budget_status(user_row["id"])
+
+    def budget_ok():
+        spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
+        return (budget["remaining_usd"] - spent_this_turn) > 0
+
+    loop = asyncio.get_running_loop()
+    result = None
+    error = None
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: multiplayer.resolve_action(
+                provider, model, providers.DEFAULT_MODEL_KEY, char_row, location["id"], subspace["id"],
+                content, conversation, usage_sink=usage_sink, budget_ok=budget_ok, origin="discord",
+            ),
+        )
+    except multiplayer.CombatTurnError as e:
+        error = str(e)
+    except Exception:
+        log.exception("resolve_action failed for character %s in location %s", character["id"], location["id"])
+        error = "Something went wrong resolving that action - the game master's been notified."
+    finally:
+        _record_usage(usage_sink, user_row["id"], character["id"])
+
+    if result is not None:
+        _notify_web_live(result.get("turn_id"))
+        _notify_web_live(result.get("reply_turn_id"))
+    return result, error
+
+
+async def _run_message(user_row, game, character, location, subspace, content):
+    """Runs a real 'message' (talk) turn through handle_message. Returns (result_tuple,
+    error_message) - exactly one is None. Same shared-execution reasoning as _run_action."""
+    try:
+        provider, model = providers.get_provider(providers.DEFAULT_MODEL_KEY)
+    except providers.ProviderError as e:
+        return None, f"Model provider isn't configured: {e}"
+
+    usage_sink = []
+    loop = asyncio.get_running_loop()
+    result = None
+    error = None
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: multiplayer.handle_message(
+                provider, model, game["id"], location["id"], subspace["id"], character["id"], content,
+                usage_sink=usage_sink, origin="discord",
+            ),
+        )
+    except Exception:
+        log.exception("handle_message failed for character %s in location %s", character["id"], location["id"])
+        error = "Something went wrong resolving that - the game master's been notified."
+    finally:
+        _record_usage(usage_sink, user_row["id"], character["id"])
+
+    if result is not None:
+        message_turn_id, reply_turn_id, _responder = result
+        _notify_web_live(message_turn_id)
+        _notify_web_live(reply_turn_id)
+    return result, error
+
+
+# ==================== on_message: dynamically classified as "message" (talk) or "action"
+# (mechanical) via multiplayer.classify_message_or_action (2026-09-03, per direction) - Discord has no
+# explicit Message/Action toggle the way the website does, so a plain-typed message needs classifying
+# instead of always defaulting to "message" (the earlier, silent gap - see NOTES.md: a typed move got
+# talk-only handling, no mechanical resolution, no dynamic-space detection). /action and /message
+# (below) bypass this entirely - a slash-command interaction never reaches on_message at all, so an
+# explicit command is never reclassified, only genuinely unlabeled text is. ====================
+
+@client.event
+async def on_message(message):
+    if message.author.bot or message.webhook_id is not None:
+        return
+    content = message.content.strip()
+    if not content:
+        return
+    routed = _route_for_channel(message.channel)
+    if routed is None:
+        return
+    location, subspace = routed
+    if location is None or subspace is None:
+        return
+
+    try:
+        user_row, server, game, character = _resolve_play_context(message.author, location, subspace)
+    except PlayContextError as e:
+        await message.reply(str(e), mention_author=False)
+        return
+
+    try:
+        judge_provider, judge_model = providers.get_provider(multiplayer.JUDGE_MODEL_KEY)
+    except providers.ProviderError:
+        try:
+            judge_provider, judge_model = providers.get_provider(providers.DEFAULT_MODEL_KEY)
+        except providers.ProviderError as e:
+            await message.reply(f"Model provider isn't configured: {e}", mention_author=False)
+            return
+
+    loop = asyncio.get_running_loop()
+    classify_usage = []
+    kind = await loop.run_in_executor(
+        None,
+        lambda: multiplayer.classify_message_or_action(judge_provider, judge_model, content, usage_sink=classify_usage),
+    )
+    _record_usage(classify_usage, user_row["id"], character["id"])
+
+    async with message.channel.typing():
+        if kind == "action":
+            result, error = await _run_action(user_row, character, location, subspace, content)
+        else:
+            result, error = await _run_message(user_row, game, character, location, subspace, content)
+
+    if error:
+        await message.reply(error, mention_author=False)
+    # No explicit reply needed on success (either kind) - the player's own message is already visible
+    # in Discord as the message they just sent; the GM/mechanical reply posts separately via the
+    # webhook mirror, and a plain "message" that nobody responds to has nothing else to show either.
 
 
 # ==================== slash commands ====================
@@ -691,7 +780,7 @@ async def refresh_command(interaction: discord.Interaction):
         )
 
 
-@client.tree.command(name="action", description="Take an action in the game - resolved by the AI game master.")
+@client.tree.command(name="action", description="Take an action in the game - resolved by the AI game master. Bypasses auto-classification.")
 @app_commands.describe(text="What does your character do?")
 async def action_command(interaction: discord.Interaction, text: str):
     await interaction.response.defer(thinking=True)
@@ -710,47 +799,10 @@ async def action_command(interaction: discord.Interaction, text: str):
         await interaction.followup.send(str(e))
         return
 
-    try:
-        provider, model = providers.get_provider(providers.DEFAULT_MODEL_KEY)
-    except providers.ProviderError as e:
-        await interaction.followup.send(f"Model provider isn't configured: {e}")
+    result, error = await _run_action(user_row, character, location, subspace, text)
+    if error:
+        await interaction.followup.send(error)
         return
-
-    char_row = db.get_character(character["id"], user_row["id"])
-    conversation = client.conversation_for(character["id"], providers.MODEL_REGISTRY[providers.DEFAULT_MODEL_KEY]["provider"], provider)
-    usage_sink = []
-    budget = db.get_budget_status(user_row["id"])
-
-    def budget_ok():
-        spent_this_turn = sum(pricing.estimate_cost_usd(u) for u in usage_sink)
-        return (budget["remaining_usd"] - spent_this_turn) > 0
-
-    loop = asyncio.get_running_loop()
-    try:
-        result = await loop.run_in_executor(
-            None,
-            lambda: multiplayer.resolve_action(
-                provider, model, providers.DEFAULT_MODEL_KEY, char_row, location["id"], subspace["id"],
-                text, conversation, usage_sink=usage_sink, budget_ok=budget_ok, origin="discord",
-            ),
-        )
-    except multiplayer.CombatTurnError as e:
-        await interaction.followup.send(str(e))
-        return
-    except Exception:
-        log.exception("resolve_action failed for character %s in location %s", character["id"], location["id"])
-        await interaction.followup.send("Something went wrong resolving that action - the game master's been notified.")
-        return
-    finally:
-        _record_usage(usage_sink, user_row["id"], character["id"])
-
-    # Same live-update bridge as on_message - see _notify_web_live. Both the action turn (skipped for
-    # Discord-mirroring, same reasoning as the message case) and the reply (always mirrored) still
-    # need pushing to the website's own SSE subscribers, which neither discord_webhook.mirror_turn
-    # call reaches - that's a Discord-only mechanism, and this bot process can't reach the real web
-    # subscriber queues on its own either way.
-    _notify_web_live(result.get("turn_id"))
-    _notify_web_live(result.get("reply_turn_id"))
 
     note = ""
     if result.get("moved_to_location_id") or result.get("new_location_id"):
@@ -758,6 +810,32 @@ async def action_command(interaction: discord.Interaction, text: str):
     elif result.get("moved_to_subspace_id") and result["moved_to_subspace_id"] != subspace["id"]:
         note = " (this moved you within the location - sync may take a few seconds to create its thread)"
     await interaction.followup.send(f"Resolved.{note}")
+
+
+@client.tree.command(name="message", description="Say/do something purely in-scene - no dice, no mechanical resolution. Bypasses auto-classification.")
+@app_commands.describe(text="What does your character say or do socially?")
+async def message_command(interaction: discord.Interaction, text: str):
+    await interaction.response.defer(thinking=True)
+    routed = _route_for_channel(interaction.channel)
+    if routed is None:
+        await interaction.followup.send("This channel isn't linked to a game location.")
+        return
+    location, subspace = routed
+    if location is None or subspace is None:
+        await interaction.followup.send("This channel isn't linked to a game location.")
+        return
+
+    try:
+        user_row, server, game, character = _resolve_play_context(interaction.user, location, subspace)
+    except PlayContextError as e:
+        await interaction.followup.send(str(e))
+        return
+
+    result, error = await _run_message(user_row, game, character, location, subspace, text)
+    if error:
+        await interaction.followup.send(error)
+        return
+    await interaction.followup.send("Sent.")
 
 
 @client.tree.error

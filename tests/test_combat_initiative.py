@@ -89,6 +89,7 @@ class ScriptedActionProvider:
         self.combat_participants = combat_participants or []
         self.combat_ends = combat_ends
         self.calls = []
+        self.system_prompts = []  # one per call() - lets a test inspect what the main narration call actually saw
 
     def new_conversation(self):
         return []
@@ -98,6 +99,7 @@ class ScriptedActionProvider:
 
     def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
         self.calls.append(force_tool_name or "plain")
+        self.system_prompts.append(system_prompt)
         if force_tool_name == "decide_combat":
             return providers.TurnResult(
                 text_parts=[], tool_calls=[{"id": "c1", "name": "decide_combat", "input": {
@@ -353,6 +355,43 @@ class TestResolveAction(unittest.TestCase):
         )
         self.assertIsNone(result["combat_encounter_id"])
         self.assertNotIn("decide_combat", fake.calls)  # no one else present - not even worth asking
+
+    def test_a_solo_action_with_no_prior_subspace_activity_gets_no_scene_section(self):
+        """No prior activity at all (not even this character's own) - build_system_prompt should skip
+        the "OTHER CHARACTERS PRESENT" section entirely rather than describing an empty scene."""
+        char_id = self._make_character("2", "Solo")
+        fake = ScriptedActionProvider()
+        multiplayer.resolve_action(
+            fake, "gpt-5.6-luna", "luna", self._char_row(char_id), self.location_id, self.subspace_id,
+            "I look around.", fake.new_conversation(),
+        )
+        main_prompt = fake.system_prompts[fake.calls.index("plain")]
+        self.assertNotIn("OTHER CHARACTERS PRESENT", main_prompt)
+
+    def test_an_action_after_another_characters_recent_turn_gets_shared_scene_context_by_name(self):
+        """Real bug, found live via real Discord play (2026-09-03): a character's action was being
+        resolved with zero awareness that another character in the SAME subspace had just done
+        something seconds earlier - engine.run_turn (reused unchanged from single-player) only ever
+        knew about the ACTING character's own state, never anyone else present. Asserts the fix: the
+        system prompt actually sent for the main narration call now includes the other character's
+        REAL NAME and their recent action - the same _recent_subspace_context judge_responder/
+        generate_reply already used for the "message" pipeline, now fed into the mechanical
+        resolve_action path too."""
+        first_id = self._make_character("2", "Terrance Wildebear")
+        second_id = self._make_character("3", "Tatikios")
+        db.record_subspace_message(
+            self.game["id"], self.location_id, self.subspace_id, first_id, "action",
+            "lathers himself in butter to predict the future",
+        )
+        fake = ScriptedActionProvider(narration="You pour olive oil over yourself.")
+        multiplayer.resolve_action(
+            fake, "gpt-5.6-luna", "luna", self._char_row(second_id), self.location_id, self.subspace_id,
+            "I pour olive oil on myself too.", fake.new_conversation(),
+        )
+        main_prompt = fake.system_prompts[fake.calls.index("plain")]
+        self.assertIn("OTHER CHARACTERS PRESENT", main_prompt)
+        self.assertIn("Terrance Wildebear", main_prompt)
+        self.assertIn("butter", main_prompt)
 
     def test_an_action_that_ignites_combat_creates_an_encounter_including_the_actor(self):
         attacker_id = self._make_character("2", "Attacker")

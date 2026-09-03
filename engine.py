@@ -158,7 +158,16 @@ def build_state_digest(state):
     return {k: v for k, v in state.items() if not k.startswith("_")}
 
 
-def build_system_prompt(state, setting_key, system_key):
+def build_system_prompt(state, setting_key, system_key, extra_context=None):
+    """extra_context (2026-09-03): optional shared-scene text - see multiplayer.resolve_action, which
+    is the only caller that passes it. This function/run_turn are otherwise the same single-player-
+    shaped path multiplayer's mechanical action resolution deliberately reuses unchanged (see
+    multiplayer.py's own docstring) - state, on its own, only ever describes ONE character. Without
+    this, a multiplayer action was being resolved with zero awareness that anyone ELSE was even in the
+    scene, let alone what they'd just done - a real bug (found live, via real Discord play): a
+    character's action would narrate as if they were alone, even seconds after another character in
+    the very same subspace had just done something the narration should plausibly have reacted to.
+    None (single-player's own routes, and loop.py) leaves the prompt exactly as it always was."""
     system_info = SYSTEM_REGISTRY[system_key]
     system_rules = (ROOT / system_info["rules_file"]).read_text(encoding="utf-8")
 
@@ -167,6 +176,17 @@ def build_system_prompt(state, setting_key, system_key):
     canon = load_text(setting_key, "canon_timeline.md")
     resource_schema = load_json(setting_key, "resource_schema.json")
     digest = build_state_digest(state)
+
+    scene_section = f"""
+
+# OTHER CHARACTERS PRESENT - RECENT ACTIVITY IN THIS SHARED SCENE (most recent last)
+{extra_context}
+
+This is a multiplayer scene - other real characters may be right there with you, and may have just
+said or done something relevant. Stay aware of who else is present and what they just did; reference
+them by name where it's actually natural (someone reacting to them, addressing them, being addressed
+by them), rather than narrating this character as if they're alone when they demonstrably aren't.
+Don't force a reference where the action genuinely has nothing to do with anyone else present.""" if extra_context else ""
 
     return f"""You are the game master for a historical RPG, running the {system_info['label']} system.
 Follow the rules below exactly - especially: you never generate your own dice rolls (use
@@ -191,6 +211,7 @@ the system's curated catalogs (by id) - never invent one.
 
 # CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
 {json.dumps(digest, indent=2)}
+{scene_section}
 
 Narrate in second person, present tense, evocative but not overwrought. Keep responses to a few
 paragraphs. Never resolve an uncertain action without calling request_check first. If the current
@@ -199,8 +220,11 @@ level-up options from the system rules before proceeding.
 {council.VOICE_GUIDANCE}"""
 
 
-def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None, council_mode=False, model_key=None):
+def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None, council_mode=False, model_key=None, extra_context=None):
     """Returns (narration, debug_events).
+
+    extra_context: see build_system_prompt - only ever passed by multiplayer.resolve_action, for
+    shared-scene awareness of other present characters' recent activity.
 
     usage_sink, if given, is a list that each API call's TurnResult.usage dict gets appended to -
     callers that care about cost (server.py) can read it after this returns, or inspect it live via
@@ -223,7 +247,7 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     system = get_system(system_key)
     resource_schema = load_json(setting_key, "resource_schema.json")
     provider.append_user_message(conversation, user_input)
-    system_prompt = build_system_prompt(state, setting_key, system_key)
+    system_prompt = build_system_prompt(state, setting_key, system_key, extra_context=extra_context)
 
     text_parts = []
     debug_events = []

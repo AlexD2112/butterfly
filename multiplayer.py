@@ -97,17 +97,22 @@ JUDGE_MODEL_KEY = council.JUDGE_MODEL_KEY
 
 
 def _recent_subspace_context(subspace_id, limit=8):
-    """A short plain-text rendering of the most recent activity at a subspace, for the judge/reply
-    prompts - deliberately small (chat context, not a full transcript)."""
+    """A short plain-text rendering of the most recent activity at a subspace, by real character NAME
+    (2026-09-03 - was "player #<id>", which meant a prompt could never actually reference another
+    character by name even where it mattered) - for the judge/reply prompts, and (2026-09-03) the
+    mechanical action-resolution prompt too, see resolve_action's extra_context param below.
+    Deliberately small (chat context, not a full transcript)."""
     conn = db.get_db()
     rows = conn.execute(
-        "SELECT * FROM turns WHERE subspace_id = ? ORDER BY id DESC LIMIT ?", (subspace_id, limit)
+        "SELECT t.*, c.name AS character_name FROM turns t LEFT JOIN characters c ON c.id = t.character_id "
+        "WHERE t.subspace_id = ? ORDER BY t.id DESC LIMIT ?", (subspace_id, limit)
     ).fetchall()
     conn.close()
     lines = []
     for r in reversed(rows):
+        speaker = r["character_name"] or f"player #{r['character_id']}"
         if r["kind"] in ("message", "action"):
-            lines.append(f"[player #{r['character_id']}]: {r['player_input']}")
+            lines.append(f"[{speaker}]: {r['player_input']}")
         elif r["kind"] in ("npc_reply", "gm_reply"):
             lines.append(f"[{r['responder']}]: {r['narration']}")
     return "\n".join(lines) if lines else "(no prior activity at this subspace)"
@@ -117,6 +122,58 @@ def _npc_roster_text(npcs):
     if not npcs:
         return "(no NPCs currently present at this subspace)"
     return "\n".join(f"- {n['key']}: {db.build_npc_sheet_text(n)}" for n in npcs)
+
+
+def classify_message_or_action(provider, model, content, usage_sink=None):
+    """Cheap classification: does this plain-typed text read as "message" (in-scene talk - banter,
+    addressing someone, describing tone/attitude, nothing attempted beyond talking) or "action" (the
+    character trying to actually DO something - move, fight, search, use/take/give something, attempt
+    a skilled task - anything that should go through real mechanical resolution)?
+
+    Only ever used by run_discord_bot.py's on_message handler (2026-09-03, per direction) - the
+    website has an explicit Message/Action toggle the player chooses themselves; Discord has no
+    equivalent UI, so a plain-typed message needs to be classified instead of always defaulting to
+    "message" (which is what silently caused the earlier "typed a move, got talk-only handling with
+    no dynamic-space detection" gap - see NOTES.md). /action and /message on Discord bypass this
+    entirely - an explicit command is never reclassified, only genuinely unlabeled text is.
+
+    Fails safe to "message" - the cheaper, lower-mechanical-stakes default - on any missing/malformed
+    response, same fail-safe direction judge_responder already uses."""
+    system_prompt = f"""Decide whether the following text, sent by a player in a multiplayer historical
+RPG scene, is:
+- "message": in-scene talk - conversation, banter, addressing another character or NPC, describing
+  speech/tone/attitude, with no attempt to physically or mechanically DO anything beyond talking.
+- "action": an attempted action - the character trying to physically or mechanically do something
+  (move somewhere, fight, search, use/take/give an item, attempt a skilled task) - anything that
+  should be resolved with dice/game mechanics rather than just a conversational reaction.
+
+# THE MESSAGE
+{content}
+
+When genuinely ambiguous, prefer "message" - it's the lower-stakes default. Submit via classify."""
+    tool_specs = [
+        {
+            "name": "classify",
+            "description": "Classify the message as 'message' or 'action'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["message", "action"]},
+                    "reasoning": {"type": "string"},
+                },
+                "required": ["kind", "reasoning"],
+            },
+        }
+    ]
+    conversation = provider.new_conversation()
+    provider.append_user_message(conversation, "Classify now.")
+    result = provider.call(model, system_prompt, tool_specs, conversation, force_tool_name="classify")
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    if not result.tool_calls:
+        return "message"
+    kind = result.tool_calls[0]["input"].get("kind")
+    return kind if kind in ("message", "action") else "message"
 
 
 def judge_responder(provider, model, subspace_id, content, usage_sink=None):
@@ -627,6 +684,19 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
                     f"It isn't your turn in this fight - waiting on {_combat_actor_label(current_actor)}."
                 )
 
+    # Real bug, found live via real Discord play (2026-09-03): engine.run_turn is single-player-shaped
+    # and, unchanged, resolves an action with ZERO awareness that anyone else is even in the scene - a
+    # character's action would get narrated as if they were alone, even seconds after another
+    # character in the SAME subspace had just done something the narration should plausibly have
+    # reacted to. _recent_subspace_context is the exact same shared-scene helper judge_responder/
+    # generate_reply already use for the "message" pipeline - resolve_action just never fed it into
+    # the mechanical pipeline until now. Skip it entirely (None, not the placeholder string) when
+    # there's genuinely no prior activity - no point padding the prompt with a section announcing
+    # there's nothing to be aware of.
+    scene_context = _recent_subspace_context(subspace_id)
+    if scene_context == "(no prior activity at this subspace)":
+        scene_context = None
+
     state = char_row["state"]
     narration, debug_events = engine.run_turn(
         provider, model, state, char_row["setting_key"], char_row["system_key"], conversation, content,
@@ -635,6 +705,7 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
         # multiplayer subspace's shared action log is a separate design question, not tackled here,
         # so it's explicitly off for this path rather than silently half-applied.
         council_mode=False, model_key=model_key,
+        extra_context=scene_context,
     )
 
     # Significance flag - free, no new AI call. Reuses council.detect_stakes_signals, the same
