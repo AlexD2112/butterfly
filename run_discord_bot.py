@@ -11,12 +11,15 @@ as local-site-tunnel/start_local_site.ps1 - its own window, separate process fro
 
 1. Logs into the one guild the bot was invited to (see _resolve_guild - a hard error if it's in zero
    or more than one, rather than silently guessing).
-2. A background loop (sync_discord_structure, every SYNC_INTERVAL_SECONDS) walks every multiplayer
-   server/location/subspace in the SAME SQLite database server.py uses and creates whatever Discord
-   structure is missing: a Category per server, a Channel per Location (plus a webhook on it), a
-   Thread per non-default Subspace - exactly the Category/Channel/Thread mapping discord_bot.py's
-   docstring describes. This is what lets an admin create a server/location purely on the website and
-   have it show up in Discord within one sync tick, with zero manual Discord-side setup.
+2. A background loop (sync_discord_structure, every SYNC_INTERVAL_SECONDS - see _sync_once) walks
+   every multiplayer server/location/subspace in the SAME SQLite database server.py uses and creates
+   whatever Discord structure is missing: a Category per server, a Channel per Location (plus a
+   webhook on it), a Thread per non-default Subspace - exactly the Category/Channel/Thread mapping
+   discord_bot.py's docstring describes. This is fully automatic and dynamic by design (2026-09-03,
+   per direction) - it runs on its own timer regardless of whether a Location/Subspace was created by
+   an admin on the website or spawned dynamically by the AI classifier during play; nobody ever has to
+   trigger it. /refresh (below) is the one deliberately manual thing, and it's optional - a safety net
+   that forces one pass immediately instead of waiting up to SYNC_INTERVAL_SECONDS, not a requirement.
 3. on_message: a plain message typed in a linked channel/thread is treated as a "message" (in-scene
    talk, judged by the AI for whether an NPC/the GM responds) - the exact same
    multiplayer.handle_message pipeline api_multiplayer_send uses for the web "message" toggle.
@@ -25,6 +28,10 @@ as local-site-tunnel/start_local_site.ps1 - its own window, separate process fro
 5. /join: the entire self-contained-onboarding story from discord_bot.py's docstring - links (or
    creates) the caller's account via the same db.get_or_create_discord_user web login already uses,
    and reports whether they already have a character in this server.
+6. /refresh: admin-only (Discord's own Manage Server permission, not the app's web is_admin flag -
+   there's no web session in a Discord interaction to check that against), forces one immediate
+   _sync_once() pass and reports what it created. The ONLY manual Discord-structure action in this
+   whole app, and explicitly optional.
 
 Both send paths call the shared pipeline with origin="discord" (see multiplayer.py's origin
 parameter) so a Discord-originated turn doesn't get redundantly mirrored back to the channel it came
@@ -128,13 +135,23 @@ client = ForkingPathsBot()
 
 
 # ==================== Discord structure sync: Category / Channel / Thread creation ====================
+# This is the ONLY thing that ever creates Discord structure - it's automatic and dynamic by design
+# (2026-09-03, per direction): the periodic loop below just calls _sync_once() on a timer, and admins
+# never need to trigger it manually. /refresh (below) exists purely as an optional safety-net that
+# forces one pass immediately instead of waiting up to SYNC_INTERVAL_SECONDS for the next tick - not
+# a required step, and not a second code path (both call the exact same _sync_once()).
 
-@tasks.loop(seconds=SYNC_INTERVAL_SECONDS)
-async def sync_discord_structure():
+async def _sync_once():
+    """One full pass over every multiplayer server/location/subspace, creating whatever Discord
+    structure (Category/Channel+webhook/Thread) is missing. Returns how many of each it actually
+    created THIS pass, so a manual /refresh has something concrete to report - "nothing needed
+    creating" vs a real count, not just "done"."""
+    counts = {"categories": 0, "channels": 0, "threads": 0}
     if client.guild is None:
-        return
+        return counts
     guild = client.guild
     for server in db.list_multiplayer_servers():
+        had_category = bool(server.get("discord_category_id"))
         try:
             category = await _ensure_category(guild, server)
         except discord.HTTPException as e:
@@ -142,7 +159,10 @@ async def sync_discord_structure():
             continue
         if category is None:
             continue
+        if not had_category:
+            counts["categories"] += 1
         for location in db.list_locations(server["id"]):
+            had_channel = bool(location.get("discord_channel_id"))
             try:
                 channel = await _ensure_channel(guild, category, location)
             except discord.HTTPException as e:
@@ -150,12 +170,21 @@ async def sync_discord_structure():
                 continue
             if channel is None:
                 continue
+            if not had_channel:
+                counts["channels"] += 1
             for subspace in db.list_subspaces(location["id"]):
                 if discord_bot.subspace_needs_a_thread(subspace, location):
                     try:
                         await _ensure_thread(channel, subspace)
+                        counts["threads"] += 1
                     except discord.HTTPException as e:
                         log.warning("Couldn't create thread for subspace %s: %s", subspace["name"], e)
+    return counts
+
+
+@tasks.loop(seconds=SYNC_INTERVAL_SECONDS)
+async def sync_discord_structure():
+    await _sync_once()
 
 
 @sync_discord_structure.before_loop
@@ -325,6 +354,34 @@ async def join_command(interaction: discord.Interaction):
             f"You're linked to Forking Paths as **{user_row['username']}** - no web login needed. "
             f"You don't have a character in **{server['name']}** yet: create one at {WEBSITE_URL} "
             f"(log in with this same Discord account), then come back and chat here."
+        )
+
+
+@client.tree.command(name="refresh", description="Admin: immediately check for any missing category/channel/thread and create it now.")
+async def refresh_command(interaction: discord.Interaction):
+    """Optional safety-net only - see _sync_once's own comment. Never required for normal play; the
+    periodic loop already does this automatically. Useful if someone doesn't want to wait up to
+    SYNC_INTERVAL_SECONDS for the next tick, or suspects something's out of sync."""
+    if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message("Run this inside the server, not in a DM.", ephemeral=True)
+        return
+    perms = interaction.user.guild_permissions
+    if not (perms.manage_guild or perms.administrator):
+        await interaction.response.send_message("This needs the Manage Server permission.", ephemeral=True)
+        return
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        counts = await _sync_once()
+    except Exception:
+        log.exception("Manual /refresh sync failed")
+        await interaction.followup.send("Something went wrong during sync - check the bot's own log.")
+        return
+    if not any(counts.values()):
+        await interaction.followup.send("Already up to date - nothing needed creating.")
+    else:
+        await interaction.followup.send(
+            f"Synced: created {counts['categories']} categor{'y' if counts['categories'] == 1 else 'ies'}, "
+            f"{counts['channels']} channel(s), {counts['threads']} thread(s)."
         )
 
 
