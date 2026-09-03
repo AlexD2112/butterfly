@@ -1,3 +1,105 @@
+# Discord bot: the real gateway connection, live-verified end to end (2026-09-03)
+
+Direct follow-up to the foundation below, once the user provided a real bot token + Application ID
+and confirmed the bot was already invited to their server. This is the layer that entry deliberately
+held back - the actual `discord.py` Client, event handlers, slash commands, and Discord-side
+structure creation - built and tested for real this time, not against mocks.
+
+## What got built
+
+- **`run_discord_bot.py`** - the bot process. `on_message` treats plain chat in a linked channel/
+  thread as a "message" (talk), routed through the exact same `multiplayer.handle_message` pipeline
+  the web's message toggle uses. `/action <text>` is the mechanical-resolution equivalent, through
+  `multiplayer.resolve_action` - same engine.run_turn path single-player and the web both already
+  trust. `/join` is the self-contained-onboarding flow discord_bot.py's docstring promised: links/
+  creates the caller's account via `db.get_or_create_discord_user` (same function web OAuth login
+  uses) and reports whether they already have a character in this server - if not, points them at the
+  website to build one. A background `sync_discord_structure` loop (every 20s) walks every
+  multiplayer server/location/subspace in the database and creates whatever Discord structure is
+  missing (Category per server, Channel + webhook per Location, Thread per non-default Subspace) -
+  the mechanism that lets an admin build a server entirely on the website and have it show up in
+  Discord within one tick, zero manual Discord-side setup.
+- **`discord_webhook.py`** - the web-to-Discord mirror, deliberately with NO `discord.py` import and
+  no gateway dependency - a plain HTTP POST to the location's stored webhook URL (with a `thread_id`
+  query param when targeting a non-default Subspace's thread). This is what keeps `server.py`/
+  `multiplayer.py` decoupled from whether `run_discord_bot.py` is even running - a webhook post is
+  just an HTTP call, not a live connection.
+- **`multiplayer.handle_message`/`resolve_action`** gained an `origin="web"|"discord"` parameter. The
+  player's own turn is only mirrored into Discord for `origin="web"` (a Discord-originated message is
+  already visible in Discord as the player's own message - mirroring it back would double-post); the
+  AI-generated reply is ALWAYS mirrored regardless of origin, since it doesn't exist on the Discord
+  side until this call creates it. Both directions end up calling the exact same
+  `discord_webhook.mirror_turn()` - one code path handles both, not two parallel ones.
+
+## Live verification - against the real bot, the real guild, the real Discord API
+
+Not just unit tests this time, since that was the whole reason this layer was held back before.
+Directly, in order:
+1. Started the bot for real (`DISCORD_BOT_TOKEN` in `.env`) - it logged into the real guild
+   ("Forking Paths- An Alternate-History Game") as "Butterfly#2268".
+2. Built a throwaway test server ("Discord Bot Live Test - DELETE ME") directly against the real
+   production database (same pattern as the 2026-08-23 launch-readiness entry) and watched the sync
+   loop create a real Category and Channel - confirmed not by trusting the bot's own log, but by
+   querying Discord's REST API directly (`GET /guilds/{id}/channels`) and seeing them.
+3. The loop **also** retroactively synced the pre-existing real "Butterfly- EA Test 1" server (it had
+   never been linked before) - correct behavior (every multiplayer server gets a Discord presence
+   once the bot exists), but flagged to the user immediately since it happened automatically.
+4. Simulated a web-originated message (`origin="web"`) against the test server and confirmed, via the
+   REST API, that both the player's message and a real AI-generated GM reply landed in the actual
+   Discord channel, with correct per-speaker webhook identity ("Web Test Courier" vs "Game Master").
+5. Simulated the bot's own `on_message` code path (`origin="discord"`, a fabricated Discord identity
+   through the same `discord_bot.resolve_or_create_user` call the gateway event would make) and
+   confirmed the player's own message was correctly NOT re-mirrored, but the GM's reply was.
+6. Created a non-default Subspace and confirmed the sync loop created a real Discord Thread for it
+   (polled the database rather than sleeping blind), then confirmed a message sent there posted into
+   the actual thread, not the parent channel.
+7. Ran a REAL premade character (Trotsky) through the exact `/action` code path
+   (`multiplayer.resolve_action`, `origin="discord"`) - a real dice/mechanics resolution via
+   `engine.run_turn`, not a stub - and confirmed the narration mirrored to Discord. This action's
+   narration ("I step onto the balcony...") was judged by the real dynamic-space classifier as moving
+   somewhere new, which created a real dynamic Subspace mid-test - itself a live confirmation that
+   pipeline still fires correctly through this new entry point.
+8. Verified `/join`'s exact underlying logic directly (category -> server lookup, account
+   creation, "no character yet" reporting).
+9. Cleaned up: deleted the test category/channel/thread from Discord and the test server from the
+   database afterward, leaving production as found (except "Butterfly- EA Test 1"'s new, intentional
+   Discord category/channel - see point 3).
+
+**A real bug caught only by checking, not by trusting a success log**: the first run logged "Ready...
+Slash commands synced" with no exception, but a direct Discord API check afterward showed zero
+commands actually registered. Root cause: `tree.sync(guild=guild)` alone only publishes commands
+already scoped to that guild - commands defined without a `guild=` kwarg (as `/join`/`/action` were)
+are GLOBAL, and need `tree.copy_global_to(guild=guild)` before syncing to appear in that guild
+immediately (global-only sync can take up to ~1hr to propagate). Fixed, then re-verified via the same
+direct API check - both commands actually present this time.
+
+**A second real bug, unrelated to Discord, found as a side effect of testing**:
+`db.delete_multiplayer_server` crashed with a real FK integrity error on any server that had ever had
+even one dynamically-created Subspace (`subspaces.created_by_character_id` references
+`characters(id)`, and characters were deleted before that reference was cleared) - hit live while
+cleaning up the test server, whose one test action happened to trigger exactly that path. Fixed the
+same way `usage_events` already was (null the reference before deleting characters), with a new
+regression test (`test_delete_succeeds_when_a_character_dynamically_created_a_subspace`) reproducing
+the exact fixture shape that slipped past the existing delete-server test. 305 -> 306 tests.
+
+## What's still honestly not verified
+
+I don't have Discord login access and won't attempt to impersonate a real user - so while I've
+directly exercised the exact same functions the bot's `on_message`/`/action`/`/join` handlers call
+(same code, same real API calls, same real database), I have not watched a message a real human typed
+in the actual Discord client flow through those handlers via a genuine gateway event. That's the same
+category of gap flagged for the OAuth login flow in earlier entries - worth the user sending one real
+message and one real `/action` themselves to close it completely.
+
+Also not built: full character-sheet creation as Discord UI (attribute arrays, skill/feat picks) - a
+player without a character yet is pointed at the website to build one, same as scoped when this was
+first discussed. Provider conversation state (the LLM's own short-term context) is cached separately
+in the bot process from the web process's own cache, so a character switching between Discord and web
+mid-session restarts that context on whichever side wasn't used most recently - a pre-existing
+limitation (this was never persisted to the database on the web side either), not something new here.
+
+---
+
 # Discord bot: foundation built and tested, real bot wiring intentionally held back (2026-09-03)
 
 Third of three fronts from this round, and the largest. Final direction confirmed: bot invited to an
