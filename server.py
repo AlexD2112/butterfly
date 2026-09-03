@@ -1294,6 +1294,37 @@ def api_multiplayer_stream(character_id):
     return Response(event_stream(), mimetype="text/event-stream")
 
 
+@app.route("/api/internal/notify_turn", methods=["POST"])
+def api_internal_notify_turn():
+    """Bridges a turn recorded by a SEPARATE OS process (run_discord_bot.py) into THIS process's own
+    live SSE subscribers (2026-09-03 - a real gap, found live via the actual bot, not hypothetical).
+
+    live.py is deliberately in-process-only (see its own docstring) - multiplayer.handle_message/
+    resolve_action already call live.publish_subspace_event unconditionally, but when the BOT calls
+    those functions, that publish only reaches ITS OWN empty in-memory subscriber set. Real web
+    viewers' SSE connections live in THIS process (server.py, run via waitress) instead - a
+    completely separate Python process with its own memory, even though both processes share the
+    same SQLite file. So a Discord-originated turn was being recorded correctly (any viewer who
+    reloads or reopens the page sees it) but never pushed live to anyone already watching - exactly
+    the gap reported. This route is the fix: the bot process asks THIS process (the one that actually
+    holds the real subscriber queues) to republish an already-recorded turn on its behalf.
+
+    Gated on a shared secret, not remote_addr - this app is reachable through a Cloudflare tunnel that
+    forwards every public request to this same localhost address, so IP alone can't tell a real bot
+    call apart from internet traffic. The request only ever names a turn_id and re-fetches the real
+    row from the database before publishing anything - it can't be used to inject fabricated event
+    content, only to (redundantly, at worst) re-broadcast a turn that's already really there."""
+    secret = os.environ.get("INTERNAL_NOTIFY_SECRET", "").strip()
+    if not secret or request.headers.get("X-Internal-Secret") != secret:
+        return jsonify({"error": "forbidden"}), 403
+    body = request.get_json(force=True)
+    turn = db.get_turn_by_id(body.get("turn_id"))
+    if turn is None:
+        return jsonify({"error": "unknown turn"}), 404
+    live.publish_subspace_event(turn["subspace_id"], turn)
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "1") == "1"

@@ -1,3 +1,91 @@
+# Two real bugs from real Discord play, found and fixed (2026-09-03)
+
+The user found both of these testing the live bot for real, not throwaway data - both investigated
+properly (real evidence, real root cause) rather than guessed at, per direction.
+
+## Bug 1: Discord actions weren't live-updating the website
+
+**Root cause, confirmed from live.py's own docstring**: live.py's SSE pub/sub is explicitly
+in-process only ("would NOT work correctly across multiple worker processes"). The Discord bot
+(`run_discord_bot.py`) is deliberately a SEPARATE OS process from server.py/waitress - so when the
+bot calls `multiplayer.handle_message`/`resolve_action`, the `live.publish_subspace_event` call
+inside those functions runs in the BOT's own process, hitting its own empty in-memory subscriber set.
+Real web viewers' SSE connections live in the actual server.py process instead - a totally separate
+memory space, even though both processes share the same SQLite file. The turn was always recorded
+correctly (anyone who reloaded the page saw it), it just never pushed live to anyone already
+watching - exactly what was reported, and an architectural gap in this session's own earlier "both
+directions verified" claim: that verification checked the DATA (real turns landing in the DB, real
+webhook posts into Discord) but never checked the WEBSITE's own live view specifically, which is the
+part that actually broke.
+
+**Fix**: `/api/internal/notify_turn` (server.py) - a new route, gated on a shared secret
+(`INTERNAL_NOTIFY_SECRET`, not remote_addr, since the Cloudflare tunnel forwards every public request
+to this same localhost address too) that re-fetches an already-recorded turn by id and republishes it
+via THIS process's own `live.publish_subspace_event` - the one that actually reaches real
+subscribers. `run_discord_bot.py`'s new `_notify_web_live` calls this after every turn either send
+path produces (on_message and /action both).
+
+**Verified live**, not just claimed: opened a real SSE connection via curl (as a real character, real
+session cookie) against the real running server.py process, then triggered a turn through the exact
+real functions the bot's handlers call (importing run_discord_bot.py doesn't connect to Discord's
+gateway - only `client.run()` does, guarded by `__main__`) from a genuinely separate OS process. Both
+the player's message and the GM's reply arrived on the SSE connection in real time - confirmed by
+reading the actual captured event data, not assumed.
+
+## Bug 2: a Discord action narrated arriving somewhere new with no Subspace created
+
+**Root cause, confirmed from the real production data**, not guessed: queried the actual turns from
+the real interaction ("Go to the greek side camp") - it was recorded as `kind = "message"`, not
+`"action"`. The user almost certainly typed it as plain chat rather than using `/action` (Discord has
+no visible Message/Action toggle the way the website does). Plain chat correctly goes through
+`multiplayer.handle_message` (talk/social, judged for an NPC/GM reaction) - which has NO dynamic-
+space-detection logic at all, by design, same as the website's own "message" toggle. `/action`
+(`multiplayer.resolve_action`) is the only path that ever calls `detect_new_space`, and that part was
+never actually broken.
+
+**Directly tested this claim**, since it's exactly what was asked: ran a real premade character
+through the real `/action` code path (`resolve_action`, `origin="discord"`) with "I walk over to the
+Greek side camp to see what they've got" - a real dynamic Subspace ("Greek Side Camp") was created,
+the character moved into it, and the bot's own sync loop created a real Discord Thread for it within
+one tick. Dynamic-space-detection IS correctly wired into the Discord action path, confirmed, not
+assumed.
+
+**The actual bug** was that `handle_message`'s GM-reply prompt had no constraint against narrating a
+location change, so it cheerfully described full arrival at a new setting ("blue-and-white pennants
+stir, tents, cookfires, soldiers") for a plain message, even though nothing mechanically happened -
+misleading, not just incomplete. First fix attempt (an abstract "don't narrate moving" instruction)
+wasn't strong enough on its own - re-tested with the exact real report text and the model dropped the
+literal "you travel to..." phrasing but still narrated the character AS BEING at the Greek camp, since
+the prompt had nothing telling it where they actually already were to stay anchored to. Fixed by
+explicitly naming the real current place (`{location} - {subspace}`) in the prompt and repeating it in
+the instruction - re-tested with the identical real report text afterward and the reply correctly
+stayed grounded at "Main Camp," only referencing the Greek camp as something visible in the distance,
+never confirming arrival.
+
+**Not built, flagged instead of silently guessed at**: making Discord smarter about auto-detecting
+"this plain message actually reads like an attempted action" (so a player never needs to know `/action`
+exists at all) - a real, cheap-classifier-shaped fix in the same style as `detect_new_space` itself,
+but a genuine product/cost tradeoff (every plain Discord message would need an extra judge-style AI
+call to check "is this actually an action attempt") worth deciding deliberately rather than picking
+silently. The message-mode reply no longer LIES about what happened, which was the concrete, reported
+harm; whether Discord should also get smarter about routing is a separate, open question.
+
+## Verification discipline note
+
+Both fixes required an actual process restart to take effect for real Discord users - the running bot
+process at the time of the fix had been started BEFORE the multiplayer.py prompt edit, so it was still
+serving the old, buggy prompt in memory even after the code was fixed and tests passed. Caught and
+restarted before calling this done, not assumed fixed just because the code was correct and tests
+were green - the same backend-restart discipline as every other backend change this session.
+
+306/306 tests passing throughout (no test file changes - both are live-behavior/prompt-quality fixes,
+verified live rather than via new unit tests, since neither is really a unit-testable rule). All test
+data (throwaway characters, a duplicate premade claim, a test Discord thread) created against the
+REAL "Butterfly- EA Test 1" server during verification was cleaned up afterward - the real player's
+own characters and turn history were confirmed untouched throughout.
+
+---
+
 # Landing page rebuild + nav restructure (2026-09-03)
 
 The "full site redesign" ask from earlier this round, fully scoped/confirmed then, built now:

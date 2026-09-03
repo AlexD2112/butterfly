@@ -39,6 +39,16 @@ from - the reply it produces still gets mirrored via discord_webhook.mirror_turn
 server.py's web route relies on for the opposite direction. There is exactly one piece of code
 anywhere in this app that ever POSTs to a Discord webhook - see discord_webhook.py.
 
+Every turn either send path produces also gets pushed to the website's own live view via
+_notify_web_live (2026-09-03, a real fix, not a hypothetical one - found live, via the actual bot):
+this process is a completely separate Python program from server.py/waitress, so
+multiplayer.handle_message/resolve_action's own live.publish_subspace_event calls, made from THIS
+process, only ever reach THIS process's own empty in-memory SSE subscriber set - never the real web
+viewers connected to the actual server.py process. _notify_web_live asks that other process (over a
+plain internal HTTP call, shared-secret gated - see /api/internal/notify_turn in server.py) to
+republish the turn on this process's behalf, since it's the one actually holding the real
+subscriber queues.
+
 ## What this deliberately does NOT do
 
 Full character-sheet creation (attribute arrays, skill/feat picks) is NOT reimplemented as Discord
@@ -54,6 +64,7 @@ import os
 from pathlib import Path
 
 import discord
+import requests
 from discord import app_commands
 from discord.ext import tasks
 from dotenv import load_dotenv
@@ -74,6 +85,15 @@ TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 WEBSITE_URL = os.environ.get("DISCORD_WEBSITE_URL", "https://forkingpaths.app").rstrip("/")
 SYNC_INTERVAL_SECONDS = 20
 GM_WEBHOOK_NAME = "Forking Paths - Game Master"
+
+# See server.py's /api/internal/notify_turn for why this exists: this process's own
+# live.publish_subspace_event calls (inside multiplayer.handle_message/resolve_action) reach only
+# THIS process's empty in-memory SSE subscriber set, never the real web viewers connected to the
+# actual server.py/waitress process - a separate OS process even though both share the same SQLite
+# file. INTERNAL_API_BASE defaults to localhost since the bot always runs on the same machine as the
+# web app (see start_local_site.ps1) - override via env if that's ever no longer true.
+INTERNAL_API_BASE = os.environ.get("INTERNAL_API_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
+INTERNAL_NOTIFY_SECRET = os.environ.get("INTERNAL_NOTIFY_SECRET", "").strip()
 
 db.init_db()  # same idempotent call server.py makes at import time - safe to run from a second process
 
@@ -315,6 +335,13 @@ async def on_message(message):
         _record_usage(usage_sink, user_row["id"], character["id"])
     # No explicit reply needed here even when nobody responded (result[2] is None) - the player's own
     # message is already visible in Discord as the message they just sent; nothing else to show.
+    # Both turns still need pushing to any real web viewer watching this subspace live (see
+    # _notify_web_live) - origin="discord" only ever controlled the Discord-side webhook mirror
+    # (correctly skipped for the player's own message, which is already visible in Discord itself),
+    # never the website's own SSE push, which this bot process can't reach on its own.
+    message_turn_id, reply_turn_id, _responder = result
+    _notify_web_live(message_turn_id)
+    _notify_web_live(reply_turn_id)
 
 
 def _record_usage(usage_sink, user_id, character_id):
@@ -325,6 +352,24 @@ def _record_usage(usage_sink, user_id, character_id):
             usage["input_tokens"], usage["output_tokens"],
             usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
         )
+
+
+def _notify_web_live(turn_id):
+    """Real fix for the "doesn't live-update on the website" gap (2026-09-03, confirmed live, not
+    hypothetical) - see server.py's /api/internal/notify_turn for the full explanation. Every turn
+    this bot produces already gets recorded to the shared database correctly; this is what makes it
+    ALSO push live to anyone already watching the website via SSE, instead of only showing up on
+    their next reload. Best-effort and silent on failure - a missed live-update ping should never
+    surface as an error for a Discord action that already succeeded and was already recorded."""
+    if not turn_id or not INTERNAL_NOTIFY_SECRET:
+        return
+    try:
+        requests.post(
+            f"{INTERNAL_API_BASE}/api/internal/notify_turn", timeout=5,
+            json={"turn_id": turn_id}, headers={"X-Internal-Secret": INTERNAL_NOTIFY_SECRET},
+        )
+    except requests.RequestException:
+        pass
 
 
 # ==================== slash commands ====================
@@ -437,6 +482,14 @@ async def action_command(interaction: discord.Interaction, text: str):
         return
     finally:
         _record_usage(usage_sink, user_row["id"], character["id"])
+
+    # Same live-update bridge as on_message - see _notify_web_live. Both the action turn (skipped for
+    # Discord-mirroring, same reasoning as the message case) and the reply (always mirrored) still
+    # need pushing to the website's own SSE subscribers, which neither discord_webhook.mirror_turn
+    # call reaches - that's a Discord-only mechanism, and this bot process can't reach the real web
+    # subscriber queues on its own either way.
+    _notify_web_live(result.get("turn_id"))
+    _notify_web_live(result.get("reply_turn_id"))
 
     note = ""
     if result.get("moved_to_location_id") or result.get("new_location_id"):

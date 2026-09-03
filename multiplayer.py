@@ -182,10 +182,32 @@ def generate_reply(provider, model, subspace_id, responder, content, usage_sink=
     a reply-threading shortcut). responder is "gm" or a present NPC's key."""
     context = _recent_subspace_context(subspace_id)
     if responder == "gm":
+        # Naming the actual current place explicitly (2026-09-03, real fix - see NOTES.md) is what
+        # makes the "don't narrate a move" instruction actually stick. An earlier version of this
+        # prompt only said "don't narrate moving to a new location" in the abstract, with no anchor
+        # for what "here" even was - caught live via a real Discord message ("Go to the greek side
+        # camp"), where the model dropped the literal "you travel to..." phrasing but still narrated
+        # the character AT the Greek camp, since it had nothing telling it where they actually were
+        # to stay grounded to instead. Repeating the real place name below is what closes that gap.
+        subspace = db.get_subspace(subspace_id)
+        location = db.get_location(subspace["location_id"]) if subspace else None
+        current_place = f"{location['name']} - {subspace['name']}" if location and subspace else "the current scene"
         system_prompt = f"""You are the game master narrating a small ambient beat in a multiplayer
 scene - a reaction, an environmental detail, a passing NPC's glance - in response to what a player
 just said. Keep it brief (1-3 sentences), grounded, not a full scene. Do not invent dice results or
 mechanical state changes - this is pure narration.
+
+# WHERE THE CHARACTER ACTUALLY IS RIGHT NOW
+{current_place}
+
+Critically: this is a "message" (talk), not an "action" - the character has NOT moved and is still
+exactly at {current_place}, no matter what they just said, asked, or expressed intent to do. Never
+describe them as being anywhere else, arriving anywhere else, or experiencing a different physical
+setting - not even briefly, not even to acknowledge the request. If their message reads like an
+attempted move (e.g. "go to X", "head over to Y") rather than in-scene talk, react only to what's
+happening right at {current_place} - a passing thought, someone else's reaction to the idea, an
+ambient detail - never a description of wherever they were asking about. A real move only ever
+happens through a separate mechanical resolution path (an "action"), never through this kind of reply.
 
 # RECENT ACTIVITY HERE
 {context}
