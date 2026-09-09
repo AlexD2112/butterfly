@@ -1,3 +1,97 @@
+# Full hosting migration off the local machine, phase 1: code + Render config (2026-09-09)
+
+The real migration this whole session's "off my computer" work was building toward - executing now,
+in careful phases per direction (test everything locally first, keep the local setup as a working
+fallback, don't touch DNS or retire anything until Render is confirmed handling real traffic). This
+entry covers phase 1: the code changes and render.yaml, verified locally. DNS cutover is a separate,
+later phase, done only after Render's own `.onrender.com` URL is confirmed fully working with the
+real migrated data.
+
+## The real wrinkle: the Discord bot didn't exist when this was first scoped
+
+Original plan (Render paid + disk + `server:app` directly) predates the bot. Render's disks are
+explicitly single-service-scoped ("Other services can't access this service's disk") - a naive
+"web app on one service, bot on another" split doesn't work since the bot needs direct DB access for
+almost everything. Three options considered; picked embedding the bot as a background thread inside
+the SAME process as the web app:
+- Separate Render service over HTTP - rejected: would mean rebuilding the bot's entire `db.py`/
+  `multiplayer.py` data-access layer as authenticated HTTP endpoints, real rearchitecture risk, the
+  opposite of "least risky."
+- Postgres/shared storage - rejected for now: a real DB migration, a much bigger separate project.
+- **Embedded in-process** - this app already has exactly this pattern once (the tick scheduler -
+  `scheduler.start_scheduler()`, a background thread inside the same process, gated behind an env
+  var). The bot becomes the second instance of a pattern that already exists, not a new one. Solves
+  disk-sharing for free (same process = same `db.DB_FILE`).
+
+**Real tradeoffs, not hidden**: process isolation goes away (a gunicorn worker restart takes the bot
+down with it, same class of blip as any redeploy); confirmed via Render's own dashboard that
+"Scaling is not supported for servers with disks" - single-instance is structurally guaranteed by the
+platform itself, not just a self-imposed rule, which resolves the multi-worker/multi-instance risk
+that would otherwise duplicate the bot's gateway connection (and double-fire the tick scheduler).
+
+## What got built
+
+- `run_discord_bot.py` gained an `EMBEDDED` flag (`DISCORD_BOT_EMBEDDED=1`) and
+  `start_in_background_thread()` - a normal daemon thread running `client.run()`, started by
+  `server.py` right where the tick scheduler already starts its own background thread, same
+  off-by-default-so-tests-never-connect reasoning. Local dev is completely unaffected -
+  `start_local_site.ps1` keeps launching this file as its own separate process exactly as before;
+  `DISCORD_BOT_EMBEDDED` is never set locally, specifically so the two paths can never both try to
+  open a gateway connection on the same token at once.
+- `_notify_web_live` (the Discord bot's website-live-update bridge) now skips the HTTP round-trip
+  entirely when `EMBEDDED` - calls `live.publish_subspace_event` directly instead. Not just tidiness:
+  the HTTP path's `localhost:5000` default would silently be wrong on Render, which assigns `$PORT`
+  dynamically - embedding without this fix would have quietly broken live-updates for Discord-
+  originated turns the moment it went live.
+- `render.yaml` rewritten against the REAL current dashboard state (checked directly, nothing
+  assumed): `startCommand` back to `gunicorn server:app --workers 1 --worker-class gthread --threads 4
+  --timeout 900` (retiring `proxy_app.py`'s redirect-shim role); a real `disk:` block matching the
+  disk that already existed on the live service (1GB at `/var/data`, added earlier via the dashboard
+  but never declared in the file - a real gap, now closed); `plan:` line removed entirely rather than
+  left at the stale `free` value, since Render's own Blueprint docs say omitting it "retains the
+  current compute plan for an existing service" - the actual live plan is a paid 0.5c-512mb tier, and
+  writing `free` risked a sync trying to downgrade it. New env var declarations for
+  `BUTTERFLY_DB_PATH` (the one that makes the disk actually matter - was NOT set on Render at all,
+  confirmed by reading the actual env var list, meaning the disk had been sitting essentially unused),
+  `DISCORD_BOT_TOKEN`/`DISCORD_APPLICATION_ID`/`DISCORD_BOT_EMBEDDED=1`, and
+  `ENABLE_TICK_SCHEDULER=1` (confirmed explicitly as an intentional part of this migration, not
+  bundled in by default - "off my computer" was confirmed to mean the game should actually progress
+  on its own now).
+- A TEMPORARY pair of secret-gated routes (`/api/internal/db_stats`, `/api/internal/restore_db`) to
+  move the REAL local `butterfly.db` onto Render's disk - Render's disk has never had this app's real
+  data on it (it only ever ran the redirect shim before), so a naive cutover would go live with a
+  silently empty database, the exact shape of the earlier production incident. Meant to be deleted
+  once the migration is verified complete, not to outlive this.
+
+## Verified locally before touching Render
+
+Ran a real second instance of `server.py` locally (port 5050, `DISCORD_BOT_EMBEDDED=1`) with the
+standalone local bot process stopped first (to avoid two simultaneous gateway connections on the same
+token) - confirmed via its own log that the bot started in a background thread inside the SAME Flask
+process and connected for real ("Ready as Butterfly#2268... Synced 6 slash command(s)"), and that the
+web app itself served requests normally alongside it. Separately confirmed `_notify_web_live`'s
+EMBEDDED branch actually calls `live.publish_subspace_event` directly (not the HTTP bridge) using a
+real turn id from the real database. Stopped the test instance afterward and restarted the normal
+local setup (waitress + tunnel + standalone bot) - `forkingpaths.app` was never taken down for this
+testing. 312/312 tests passing throughout (DISCORD_BOT_EMBEDDED is never set in the test environment,
+so this whole path is inert there, same as the scheduler already was).
+
+**Unrelated to this work, caught and fixed along the way**: found `forkingpaths.app` actually down
+(waitress/tunnel/bot all gone) at the start of this session - not caused by anything in this migration
+(the processes were already gone before any command here touched them) - restarted immediately before
+doing anything else. Worth noting since the current local setup (three independent terminal windows,
+no supervision/auto-restart) is exactly the kind of fragility this migration is meant to fix.
+
+## What's next (not done yet)
+
+Push this to Render, set the new env vars via the dashboard, migrate the real database via the
+temporary routes above (verify row counts match before/after), verify the whole thing works against
+the real `.onrender.com` URL directly - `forkingpaths.app` stays pointed at the local setup,
+untouched, until that's confirmed. Only then: DNS cutover, then retire the local processes - both
+explicitly held back until Render is proven handling real traffic correctly, per direction.
+
+---
+
 # Shared-scene awareness fix + Discord auto-classified message/action (2026-09-03)
 
 A real, structural multiplayer bug found via real Discord play, investigated properly rather than

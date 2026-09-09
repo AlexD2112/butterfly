@@ -2,36 +2,70 @@ services:
   - type: web
     name: butterfly
     runtime: python
-    plan: free
+    # No `plan:` line, deliberately (2026-09-03) - Render's own Blueprint docs: omitting this field
+    # means "Render retains the current compute plan for an existing service." The real live plan is
+    # the paid 0.5c-512mb tier (confirmed against the actual dashboard before writing this file) -
+    # setting `plan: free` here (the old value, left over from before the disk/paid upgrade) would
+    # risk Blueprint sync trying to downgrade it back. Omitting is the safe way to leave it alone.
     buildCommand: pip install -r requirements.txt
-    # As of 2026-09-02, Render runs proxy_app:app purely as a redirect shim (see that file's own
-    # docstring) - the real app is hosted on the player's own machine behind a permanent named
-    # Cloudflare tunnel at https://forkingpaths.app (see start_local_site.ps1 and NOTES.md). No env
-    # var to keep updating here anymore - the redirect target is a fixed domain now, not an
-    # ephemeral tunnel URL (LOCAL_TUNNEL_URL, previously required here, is gone - the quick-tunnel
-    # era it belonged to is over).
-    startCommand: gunicorn proxy_app:app --timeout 900 --worker-class gthread --threads 4
+    # Back to running the real app directly (2026-09-03 - the full hosting migration off the local
+    # machine, see NOTES.md) - proxy_app:app (a pure redirect shim) is retired. --workers 1 is not
+    # optional: this app's live-update pub/sub (live.py) and the embedded Discord bot (below) both
+    # assume a single process with shared in-memory state - see their own docstrings. Render itself
+    # structurally enforces single-instance for a service with an attached disk ("Scaling is not
+    # supported for servers with disks," confirmed in the dashboard), but --workers 1 makes it
+    # correct even in gunicorn's own terms, not just accidentally-safe via a platform constraint.
+    # --worker-class gthread --threads 4 --timeout 900: unchanged from every earlier version of this
+    # file - a real AI turn (Council Mode especially) can legitimately take a while, and threads (not
+    # separate worker PROCESSES) let one slow request not block every other player's.
+    startCommand: gunicorn server:app --workers 1 --worker-class gthread --threads 4 --timeout 900
+    # A real persistent disk (2026-09-03) - already existed on the live service (added via the
+    # dashboard during earlier setup), declared here now so this file actually reflects reality
+    # instead of leaving it silently undeclared. mountPath/sizeGB match the real current disk exactly
+    # - per Render's own docs, an existing disk's sizeGB can only be increased, never decreased, so
+    # this must never go below 1.
+    disk:
+      name: butterfly-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
-      # Everything below this line (API keys, FLASK_SECRET_KEY, Discord OAuth settings, the Ollama
-      # tunnel settings) is now only relevant to the LOCAL machine's own .env - proxy_app.py has no
-      # database, no provider calls, and no session logic of its own, so none of these are read by
-      # anything running on Render anymore. Left commented here (rather than deleted outright) purely
-      # as a record of what this service used to need before the hosting move - see NOTES.md. If
-      # hosting ever moves back to Render running server:app directly, uncomment these and restore
-      # the old startCommand.
-      # - key: ANTHROPIC_API_KEY
-      #   sync: false
-      # - key: OPENAI_API_KEY
-      #   sync: false
-      # - key: FLASK_SECRET_KEY
-      #   generateValue: true
-      # - key: DISCORD_CLIENT_ID
-      #   sync: false
-      # - key: DISCORD_CLIENT_SECRET
-      #   sync: false
-      # - key: DISCORD_REDIRECT_URI
-      #   sync: false
-      # - key: OLLAMA_TUNNEL_URL
-      #   sync: false
-      # - key: OLLAMA_TUNNEL_SECRET
-      #   sync: false
+      # BUTTERFLY_DB_PATH is the one that actually makes the disk above matter - db.py reads this to
+      # decide where butterfly.db lives; without it, the app would keep writing to its own ephemeral
+      # code directory regardless of the disk being mounted (the exact silent-failure mode this was
+      # built to prevent - see db.py's own comment and the 2026-09-02 BUTTERFLY_DB_PATH commit).
+      - key: BUTTERFLY_DB_PATH
+        value: /var/data/butterfly.db
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FLASK_SECRET_KEY
+        sync: false
+      # Optional - leave blank to skip Discord login; local per-browser profiles work without it.
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_REDIRECT_URI
+        sync: false
+      # The Discord BOT (2026-09-03) - embedded in this same process/service, see run_discord_bot.py
+      # and server.py's DISCORD_BOT_EMBEDDED check. A different credential from DISCORD_CLIENT_SECRET
+      # above even though both live under the same Discord Application.
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_APPLICATION_ID
+        sync: false
+      - key: DISCORD_BOT_EMBEDDED
+        value: "1"
+      # Real scheduled background ticks for multiplayer progression (day/week/month advancement, the
+      # daily conclusion sweep, rumor broadcasts) - see scheduler.py. On here (unlike local dev/tests,
+      # where it must default off) because "off my computer" was explicitly confirmed to mean the
+      # game should actually progress on its own now, not just be reachable.
+      - key: ENABLE_TICK_SCHEDULER
+        value: "1"
+      # Optional - only needed if a home machine's local Ollama tunnel is actually up; the app treats
+      # it as unselectable (not an error) whenever it isn't. Independent of where THIS app runs.
+      - key: OLLAMA_TUNNEL_URL
+        sync: false
+      - key: OLLAMA_TUNNEL_SECRET
+        sync: false

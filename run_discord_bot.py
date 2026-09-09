@@ -79,6 +79,7 @@ play itself is fully playable from Discord.
 import asyncio
 import logging
 import os
+import threading
 from pathlib import Path
 
 import discord
@@ -93,6 +94,7 @@ import db
 import discord_bot
 import discord_webhook
 import engine
+import live
 import multiplayer
 import pricing
 import providers
@@ -106,12 +108,19 @@ WEBSITE_URL = os.environ.get("DISCORD_WEBSITE_URL", "https://forkingpaths.app").
 SYNC_INTERVAL_SECONDS = 20
 GM_WEBHOOK_NAME = "Forking Paths - Game Master"
 
-# See server.py's /api/internal/notify_turn for why this exists: this process's own
-# live.publish_subspace_event calls (inside multiplayer.handle_message/resolve_action) reach only
+# 2026-09-03: true when this module is running INSIDE the same process as server.py (Render, via
+# server.py's own DISCORD_BOT_EMBEDDED=1 check - see start_in_background_thread below), as opposed to
+# its own separate OS process (local dev, via start_local_site.ps1 launching this file directly).
+# Changes exactly one thing - see _notify_web_live - everything else about this module behaves
+# identically either way.
+EMBEDDED = os.environ.get("DISCORD_BOT_EMBEDDED") == "1"
+
+# See server.py's /api/internal/notify_turn for why this exists: when NOT embedded, this process's
+# own live.publish_subspace_event calls (inside multiplayer.handle_message/resolve_action) reach only
 # THIS process's empty in-memory SSE subscriber set, never the real web viewers connected to the
 # actual server.py/waitress process - a separate OS process even though both share the same SQLite
-# file. INTERNAL_API_BASE defaults to localhost since the bot always runs on the same machine as the
-# web app (see start_local_site.ps1) - override via env if that's ever no longer true.
+# file. INTERNAL_API_BASE defaults to localhost since local dev always runs both on the same machine
+# (see start_local_site.ps1) - override via env if that's ever no longer true. Unused when EMBEDDED.
 INTERNAL_API_BASE = os.environ.get("INTERNAL_API_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
 INTERNAL_NOTIFY_SECRET = os.environ.get("INTERNAL_NOTIFY_SECRET", "").strip()
 
@@ -380,8 +389,22 @@ def _notify_web_live(turn_id):
     this bot produces already gets recorded to the shared database correctly; this is what makes it
     ALSO push live to anyone already watching the website via SSE, instead of only showing up on
     their next reload. Best-effort and silent on failure - a missed live-update ping should never
-    surface as an error for a Discord action that already succeeded and was already recorded."""
-    if not turn_id or not INTERNAL_NOTIFY_SECRET:
+    surface as an error for a Discord action that already succeeded and was already recorded.
+
+    EMBEDDED (2026-09-03): when this module runs inside the SAME process as server.py, the HTTP
+    round-trip isn't just unnecessary, it's not even reliably correct - Render assigns $PORT
+    dynamically, so INTERNAL_API_BASE's localhost:5000 default wouldn't reliably match it. Skip the
+    network hop entirely and publish directly into the exact same live.py module both this thread and
+    Flask's own request-handling code have imported - a genuinely shared in-memory subscriber set now,
+    not two processes pretending to share one over HTTP."""
+    if not turn_id:
+        return
+    if EMBEDDED:
+        turn = db.get_turn_by_id(turn_id)
+        if turn:
+            live.publish_subspace_event(turn["subspace_id"], turn)
+        return
+    if not INTERNAL_NOTIFY_SECRET:
         return
     try:
         requests.post(
@@ -849,6 +872,23 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
             await interaction.response.send_message(message, ephemeral=True)
     except discord.HTTPException:
         pass
+
+
+def start_in_background_thread():
+    """Starts the bot inside a background daemon thread of WHATEVER process calls this - used when
+    this process ALSO runs the web app (Render, via server.py's DISCORD_BOT_EMBEDDED=1 check) instead
+    of as its own separate process (local dev, via start_local_site.ps1 launching this file directly
+    through main() below). Never run both at once against the same DISCORD_BOT_TOKEN - two
+    simultaneous gateway connections on one bot token is a real, confusing bug (duplicate slash-
+    command registration, every message/action potentially handled twice), not just wasteful.
+    Silently no-ops (logs a warning, doesn't crash the caller) if no token is configured - unlike
+    main()'s hard SystemExit, since the web app must keep running fine either way."""
+    if not TOKEN:
+        log.warning("DISCORD_BOT_TOKEN not set - the embedded Discord bot will not start.")
+        return
+    thread = threading.Thread(target=lambda: client.run(TOKEN, log_handler=None), daemon=True, name="discord-bot")
+    thread.start()
+    log.info("Discord bot starting in a background thread (embedded mode).")
 
 
 def main():

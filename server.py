@@ -46,6 +46,17 @@ db.init_db()
 if scheduler.is_enabled():
     scheduler.start_scheduler()
 
+# The Discord bot, embedded in this SAME process (2026-09-03, DISCORD_BOT_EMBEDDED=1 - see
+# run_discord_bot.py's own EMBEDDED flag and NOTES.md's migration entry). Only used when this
+# process is meant to BE the bot too (Render, one service, one disk) - local dev keeps running the
+# bot as its own separate process via start_local_site.ps1/run_discord_bot.py directly, unaffected;
+# never set this env var locally, or the same DISCORD_BOT_TOKEN would open two simultaneous gateway
+# connections. Same off-by-default reasoning as the scheduler above - importing this module in tests
+# must never try to connect to Discord.
+if os.environ.get("DISCORD_BOT_EMBEDDED") == "1":
+    import run_discord_bot
+    run_discord_bot.start_in_background_thread()
+
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 # NOTE: if FLASK_SECRET_KEY isn't set, a random one is generated per process start, which means
@@ -1316,6 +1327,40 @@ def api_internal_notify_turn():
         return jsonify({"error": "unknown turn"}), 404
     live.publish_subspace_event(turn["subspace_id"], turn)
     return jsonify({"ok": True})
+
+
+# ==================== TEMPORARY: hosting-migration DB transfer (2026-09-03) ====================
+# Moves the REAL local butterfly.db (every real character/server/turn/rumor - the actual live data)
+# onto Render's persistent disk, once, right after the first deploy that runs server:app there -
+# Render's disk has never had this app's real data on it (it only ever ran proxy_app.py before,
+# which has no database at all), so a naive cutover would go live with a silently EMPTY database.
+# Gated on a one-time secret, not the normal admin-session flow, since this needs to work from a raw
+# curl call with no browser session. DELETE THIS WHOLE SECTION (and unset DB_MIGRATION_SECRET on
+# Render) once the migration is verified complete - see NOTES.md. Not meant to outlive tonight.
+
+@app.route("/api/internal/db_stats")
+def api_internal_db_stats():
+    secret = os.environ.get("DB_MIGRATION_SECRET", "").strip()
+    if not secret or request.headers.get("X-Migration-Secret") != secret:
+        return jsonify({"error": "forbidden"}), 403
+    conn = db.get_db()
+    tables = ["users", "characters", "turns", "multiplayer_servers", "locations", "subspaces", "rumors", "rumor_broadcasts"]
+    counts = {t: conn.execute(f"SELECT COUNT(*) c FROM {t}").fetchone()["c"] for t in tables}
+    conn.close()
+    return jsonify({"db_file": str(db.DB_FILE), "size_bytes": db.DB_FILE.stat().st_size if db.DB_FILE.exists() else 0, "counts": counts})
+
+
+@app.route("/api/internal/restore_db", methods=["POST"])
+def api_internal_restore_db():
+    secret = os.environ.get("DB_MIGRATION_SECRET", "").strip()
+    if not secret or request.headers.get("X-Migration-Secret") != secret:
+        return jsonify({"error": "forbidden"}), 403
+    uploaded = request.files.get("file")
+    if uploaded is None:
+        return jsonify({"error": "no file uploaded - POST multipart/form-data with a 'file' field"}), 400
+    db.DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    uploaded.save(str(db.DB_FILE))
+    return jsonify({"ok": True, "size_bytes": db.DB_FILE.stat().st_size})
 
 
 if __name__ == "__main__":
