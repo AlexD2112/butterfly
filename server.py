@@ -1350,55 +1350,6 @@ def api_internal_db_stats():
     return jsonify({"db_file": str(db.DB_FILE), "size_bytes": db.DB_FILE.stat().st_size if db.DB_FILE.exists() else 0, "counts": counts})
 
 
-@app.route("/api/internal/usage_stats")
-def api_internal_usage_stats():
-    """TEMPORARY (2026-09-10) - one-off real-usage-numbers pull for the user, same secret-gated
-    pattern as db_stats above. Delete this alongside the rest of this section once no longer needed -
-    not meant to be a permanent analytics endpoint."""
-    secret = os.environ.get("DB_MIGRATION_SECRET", "").strip()
-    if not secret or request.headers.get("X-Migration-Secret") != secret:
-        return jsonify({"error": "forbidden"}), 403
-    import time as _time
-
-    conn = db.get_db()
-    total_turns = conn.execute("SELECT COUNT(*) c FROM turns").fetchone()["c"]
-    daily = conn.execute(
-        "SELECT date(created_at, 'unixepoch') AS day, COUNT(*) c FROM turns "
-        "WHERE created_at >= ? GROUP BY day ORDER BY day",
-        (_time.time() - 14 * 86400,),
-    ).fetchall()
-    turns_by_mode = conn.execute(
-        "SELECT g.mode, COUNT(t.id) c FROM turns t JOIN games g ON t.game_id = g.id GROUP BY g.mode"
-    ).fetchall()
-    null_game_turns = conn.execute("SELECT COUNT(*) c FROM turns WHERE game_id IS NULL").fetchone()["c"]
-    games_by_mode = conn.execute("SELECT mode, COUNT(*) c FROM games GROUP BY mode").fetchall()
-    mp_servers_total = conn.execute("SELECT COUNT(*) c FROM multiplayer_servers").fetchone()["c"]
-    mp_servers_with_activity = conn.execute(
-        "SELECT COUNT(DISTINCT g.multiplayer_server_id) c FROM games g JOIN turns t ON t.game_id = g.id "
-        "WHERE g.multiplayer_server_id IS NOT NULL"
-    ).fetchone()["c"]
-    per_user = conn.execute(
-        "SELECT u.id, u.username, u.discord_id, u.is_local, u.created_at user_created_at, "
-        "COUNT(t.id) turn_count, MIN(t.created_at) first_turn, MAX(t.created_at) last_turn, "
-        "COUNT(DISTINCT c.id) character_count, GROUP_CONCAT(DISTINCT g.mode) modes "
-        "FROM users u LEFT JOIN characters c ON c.user_id = u.id LEFT JOIN turns t ON t.character_id = c.id "
-        "LEFT JOIN games g ON t.game_id = g.id GROUP BY u.id ORDER BY turn_count DESC"
-    ).fetchall()
-    conn.close()
-    return jsonify(
-        {
-            "total_turns": total_turns,
-            "daily_turns_last_14d": [dict(r) for r in daily],
-            "turns_by_game_mode": [dict(r) for r in turns_by_mode],
-            "turns_with_null_game_id": null_game_turns,
-            "games_by_mode": [dict(r) for r in games_by_mode],
-            "multiplayer_servers_total": mp_servers_total,
-            "multiplayer_servers_with_activity": mp_servers_with_activity,
-            "per_user": [dict(r) for r in per_user],
-        }
-    )
-
-
 @app.route("/api/internal/restore_db", methods=["POST"])
 def api_internal_restore_db():
     secret = os.environ.get("DB_MIGRATION_SECRET", "").strip()
