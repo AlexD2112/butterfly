@@ -63,5 +63,44 @@
         ]
       }
     }
+  },
+
+  "extra_senatorial_network": {
+    "label": "Caesar's Working Majority — Beyond the Senate",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once it's become clear on-screen that Caesar is governing AROUND the Senate rather than through it - the real, documented contrast with roman_senate_composition (which shows the formal body Caesar can't comfortably command). This is the informal machine that actually gets things done: tribunician allies, Pompey's veterans as real Forum muscle, Crassus's financial and equites reach. Update it as specific pieces of this machine are used, strained, or expanded on-screen. Expire only if this whole informal approach to governing is abandoned (not expected within this pack's near-term timeline).",
+    "canon_triggers": ["Lex Julia agraria passed", "Vatinian law grants Gaul"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Real, well-documented events, per romans.etrusia.co.uk and en.wikipedia.org/wiki/Publius_Vatinius: when three tribunes vetoed Caesar's land law, he brought it back to the popular assembly surrounded by Pompey's own veterans - a real, physical show of force. When the tribunes tried to veto again, Pompey made clear (hand on sword) he would not tolerate it; Bibulus, attempting to intervene in person, had a bucket of excrement dumped over his head and soon withdrew from public life entirely, reduced to 'watching the skies' for omens from his own house for the rest of the year (Roman wits joked the year was the consulship of 'Julius and Caesar', not Caesar and Bibulus). Separately, the tribune Publius Vatinius acted as Caesar's own agent, personally negotiating the block ratification of Pompey's eastern settlement and later proposing the Vatinian law granting Caesar's Gaul command - a distinct, real channel from the veteran-intimidation one.",
+    "seed_data": {
+      "root": {
+        "name": "Caesar's Informal Machine",
+        "note": "Not an office or a faction - the real, ad hoc network of people and leverage Caesar uses to get things done when the Senate itself won't cooperate.",
+        "children": [
+          {"name": "Publius Vatinius, Tribune of the Plebs", "note": "Caesar's own legislative agent - personally negotiated ratification of Pompey's eastern settlement, and is the one bringing Caesar's Gaul command to a vote."},
+          {"name": "Pompey's Veterans", "note": "Real physical presence at assembly votes - their surrounding presence, and Pompey's own open willingness to threaten force, is what actually broke the tribunician vetoes against the land law."},
+          {"name": "Crassus's Equites Network", "note": "Financial reach and provincial tax-farming contacts - the money that pays for organizing votes and buying goodwill outside the Senate's own chamber."},
+          {"name": "Publius Clodius Pulcher", "note": "Recently cleared to stand for tribune with Caesar's help - a real asset in the popular assemblies, but explicitly his own agent, not Caesar's instrument (see npcs.md)."}
+        ]
+      }
+    }
+  },
+
+  "client_kings_ledger": {
+    "label": "Client Kings and Foreign Powers — Ledger",
+    "render_primitive": "text",
+    "when_relevant": "Create this once the player is actively engaged in diplomacy touching Rome's client kings or foreign relationships beyond the Senate's own walls - a real, live thread from very early in this specific year, given Ptolemy XII's own recognition. This is a running ledger, not a chart - append new entries as specific arrangements are made or tested, rather than rewriting old ones. Update it as foreign_reputation-relevant events occur on-screen. Expire only if Rome's whole client-king system in this region is fundamentally upended (not expected within this pack's near-term timeline).",
+    "canon_triggers": ["Lex Julia agraria passed"],
+    "data_shape": {
+      "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label, body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
+    },
+    "sourcing_note": "Real, specific, and dateable to this exact year: per worldhistory.org and livius.org, in 59 BCE Ptolemy XII Auletes of Egypt secured formal Roman recognition as king and 'a friend and ally of the Roman people' (amicus et socius populi Romani), brokered by Caesar and Pompey together, after paying an enormous bribe reckoned at 6,000 talents - roughly Egypt's entire annual revenue. The arrangement secured Ptolemy's throne against the standing threat of Roman annexation, but the debts it left him (borrowed from Roman financiers to cover the bribe) would haunt his own reign and, later, his children Cleopatra VII and Ptolemy XIII.",
+    "seed_data": {
+      "entries": [
+        {"heading": "Egypt recognized as friend and ally of Rome", "tag": "59 BCE", "body": "Ptolemy XII Auletes secures formal recognition as king and 'a friend and ally of the Roman people', brokered jointly by Caesar and Pompey, after paying a bribe reckoned at roughly 6,000 talents - close to Egypt's entire annual revenue. It secures his throne against annexation, but the debt he takes on to pay it will outlast him."}
+      ]
+    }
   }
 }

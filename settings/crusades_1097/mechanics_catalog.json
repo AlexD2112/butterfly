@@ -62,5 +62,44 @@
         ]
       }
     }
+  },
+
+  "antioch_siege_conditions": {
+    "label": "The Siege of Antioch — Conditions Ledger",
+    "render_primitive": "text",
+    "when_relevant": "Create this once the canon 'Siege of Antioch begins' beat fires - alongside crusader_host_at_antioch (deployment) and crusader_princes_council (standing), this tracks a genuinely different axis: supply, morale, and desertion among the host as the siege actually grinds on. This is a running ledger, not a chart - append new entries as conditions change rather than rewriting old ones. Update it as morale/supply shift meaningfully on-screen. Expire once the siege resolves (Antioch falls and Kerbogha's relief army is defeated) - conditions inside a captured, garrisoned city would be a new mechanic if the campaign continues that far, not a continuation of this one.",
+    "canon_triggers": ["Siege of Antioch begins", "Antioch falls to the crusaders", "Kerbogha's relief army defeated"],
+    "data_shape": {
+      "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label, body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
+    },
+    "sourcing_note": "Real, well-documented and genuinely grim conditions, per worldhistory.org and historiesandcastles.com: the crusaders arrived outside Antioch on 21 October 1097 with too few men to fully encircle the city, which could still receive outside supplies. The winter of 1097-98 was brutal - supplies from Constantinople dwindled, foraging parties risked ambush, and by early 1098 roughly one in seven crusaders was dying of starvation, with horses, donkeys, camels, and even dogs eaten, and some reduced to boiling leather or digging up roots. The strain produced real desertion - most famously Stephen of Blois, one of the expedition's own named princes, who slipped away for Tarsus after seeing the scale of Kerbogha's relief army encamped nearby and concluding the crusade was doomed (a real, documented desertion by a named leader, not an invented complication).",
+    "seed_data": {
+      "entries": [
+        {"heading": "The siege begins - too few men to fully encircle the city", "tag": "21 October 1097", "body": "The host arrives outside Antioch's walls, but has too few men to close the blockade completely - Antioch can still receive supplies from outside, meaning this will be a long siege, not a quick one."}
+      ]
+    }
+  },
+
+  "regional_muslim_powers": {
+    "label": "The Regional Political Landscape",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once the player is reasoning about the wider political landscape beyond Antioch's own walls specifically - the Seljuk world and Fatimid Egypt are explicitly, per this setting's own factions.md, 'not a monolith' and a plausible source of local alliance or negotiation, not just a united enemy. Most useful once the siege is underway and Kerbogha's relief force becomes a live threat, but can exist earlier if the player is already probing this landscape diplomatically. Update it as alliances shift or a new power becomes relevant on-screen. Expire only if this whole regional picture becomes moot to the campaign (not expected within this pack's near-term timeline).",
+    "canon_triggers": ["Siege of Antioch begins", "Kerbogha's relief army defeated"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Named figures already have Monarch stat blocks in this setting's own npcs.md: Yaghi-Siyan, the capable Seljuk governor defending Antioch itself, and Kerbogha of Mosul, the powerful atabeg whose real relief army very nearly reverses the crusaders' victory just after Antioch falls. factions.md itself names Fatimid Egypt as a further, separate regional power with its own competing interests, distinct from the Seljuk Turks entirely (the two were rivals, not allies, in this period) - a real basis for the kind of local alliance or negotiation pure holy-war framing tends to obscure.",
+    "seed_data": {
+      "root": {
+        "name": "The Regional Powers Beyond Antioch",
+        "note": "Not a monolith - real rivalries and competing interests run through this landscape as much as opposition to the crusade does.",
+        "children": [
+          {"name": "Yaghi-Siyan, Governor of Antioch", "note": "A capable, experienced defender - not a pushover, right up until (and if) the historical betrayal that opens the city actually occurs."},
+          {"name": "Kerbogha of Mosul", "note": "A powerful Seljuk atabeg, not yet on the board - his real relief army arrives just as Antioch falls, nearly reversing the crusaders' victory."},
+          {"name": "The Wider Seljuk Sultanate", "note": "Genuinely fragmented, not a unified command - regional emirs and atabegs with their own, sometimes competing, priorities."},
+          {"name": "Fatimid Egypt", "note": "A separate, rival power to the Seljuk Turks entirely - a plausible, real basis for local negotiation or alliance that pure holy-war framing tends to obscure."}
+        ]
+      }
+    }
   }
 }

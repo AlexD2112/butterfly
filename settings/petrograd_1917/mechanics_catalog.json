@@ -120,5 +120,74 @@
         {"heading": "'Neither war nor peace'", "tag": "Trotsky's strategy", "body": "Trotsky's own position, over Lenin's objections: refuse to sign these terms, but also unilaterally declare the war over and demobilize - betting that a wider European revolution makes the treaty irrelevant before Germany can enforce it. A genuinely contested call within the party, not Lenin's preference."}
       ]
     }
+  },
+
+  "bolshevik_central_committee": {
+    "label": "Bolshevik Central Committee — Insurrection Vote",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once the insurrection question becomes a live, specific vote the Central Committee is actually weighing - the real 10 October 1917 meeting this is modeled on, not general party politics (which party_standing already covers as a resource). This is about where NAMED individuals stand on the single specific question of timing, grouped by stance - not a seat-count chart, since the real drama here is a dozen specific people (see npcs.md for Kamenev/Zinoviev's stat blocks, written with exactly this vote in mind), not proportional blocs. Update it if a member's stance shifts on-screen, or once the actual vote is taken. Expire it once the insurrection question is settled one way or another (the vote happens, or the moment passes) - this is a snapshot of one specific decision, not a standing body to track indefinitely.",
+    "canon_triggers": ["The Central Committee vote for insurrection"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]} - group by stance (for/against/undecided), with named members as children of each stance group"
+    },
+    "sourcing_note": "Real meeting, 10 October 1917 (per marxists.org and wsws.org): about a dozen of the Central Committee's 21 total members met in secret, Sverdlov in the chair (Lenin's first meeting back from hiding). The resolution for insurrection passed 10-to-2, with only Zinoviev and Kamenev voting against - a real, public rupture, not invented drama (see their own npcs.md entries, written to voice exactly this dissent credibly). Trotsky himself is recorded as abstaining, not voting for - he held the rising should wait for the Second Congress of Soviets for legitimacy, a real tactical disagreement with Lenin even though he ultimately supported insurrection in principle. Other real attendees per the same sources: Stalin, Dzerzhinsky, Kollontai, Sokolnikov, Lomov, Bubnov, Uritsky, and Iakovleva (who took the minutes).",
+    "seed_data": {
+      "root": {
+        "name": "Central Committee, 10 October 1917 (in session, Sverdlov chairing)",
+        "note": "About a dozen of 21 total CC members present, meeting in secret. Lenin's first session back from hiding in Finland.",
+        "children": [
+          {
+            "name": "For immediate insurrection",
+            "note": "The resolution passed 10-to-2 in the real vote this models.",
+            "children": [
+              {"name": "Lenin", "note": "Pushing hardest and most impatiently for insurrection now."},
+              {"name": "Stalin", "note": "Correct and professional, aligned with Lenin's position without leading it."},
+              {"name": "Dzerzhinsky", "note": "Firmly behind the resolution."},
+              {"name": "Kollontai", "note": "A genuine, trusted ally of the player character, aligned here too."},
+              {"name": "Sokolnikov, Lomov, Bubnov, Uritsky", "note": "The remaining real votes for the resolution."}
+            ]
+          },
+          {
+            "name": "Opposed",
+            "note": "A real, public rupture with Lenin, not a minor procedural objection.",
+            "children": [
+              {"name": "Lev Kamenev", "note": "Historically opposed the rising outright and said so publicly - the most cautious senior Bolshevik."},
+              {"name": "Grigory Zinoviev", "note": "Aligned with Kamenev's caution, reinforcing each other's position."}
+            ]
+          },
+          {
+            "name": "Abstained / procedural disagreement",
+            "note": "Not opposition to insurrection in principle, but real disagreement over timing and legitimacy.",
+            "children": [
+              {"name": "Trotsky", "note": "The player character (if voicing this scene from within it) - held that the rising should wait for the Second Congress of Soviets to convene, for legitimacy's sake, rather than move before it."}
+            ]
+          }
+        ]
+      }
+    }
+  },
+
+  "military_revolutionary_committee": {
+    "label": "The Military-Revolutionary Committee",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once the MRC actually forms and starts operating - the body mrc_authority (see resource_schema.json) is built to track, which starts near zero specifically because this organ doesn't exist yet at campaign start. This is the real operational instrument of the insurrection itself, distinct from both the Central Committee (which decides whether to rise) and the Petrograd Soviet (whose institutional authority it draws on). Update it as it takes on real operational functions or its authority visibly extends over more of the garrison/city. Expire it once its wartime function is complete and it's formally dissolved or absorbed into ordinary Soviet government organs (historically, within a few months of October).",
+    "canon_triggers": ["The October Revolution / storming of key institutions"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Real structure per prlib.ru and en.wikipedia.org/wiki/Petrograd_Military_Revolutionary_Committee: formed by the Petrograd Soviet in October 1917, formally chaired by Pavel Lazimir - a Left SR, which mattered for the optics of the Soviet (not just the Bolshevik party) acting - while Trotsky, as the Soviet's own President, was the real driving force behind it. Its membership was drawn from Bolshevik party representatives, Soviet delegates, factory and soldiers' committees, the Bolshevik Military Organization (Voenka), and the Red Guards - a real coalition body, not a purely party instrument. By the end of October it had representatives operating in at least 44 cities and 113 military units well beyond Petrograd itself.",
+    "seed_data": {
+      "root": {
+        "name": "Military-Revolutionary Committee of the Petrograd Soviet",
+        "note": "Formally chaired by Pavel Lazimir (Left SR) - real driving authority runs through Trotsky as President of the Soviet, but the Left SR chairmanship matters for the committee's legitimacy as a Soviet body, not a purely Bolshevik one.",
+        "children": [
+          {"name": "Bolshevik Party Representatives", "note": "The organizing core."},
+          {"name": "Soviet Delegates", "note": "Draws directly on the Petrograd Soviet's own institutional authority - see petrograd_soviet_composition."},
+          {"name": "Factory and Soldiers' Committees", "note": "The base-level organizing network across the garrison and the city's workplaces."},
+          {"name": "Bolshevik Military Organization (Voenka)", "note": "The party's own dedicated military-organizing apparatus within the garrison."},
+          {"name": "Red Guards", "note": "The armed worker militia - see petrograd_garrison for its place in the wider military picture."}
+        ]
+      }
+    }
   }
 }

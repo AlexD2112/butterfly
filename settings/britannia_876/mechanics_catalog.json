@@ -62,5 +62,46 @@
         {"heading": "Danegeld at Wareham", "tag": "876", "body": "Following peace talks held in Wareham's own church, Guthrum agreed to withdraw from Wessex in exchange for a substantial tribute payment. The arrangement did not hold - Guthrum slipped past the besieging fleet and took Exeter instead."}
       ]
     }
+  },
+
+  "alfreds_witan": {
+    "label": "Alfred's Witan — The King's Council",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once the player is reasoning about governance and counsel specifically, not just the military muster (west_saxon_muster covers that distinctly) - a king's witan handles land grants, church matters, justice, and the ordinary business of ruling even in the middle of a war. Update it as a councilor's standing shifts on-screen, or as the crisis reshuffles who Alfred actually leans on. Expire only if the witan itself is fundamentally reconstituted (not expected within this pack's near-term timeline).",
+    "canon_triggers": ["Athelney retreat", "Battle of Edington"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Named councilors per this setting's own npcs.md: Ealhswith (Alfred's queen, of Mercian noble blood herself, a real link to Mercian nobility in her own right); Wærferth, Bishop of Worcester (a genuinely learned churchman and later real collaborator of Alfred's on translation work - church_favor runs substantially through relationships like his); and the ealdormen in their political/advisory capacity as distinct from their purely military muster role. Wulfhere, Ealdorman of Wiltshire, is deliberately included here even though npcs.md flags him as a real, eventual deserter (historically stripped of his lands for later abandoning Alfred and the country against his sworn oath, at an unrecorded point in this crisis) - his presence in this council is exactly the kind of thing an 'update' or 'expire'-style removal could reflect if the player's choices lead there, rather than being scripted to happen regardless.",
+    "seed_data": {
+      "root": {
+        "name": "Alfred, King of Wessex",
+        "note": "The witan advises on land, church, and justice matters - governance, distinct from west_saxon_muster's purely military framing, though the same men often serve both functions.",
+        "children": [
+          {"name": "Ealhswith, Queen", "note": "Of Mercian noble blood herself - a genuine, trusted ally and a real link to Mercian nobility in her own right, not just a consort."},
+          {"name": "Wærferth, Bishop of Worcester", "note": "A genuinely learned churchman. Church favor and the court's scholarly reputation run substantially through relationships like this one."},
+          {"name": "Æthelnoth, Ealdorman of Somerset", "note": "Alfred's most immediate and reliable ally, in council as much as in the field."},
+          {"name": "Odda, Ealdorman of Devon", "note": "Steady and capable, loyal without being uncritical - will tell the player uncomfortable truths rather than flatter them."},
+          {"name": "Wulfhere, Ealdorman of Wiltshire", "note": "Outwardly loyal and untested at this point - his real historical desertion, if it happens here, should feel earned by play rather than scripted (see npcs.md)."}
+        ]
+      }
+    }
+  },
+
+  "mercian_and_frankish_relations": {
+    "label": "Mercia and the Franks — Relations Ledger",
+    "render_primitive": "text",
+    "when_relevant": "Create this once the player is actively engaging with either Mercia (Ceolwulf II specifically) or the wider Frankish/Carolingian world as a diplomatic thread, rather than pure background pressure - both are real, if distant, relationships this setting's own factions.md tracks. This is a running ledger, not a chart - append new entries as contact develops rather than rewriting old ones. Update it as saxon_unity or foreign_standing move for a concrete on-screen reason. Expire only if both relationships become moot (not expected within this pack's near-term timeline).",
+    "canon_triggers": ["Battle of Edington", "Treaty of Wedmore"],
+    "data_shape": {
+      "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label, body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
+    },
+    "sourcing_note": "Per this setting's own factions.md: Mercia, under Ceolwulf II, is a fellow English kingdom under its own severe Viking pressure - the Anglo-Saxon Chronicle later dismisses him unkindly as a puppet king, though this setting deliberately plays him with more dignity than that, a ruler doing real triage with worse cards than Alfred's. Alfred's court had real, if distant, contact with the Carolingian Frankish world - mostly relevant as a hedge (potential exile, marriage alliances, or moral support) should Wessex's position worsen, not an active alliance at campaign start.",
+    "seed_data": {
+      "entries": [
+        {"heading": "An uneasy neighbor", "tag": "876, ongoing", "body": "Ceolwulf II holds Mercia under his own severe Viking pressure - whether he becomes a real partner or stays a wary, self-interested neighbor is an open question, not a settled one. The Chronicle will later judge him unkindly; that judgment isn't yet written."},
+        {"heading": "A distant hedge", "tag": "Background", "body": "Alfred's court maintains real, if thin, contact with the Frankish/Carolingian world - not an active alliance, but a plausible source of refuge, marriage ties, or moral support if Wessex's position worsens badly enough to need one."}
+      ]
+    }
   }
 }

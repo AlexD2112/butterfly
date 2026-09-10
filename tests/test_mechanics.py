@@ -7,12 +7,15 @@ import providers
 
 
 class TestLoadCatalog(unittest.TestCase):
-    def test_petrograd_has_the_four_pilot_types(self):
+    def test_petrograd_has_the_expected_types(self):
         catalog = mechanics.load_catalog("petrograd_1917")
         self.assertIsNotNone(catalog)
         self.assertEqual(
             set(catalog.keys()),
-            {"petrograd_soviet_composition", "petrograd_garrison", "red_army_command", "diplomatic_position"},
+            {
+                "petrograd_soviet_composition", "petrograd_garrison", "red_army_command", "diplomatic_position",
+                "bolshevik_central_committee", "military_revolutionary_committee",
+            },
         )
         for type_key, entry in catalog.items():
             self.assertIn(entry["render_primitive"], {"seat_chart", "org_tree", "text"})
@@ -74,18 +77,27 @@ class TestLoadCatalog(unittest.TestCase):
                             self.assertIn("heading", item)
                             self.assertIn("body", item)
 
-    def test_britannia_rome_and_crusades_have_the_expected_pilot_types(self):
+    def test_britannia_rome_and_crusades_have_the_expected_types(self):
         self.assertEqual(
             set(mechanics.load_catalog("britannia_876").keys()),
-            {"west_saxon_muster", "guthrums_host", "alfred_guthrum_negotiations"},
+            {
+                "west_saxon_muster", "guthrums_host", "alfred_guthrum_negotiations",
+                "alfreds_witan", "mercian_and_frankish_relations",
+            },
         )
         self.assertEqual(
             set(mechanics.load_catalog("rome_59_bce").keys()),
-            {"roman_senate_composition", "first_triumvirate_ledger", "gallic_legions_command"},
+            {
+                "roman_senate_composition", "first_triumvirate_ledger", "gallic_legions_command",
+                "extra_senatorial_network", "client_kings_ledger",
+            },
         )
         self.assertEqual(
             set(mechanics.load_catalog("crusades_1097").keys()),
-            {"crusader_princes_council", "byzantine_relations_ledger", "crusader_host_at_antioch"},
+            {
+                "crusader_princes_council", "byzantine_relations_ledger", "crusader_host_at_antioch",
+                "antioch_siege_conditions", "regional_muslim_powers",
+            },
         )
 
 
@@ -324,6 +336,37 @@ class TestEngineIntegration(unittest.TestCase):
         )
         self.assertIn("senate", state["mechanics"])
         self.assertEqual(state["mechanics"]["senate"]["render_primitive"], "seat_chart")
+
+    def test_ai_creating_the_central_committee_mechanic_end_to_end(self):
+        """Exercises one of the newly-added (2026-09-10) mechanics specifically, since the general
+        catalog-structure test only checks the seed_data's shape, not the full create pipeline for
+        every single new type - this is the org_tree-of-named-individuals pattern, distinct from
+        petrograd_garrison's org_tree-of-military-units pattern already covered above."""
+        catalog = mechanics.load_catalog("petrograd_1917")
+        seed = catalog["bolshevik_central_committee"]["seed_data"]
+        create_input = {
+            "action": "create", "type_key": "bolshevik_central_committee", "instance_id": "cc_oct_10",
+            "title": "Bolshevik Central Committee — Insurrection Vote", "data": seed,
+            "review_after_turns": 2, "reasoning": "The insurrection question just came to a head.",
+        }
+        provider = FakeProvider(
+            [
+                providers.TurnResult(
+                    text_parts=["The room falls quiet."],
+                    tool_calls=[{"id": "1", "name": "propose_mechanic_update", "input": create_input}],
+                    usage=make_usage(),
+                ),
+                providers.TurnResult(text_parts=["Done."], tool_calls=[], usage=make_usage()),
+            ]
+        )
+        state = {"campaign_log_summary": [], "turn_number": 1}
+        engine.run_turn(
+            provider, "gpt-5.6-luna", state, "petrograd_1917", "red_admiral", [], "I call the vote",
+        )
+        entry = state["mechanics"]["cc_oct_10"]
+        self.assertEqual(entry["render_primitive"], "org_tree")
+        stance_names = {c["name"] for c in entry["data"]["root"]["children"]}
+        self.assertIn("Opposed", stance_names)
 
     def test_ai_creating_a_mechanic_end_to_end(self):
         create_input = {
