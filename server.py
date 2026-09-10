@@ -1350,51 +1350,6 @@ def api_internal_db_stats():
     return jsonify({"db_file": str(db.DB_FILE), "size_bytes": db.DB_FILE.stat().st_size if db.DB_FILE.exists() else 0, "counts": counts})
 
 
-@app.route("/api/internal/budget_topup", methods=["POST"])
-def api_internal_budget_topup():
-    """TEMPORARY (2026-09-10) - one-off top-up of real accounts whose remaining budget has fallen
-    below 50% of DEFAULT_BUDGET_USD, back up to the full starting amount. Same secret gate as the
-    other routes in this section. EXCLUDED_USER_IDS mirrors the exact exclusion used for the usage
-    stats pulled earlier this session (my own local-dev profile, id 1, and two fake-Discord-id test
-    accounts, ids 9/10 - see that report). Dry-run by default (?apply=1 required to actually write) -
-    reports what it WOULD do either way, so the caller can sanity-check before committing."""
-    secret = os.environ.get("DB_MIGRATION_SECRET", "").strip()
-    if not secret or request.headers.get("X-Migration-Secret") != secret:
-        return jsonify({"error": "forbidden"}), 403
-    apply = request.args.get("apply") == "1"
-    EXCLUDED_USER_IDS = (1, 9, 10)
-    baseline = db.DEFAULT_BUDGET_USD
-    threshold = baseline * 0.5
-
-    conn = db.get_db()
-    placeholders = ",".join("?" * len(EXCLUDED_USER_IDS))
-    rows = conn.execute(
-        f"SELECT u.id, u.username, u.budget_usd, COALESCE(SUM(e.cost_usd), 0) spent "
-        f"FROM users u LEFT JOIN usage_events e ON e.user_id = u.id "
-        f"WHERE u.id NOT IN ({placeholders}) GROUP BY u.id",
-        EXCLUDED_USER_IDS,
-    ).fetchall()
-
-    changed = []
-    for r in rows:
-        remaining_before = max(0.0, r["budget_usd"] - r["spent"])
-        if remaining_before >= threshold:
-            continue
-        new_budget = r["spent"] + baseline
-        entry = {
-            "id": r["id"], "username": r["username"],
-            "budget_before": r["budget_usd"], "remaining_before": remaining_before,
-            "budget_after": new_budget, "remaining_after": baseline,
-        }
-        changed.append(entry)
-        if apply:
-            conn.execute("UPDATE users SET budget_usd = ? WHERE id = ?", (new_budget, r["id"]))
-    if apply:
-        conn.commit()
-    conn.close()
-    return jsonify({"applied": apply, "baseline_usd": baseline, "threshold_usd": threshold, "changed": changed})
-
-
 @app.route("/api/internal/restore_db", methods=["POST"])
 def api_internal_restore_db():
     secret = os.environ.get("DB_MIGRATION_SECRET", "").strip()
