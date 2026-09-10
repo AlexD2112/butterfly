@@ -1,0 +1,67 @@
+{
+  "_comment": "Curated 'mechanics' library for the rome_59_bce setting - see mechanics.py and engine.py's propose_mechanic_update tool, and settings/petrograd_1917/mechanics_catalog.json for the original pilot this follows. Each entry is a TYPE the AI may instantiate (never invent a type_key not listed here). seed_data is a historically-researched starting point.",
+
+  "roman_senate_composition": {
+    "label": "The Roman Senate — Factional Balance",
+    "render_primitive": "seat_chart",
+    "when_relevant": "Create this once the Senate's own internal politics become something the player is actively reasoning about - true from very early in this campaign, since Caesar's consulship opens with Bibulus's obstruction and optimate resistance already in play (see canon_timeline.md). Update it when a real shift has plausibly occurred on-screen (Cicero's exile, a key optimate reconciled or isolated, a major law's passage reshaping the balance of who backs whom). Expire only if the Senate itself is bypassed/superseded as the relevant body (not expected within this pack's currently-scaffolded timeline).",
+    "canon_triggers": ["Lex Julia agraria passed", "Clodius engineers Cicero's exile", "Conference of Luca"],
+    "data_shape": {
+      "body_size": "integer - total seats",
+      "factions": "array of {name, seats, note} - note should be a short in-fiction gloss (leaning, mood, key figures), not just a label"
+    },
+    "sourcing_note": "Sulla fixed the Senate at 600 members in 80 BCE, still the real size in 59 BCE (it grew to ~900 only later, under Caesar's own dictatorship reforms) - imperiumromanum.pl, historyskills.com. The Optimates (spirit-led by Cato, defending traditional senatorial prerogatives against concentrations of individual power) were the real dominant bloc in the Senate itself during Caesar's consulship - this is the documented, historically important tension: Caesar held executive power as consul but never commanded a comfortable Senate majority, which is exactly why he leaned on popular assemblies and the Triumvirate's combined resources (money, soldiers, tribunician allies like Clodius) rather than Senate votes to get things done (medium.com/@JonathanLBell; britannica.com/topic/Optimates-and-Populares). The seed below reflects that real imbalance - Optimates as the largest organized bloc, Caesar's own populares support real but a minority within the Senate specifically, with a large uncommitted middle whose votes are genuinely contestable.",
+    "seed_data": {
+      "body_size": 600,
+      "factions": [
+        {"name": "Optimates", "seats": 210, "note": "The dominant organized bloc, spirit-led by Cato. Bibulus's obstruction as consul is optimate strategy in miniature - defending senatorial prerogative against Caesar's concentration of power."},
+        {"name": "Populares-aligned", "seats": 95, "note": "Senators genuinely sympathetic to Caesar's agenda or personally tied to him, Pompey, or Crassus - a real bloc, but a minority within the Senate itself even with Caesar in the consulship."},
+        {"name": "Equites-linked interests", "seats": 60, "note": "Senators whose loyalties run through business/tax-farming ties to Crassus's network more than pure ideology - swayable on issues touching the treasury or provincial contracts."},
+        {"name": "Uncommitted / independent", "seats": 235, "note": "The genuinely contestable middle - individual senators without firm bloc discipline, whose votes on any given measure depend on the specific stakes and who's lobbying hardest."}
+      ]
+    }
+  },
+
+  "first_triumvirate_ledger": {
+    "label": "The First Triumvirate — Private Ledger",
+    "render_primitive": "text",
+    "when_relevant": "Create this at or near campaign start - the Triumvirate is already an established (if still officially informal) fact per canon_timeline.md's locked events, and it is the single most load-bearing piece of context for this whole campaign. This is a running ledger of the pact's real terms and its health, not a chart - append a new entry for each real development rather than rewriting old ones, so it reads as an actual history of the alliance. Update whenever triumvirate_trust moves for a concrete on-screen reason. Expire only on the alliance's real historical end (Julia's death in 54 BCE, and Crassus's death the year after) - well beyond this pack's currently-scaffolded near-term timeline, but noted for a campaign that runs that long.",
+    "canon_triggers": ["Julia marries Pompey", "Vatinian law grants Gaul", "Conference of Luca", "Crossing of the Rubicon"],
+    "data_shape": {
+      "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label, body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
+    },
+    "sourcing_note": "Real terms, per livius.org and globalsecurity.org: formed 60 BCE as a private understanding with no legal standing, explicitly to let the three men bypass the Senate. Caesar's side of the bargain (once consul): push through Pompey's eastern settlement (his 'oriental acts', ratifying his arrangements after the Mithridatic Wars) and land for his veterans, and secure a financial arrangement favorable to Crassus's equites allies over tax-farming contracts. In exchange Caesar got Crassus's money (for bribing/organizing votes) and Pompey's veterans (political muscle in the forum, including real intimidation of opponents). The pact was cemented by Pompey's marriage to Caesar's daughter Julia - by all real accounts a genuinely happy match, not just a paper arrangement.",
+    "seed_data": {
+      "entries": [
+        {"heading": "The pact is struck", "tag": "60 BCE", "body": "A private understanding between Caesar, Pompey, and Crassus - no legal standing, explicitly meant to let the three bypass the Senate's resistance to each of their ambitions."},
+        {"heading": "The terms", "tag": "Ongoing", "body": "Caesar, once consul, is to secure ratification of Pompey's eastern settlement and land for his veterans, plus a favorable financial arrangement for Crassus's equites allies. In return, Caesar draws on Crassus's money and Pompey's veterans - real muscle in the Forum - to get his own legislation through over Bibulus's and the Senate's resistance."},
+        {"heading": "Sealed by marriage", "tag": "59 BCE", "body": "Pompey marries Caesar's daughter Julia, cementing the alliance personally as well as politically. By all real accounts, a genuinely close match - not merely a paper arrangement."}
+      ]
+    }
+  },
+
+  "gallic_legions_command": {
+    "label": "Caesar's Army in Gaul — Legion Command",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this only once the canon 'Caesar departs for Gaul' beat has actually fired - this campaign opens with Caesar still in Rome as consul, and this mechanic has no reason to exist before he actually takes up his proconsular command. Update it as legions are added, lost, or reassigned on-screen. Expire it only if Caesar's Gaul command itself ends (well beyond this pack's near-term scaffolded timeline).",
+    "canon_triggers": ["Vatinian law grants Gaul", "Caesar departs for Gaul"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Real order of battle at the campaign's opening (58 BCE), per livius.org and Caesar's own Commentarii: Caesar inherited four legions already stationed in Cisalpine Gaul (VII, VIII, IX, X) and raised two more (XI, XII) for the opening campaign against the Helvetii. Each legion was commanded by one of Caesar's own legates (senior officers he personally appointed) or his quaestor, under his overall command as proconsul - not a separate independent chain of command.",
+    "seed_data": {
+      "root": {
+        "name": "Caesar, Proconsul of Gaul",
+        "note": "Overall command. Legions are commanded individually by legates Caesar has personally appointed, or by his quaestor - not an independent chain of command.",
+        "children": [
+          {"name": "Legio VII", "note": "One of four veteran legions already stationed in Cisalpine Gaul when Caesar took up his command."},
+          {"name": "Legio VIII", "note": "One of four veteran legions already stationed in Cisalpine Gaul when Caesar took up his command."},
+          {"name": "Legio IX", "note": "One of four veteran legions already stationed in Cisalpine Gaul when Caesar took up his command."},
+          {"name": "Legio X", "note": "One of four veteran legions already stationed in Cisalpine Gaul. Would go on to become Caesar's most trusted and famous legion."},
+          {"name": "Legio XI", "note": "Newly raised for the opening campaign against the Helvetii."},
+          {"name": "Legio XII", "note": "Newly raised for the opening campaign against the Helvetii."}
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "_comment": "Curated 'mechanics' library for the britannia_876 setting - see mechanics.py and engine.py's propose_mechanic_update tool, and settings/petrograd_1917/mechanics_catalog.json for the original pilot this follows. Each entry is a TYPE the AI may instantiate (never invent a type_key not listed here). seed_data is a historically-researched starting point.",
+
+  "west_saxon_muster": {
+    "label": "The West Saxon Muster",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once the player is actively reasoning about Wessex's own military strength - plausible from very early on, given Guthrum's force is already active and threatening at campaign start (see canon_timeline.md's locked events). Update it as the muster grows, shrinks, or is reorganized on-screen - most dramatically around Athelney/Edington, where the real fyrd assembly (from Somerset, Wiltshire, and Hampshire) is exactly what wins the battle. Expire only if Wessex's whole military structure is fundamentally superseded (not expected within this pack's near-term timeline).",
+    "canon_triggers": ["Athelney retreat", "Battle of Edington"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Named ealdormen and the real muster pattern per worldhistory.org and royal.uk: Æthelnoth, ealdorman of Somerset, was Alfred's key ally through the Athelney period specifically. At Edington itself, Alfred called up the fyrdmen of Somerset, Wiltshire, and Hampshire, who assembled at Egbert's Stone over three days before the battle - the same three shires seeded below. A Mercian contingent under Æthelred (son of ealdorman Æthelred Mucel of Mercia) also joined the West Saxons, reflecting the real, if uneven, cross-kingdom cooperation this setting's factions.md already tracks via Mercia/Ceolwulf II.",
+    "seed_data": {
+      "root": {
+        "name": "Alfred, King of Wessex",
+        "note": "Overall command. The fyrd is a levy, not a standing army - its real strength depends on how many thegns and freemen the ealdormen can actually bring to a muster, which varies with the king's standing and the immediate threat.",
+        "children": [
+          {"name": "Royal Hearth-Troop", "note": "Alfred's own household warriors - the one force he can call on without waiting for a muster."},
+          {"name": "Somerset Fyrd", "note": "Under Ealdorman Æthelnoth - Alfred's most immediate and reliable ally, especially through the Athelney period."},
+          {"name": "Wiltshire Fyrd", "note": "One of the three shires that mustered at Egbert's Stone ahead of Edington."},
+          {"name": "Hampshire Fyrd", "note": "One of the three shires that mustered at Egbert's Stone ahead of Edington."},
+          {"name": "Mercian Contingent", "note": "Under Æthelred, son of ealdorman Æthelred Mucel of Mercia - real but not guaranteed cross-kingdom support, tied to saxon_unity."}
+        ]
+      }
+    }
+  },
+
+  "guthrums_host": {
+    "label": "Guthrum's Host — The Viking Threat",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once the Viking threat becomes something the player is actively assessing or planning against - true from campaign start, since Guthrum's force having taken Wareham and Exeter is already locked history. Update it as the host's strength, position, or internal leadership changes on-screen (a leader's death, a force splitting off, reinforcement from the wider Danelaw). Expire it once the threat this specific host represents is actually resolved - historically, following the Treaty of Wedmore and Guthrum's baptism, not merely after a single battle.",
+    "canon_triggers": ["Athelney retreat", "Battle of Edington", "Treaty of Wedmore"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Real leadership and force estimate per en.wikipedia.org/wiki/Guthrum and historica.fandom.com: the southern division of the wider Great Heathen Army was commanded by three kings - Oscetel, Anwend, and Guthrum, with Guthrum the foremost and most forceful of the three. One source estimates the force's strength at around 5,000 at the Battle of Chippenham (778) - flagged here as an approximate figure, not a precise muster roll, since medieval chronicle numbers are notoriously unreliable. Halfdan Ragnarsson's wider Great Army in the north (per this setting's own factions.md) is real background pressure beyond Guthrum's immediate force, not part of this specific host.",
+    "seed_data": {
+      "root": {
+        "name": "Guthrum's Host",
+        "note": "Approximately 5,000 fighters by one chronicle-derived estimate (treat as approximate, not precise) - currently holding Chippenham after the Twelfth Night surprise attack.",
+        "children": [
+          {"name": "Guthrum", "note": "The foremost and most forceful of the three southern kings - the real decision-maker."},
+          {"name": "Oscetel", "note": "Co-king of the southern division alongside Guthrum and Anwend."},
+          {"name": "Anwend", "note": "Co-king of the southern division alongside Guthrum and Oscetel."},
+          {"name": "The Wider Danelaw (background)", "note": "Halfdan Ragnarsson's Great Army power in the north - mostly offstage pressure, not directly under Guthrum's command, but a plausible source of reinforcement or escalation."}
+        ]
+      }
+    }
+  },
+
+  "alfred_guthrum_negotiations": {
+    "label": "Alfred and Guthrum — Negotiations Ledger",
+    "render_primitive": "text",
+    "when_relevant": "Create this once real negotiation (not just open war) with Guthrum's side becomes a live thread - the Wareham danegeld arrangement is already locked history at campaign start, so this can exist from turn one if the GM wants to establish that context, or be created the first time the player actually engages with negotiation directly. This is a running ledger, not a chart - append new entries as talks develop rather than rewriting old ones. Update it as arrangements are made, broken, or renegotiated. Once a real settlement is reached, update it one final time with the actual terms rather than creating a new instance. Expire only if the settlement is later fully abrogated by renewed general war (not expected within this pack's near-term scaffolded timeline).",
+    "canon_triggers": ["Treaty of Wedmore", "Guthrum baptized as Æthelstan", "Alfred and Guthrum treaty lines drawn"],
+    "data_shape": {
+      "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label, body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
+    },
+    "sourcing_note": "Real history per thehistoryofengland.co.uk and en.wikipedia.org/wiki/Treaty_of_Wedmore: at Wareham (876), Guthrum agreed to withdraw in exchange for a substantial danegeld payment - an arrangement that didn't hold (he slipped the besieging fleet instead). The eventual real peace, following Alfred's victory at Edington (878), required Guthrum's baptism (Alfred stood as his godfather, at Aller near Athelney, with the chrism-loosing ceremony at Wedmore itself) under the baptismal name Æthelstan, and set a real boundary line (Thames, then the Lea, to Bedford, then the Ouse to Watling Street) that in effect defined the Danelaw. Only the Wareham entry belongs in the initial seed; the Wedmore terms belong in a later update once that canon beat actually fires, not invented ahead of time.",
+    "seed_data": {
+      "entries": [
+        {"heading": "Danegeld at Wareham", "tag": "876", "body": "Following peace talks held in Wareham's own church, Guthrum agreed to withdraw from Wessex in exchange for a substantial tribute payment. The arrangement did not hold - Guthrum slipped past the besieging fleet and took Exeter instead."}
+      ]
+    }
+  }
+}

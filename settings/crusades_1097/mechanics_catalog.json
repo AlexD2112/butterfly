@@ -1,0 +1,66 @@
+{
+  "_comment": "Curated 'mechanics' library for the crusades_1097 setting - see mechanics.py and engine.py's propose_mechanic_update tool, and settings/petrograd_1917/mechanics_catalog.json for the original pilot this follows. Each entry is a TYPE the AI may instantiate (never invent a type_key not listed here). seed_data is a historically-researched starting point.",
+
+  "crusader_princes_council": {
+    "label": "The Crusader Princes' Council — Relative Standing",
+    "render_primitive": "seat_chart",
+    "when_relevant": "Create this once the council's own internal politics become something the player is actively navigating - plausible from campaign start, since the council already exists and Bohemond's standing within it is explicitly load-bearing for this whole setting (crusader_leaders_regard). IMPORTANT: this body has no formal seats or votes - factions.md is explicit that decisions happen through 'shifting coalitions, not a clean chain of command'. The seats below represent each prince's rough relative INFLUENCE/backing within the council (driven mainly by the size and quality of the forces they personally command), not a literal parliamentary body - make this framing clear if it ever surfaces in narration. Update it as a prince's standing shifts on-screen (a battlefield success, a public dispute, forces lost or reinforced). Expire only if the council itself dissolves as the expedition's leadership (not expected within this pack's near-term timeline).",
+    "canon_triggers": ["Battle of Dorylaeum", "Siege of Antioch begins", "Bohemond claims Antioch"],
+    "data_shape": {
+      "body_size": "integer - total influence points, illustrative only, not a real seat count",
+      "factions": "array of {name, seats, note} - here 'seats' means relative influence/backing, not literal votes"
+    },
+    "sourcing_note": "Real leaders and rough relative force sizes per thecollector.com and en.wikipedia.org/wiki/First_Crusade: Raymond IV of Toulouse led the southern French contingent (commonly reckoned the single largest, alongside Adhemar's papal-sanctioned churchmen); Godfrey of Bouillon and his brother Baldwin of Boulogne led a large Lotharingian/German force; Bohemond of Taranto and his nephew Tancred led a smaller but famously disciplined, war-tested Italo-Norman contingent (veterans of real campaigns against the Byzantines themselves); Robert Curthose of Normandy, Robert II of Flanders, Stephen of Blois, and Hugh of Vermandois led smaller northern French/Flemish contingents. Adhemar of Le Puy, the papal legate, held influence well beyond his own modest personal force, as the expedition's spiritual authority. Chronicler troop totals for the whole expedition vary wildly (100,000 to 600,000 by different medieval chroniclers; modern historians estimate roughly 7,000 knights and 60,000 infantry total) - the relative proportions below are a reasoned illustrative split, not a precise census.",
+    "seed_data": {
+      "body_size": 100,
+      "factions": [
+        {"name": "Raymond of Toulouse & the Provençal host", "seats": 24, "note": "Commonly reckoned the single largest contingent - Raymond is also among the most senior and wealthiest of the princes."},
+        {"name": "Godfrey of Bouillon & Baldwin (Lotharingia/Germany)", "seats": 22, "note": "A large, well-organized force from Lower Lorraine - Godfrey is broadly respected as level-headed among the princes."},
+        {"name": "Bohemond of Taranto & Tancred (Italo-Norman)", "seats": 16, "note": "Smaller than Raymond's or Godfrey's numbers, but famously disciplined and war-tested - veterans of real campaigns against Byzantium itself. Bohemond's own ambitions (see byzantine_relations_ledger) make him the most independent-minded of the princes."},
+        {"name": "Robert of Normandy & Robert of Flanders", "seats": 15, "note": "Solid northern French/Flemish contingents, generally aligned with each other."},
+        {"name": "Stephen of Blois & Hugh of Vermandois", "seats": 9, "note": "Smaller prestige contingents - Hugh in particular trades on being the French king's brother more than on raw military weight."},
+        {"name": "Adhemar of Le Puy (the papal legate)", "seats": 14, "note": "Modest personal force, but outsized influence as the expedition's spiritual authority and the pope's own representative - often the actual tie-breaker between rival princes."}
+      ]
+    }
+  },
+
+  "byzantine_relations_ledger": {
+    "label": "The Oath to Alexios — Byzantine Relations Ledger",
+    "render_primitive": "text",
+    "when_relevant": "Create this at or near campaign start - the oath to Alexios is already a locked, sworn fact per canon_timeline.md (see the oath_to_alexios commitment), and it is the single most load-bearing piece of context for Bohemond's own arc specifically. This is a running ledger, not a chart - append a new entry each time the oath is tested, honored, or strained, rather than rewriting earlier entries. Update it as Byzantine relations shift on-screen. Expire only if the relationship is fully and finally severed (e.g. a clean, irreversible break with Byzantium) - a live possibility given this setting's central tension, but not something to assume.",
+    "canon_triggers": ["Nicaea falls", "Bohemond claims Antioch"],
+    "data_shape": {
+      "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label, body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
+    },
+    "sourcing_note": "Real terms and history per courses.lumenlearning.com and en.wikipedia.org/wiki/Siege_of_Nicaea: in exchange for Byzantine food, supplies, and guides through Anatolia, Alexios I required the crusade's leaders to swear fealty and to promise that any territory recovered from the Turks that had formerly been Byzantine would be returned to the empire. Godfrey himself resisted swearing for months (citing prior loyalty to the Holy Roman Emperor) before finally taking the oath on 2 April 1097. The crusaders' first real test of the oath came almost immediately: Nicaea fell to them on 18 June 1097, and - notably, and to the rank and file's real resentment, since they'd expected to sack it themselves - the city was handed over to Byzantine forces rather than plundered, honoring the oath's letter even at real cost to morale.",
+    "seed_data": {
+      "entries": [
+        {"heading": "The oath is sworn", "tag": "2 April 1097", "body": "After months of resistance (Godfrey himself held out longest, citing prior loyalty to the Holy Roman Emperor), the crusade's leaders swear fealty to Alexios I and promise to return any recovered former Byzantine territory to the empire, in exchange for supplies, guides, and support through Anatolia."},
+        {"heading": "Nicaea returned, not sacked", "tag": "18 June 1097", "body": "Nicaea falls to the crusaders after a hard siege - but is handed over to Byzantine forces rather than plundered by the crusaders themselves, honoring the oath's letter. A real point of resentment among the rank and file, who had expected to sack it themselves."}
+      ]
+    }
+  },
+
+  "crusader_host_at_antioch": {
+    "label": "The Crusader Host — Siege Deployment",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this only once the canon 'Siege of Antioch begins' beat has actually fired - this campaign opens well before Antioch, and this mechanic has no reason to exist earlier. It represents the actual military deployment around the siege (who is blockading which gate, who commands the field army against relief attempts), which is a genuinely different picture from crusader_princes_council's standing/influence chart - both can coexist once the siege begins. Update it as the siege's specific deployments shift. Expire once the siege itself resolves (Antioch falls, and Kerbogha's relief army is in turn defeated) - the post-Antioch military picture (garrisoning the city, the march onward) would be a new mechanic instance if the campaign continues that far, not a continuation of this one.",
+    "canon_triggers": ["Siege of Antioch begins", "Antioch falls to the crusaders", "Kerbogha's relief army defeated"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "The long, grueling Siege of Antioch (beginning October 1097) is well documented as a multi-sided blockade effort by the assembled princes, each responsible for their own sector outside the city's walls, with Antioch's real fall (per canon_timeline.md) coming through betrayal/infiltration rather than a direct assault - and immediately followed by the crusaders themselves being besieged in turn by Kerbogha's relief force before defeating it. The seed below reflects the council's own real division of labor at a siege (each prince's contingent responsible for its own sector) rather than inventing a formal unified command that didn't really exist.",
+    "seed_data": {
+      "root": {
+        "name": "The Crusader Host, besieging Antioch",
+        "note": "No single unified commander - each prince's contingent is responsible for its own sector of the blockade, coordinated (loosely) through the princes' council.",
+        "children": [
+          {"name": "Raymond of Toulouse's sector", "note": "Provençal contingent, holding one approach to the city."},
+          {"name": "Godfrey and Baldwin's sector", "note": "Lotharingian/German contingent, holding another approach."},
+          {"name": "Bohemond and Tancred's sector", "note": "Italo-Norman contingent - Bohemond's eventual claim to the city (see byzantine_relations_ledger) has real roots in the leading role his forces play at this siege specifically."},
+          {"name": "Northern French/Flemish sector", "note": "Robert of Normandy, Robert of Flanders, and the smaller contingents, holding the remaining approaches."}
+        ]
+      }
+    }
+  }
+}

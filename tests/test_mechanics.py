@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import engine
 import mechanics
@@ -31,11 +32,61 @@ class TestLoadCatalog(unittest.TestCase):
             self.assertIn("body", item)
 
     def test_setting_without_a_catalog_returns_none(self):
-        self.assertIsNone(mechanics.load_catalog("britannia_876"))
+        # All four real settings now have a catalog (see the per-setting tests below) - this exercises
+        # the "no catalog file at all" path with a setting key that plain doesn't exist, since
+        # load_catalog only ever checks for the file's presence, not setting-registry membership.
+        self.assertIsNone(mechanics.load_catalog("nonexistent_setting_xyz"))
 
     def test_catalog_comment_key_is_stripped(self):
         catalog = mechanics.load_catalog("petrograd_1917")
         self.assertNotIn("_comment", catalog)
+
+    ALL_SETTINGS_WITH_CATALOGS = ["petrograd_1917", "britannia_876", "rome_59_bce", "crusades_1097"]
+
+    def test_every_setting_catalog_is_well_formed(self):
+        """One general check across all four settings, rather than duplicating the same assertions
+        per setting - each entry must be internally consistent regardless of which setting it's in."""
+        for setting_key in self.ALL_SETTINGS_WITH_CATALOGS:
+            catalog = mechanics.load_catalog(setting_key)
+            self.assertIsNotNone(catalog, f"{setting_key} should have a catalog")
+            self.assertGreaterEqual(len(catalog), 3, f"{setting_key} should have at least 3 pilot types")
+            for type_key, entry in catalog.items():
+                with self.subTest(setting=setting_key, type_key=type_key):
+                    self.assertIn(entry["render_primitive"], {"seat_chart", "org_tree", "text"})
+                    self.assertIn("seed_data", entry)
+                    self.assertIn("data_shape", entry)
+                    self.assertIn("when_relevant", entry)
+                    self.assertIn("sourcing_note", entry)
+                    self.assertTrue(entry.get("canon_triggers"), "should list at least one canon trigger")
+                    if entry["render_primitive"] == "seat_chart":
+                        seed = entry["seed_data"]
+                        self.assertEqual(
+                            sum(f["seats"] for f in seed["factions"]), seed["body_size"],
+                            "seat_chart seed factions should sum exactly to body_size",
+                        )
+                    elif entry["render_primitive"] == "org_tree":
+                        self.assertIn("root", entry["seed_data"])
+                        self.assertIn("name", entry["seed_data"]["root"])
+                    elif entry["render_primitive"] == "text":
+                        entries = entry["seed_data"]["entries"]
+                        self.assertGreater(len(entries), 0)
+                        for item in entries:
+                            self.assertIn("heading", item)
+                            self.assertIn("body", item)
+
+    def test_britannia_rome_and_crusades_have_the_expected_pilot_types(self):
+        self.assertEqual(
+            set(mechanics.load_catalog("britannia_876").keys()),
+            {"west_saxon_muster", "guthrums_host", "alfred_guthrum_negotiations"},
+        )
+        self.assertEqual(
+            set(mechanics.load_catalog("rome_59_bce").keys()),
+            {"roman_senate_composition", "first_triumvirate_ledger", "gallic_legions_command"},
+        )
+        self.assertEqual(
+            set(mechanics.load_catalog("crusades_1097").keys()),
+            {"crusader_princes_council", "byzantine_relations_ledger", "crusader_host_at_antioch"},
+        )
 
 
 class TestApplyMechanicUpdate(unittest.TestCase):
@@ -226,13 +277,53 @@ class TestEngineIntegration(unittest.TestCase):
         self.assertIn("propose_mechanic_update", tool_names)
 
     def test_mechanics_tool_absent_for_a_setting_without_a_catalog(self):
+        # All four real settings now have a catalog (that's the point of this whole test file), so
+        # there's no real setting left to exercise the "missing catalog" path with - a genuinely
+        # nonexistent setting_key fails earlier in run_turn (resource_schema.json etc. don't exist
+        # either), which would test setting-existence, not catalog-absence specifically. Mocking
+        # load_catalog on a real setting isolates the one thing this test actually cares about.
         provider = FakeProvider([providers.TurnResult(text_parts=["Hi."], tool_calls=[], usage=make_usage())])
-        engine.run_turn(
-            provider, "gpt-5.6-luna", {"campaign_log_summary": [], "turn_number": 1}, "britannia_876",
-            "monarch", [], "do something",
-        )
+        with patch("mechanics.load_catalog", return_value=None):
+            engine.run_turn(
+                provider, "gpt-5.6-luna", {"campaign_log_summary": [], "turn_number": 1}, "petrograd_1917",
+                "red_admiral", [], "do something",
+            )
         tool_names = {t["name"] for t in provider.tool_specs_seen[0]}
         self.assertNotIn("propose_mechanic_update", tool_names)
+
+    def test_mechanics_tool_offered_for_britannia_rome_and_crusades(self):
+        for setting_key, system_key in [("britannia_876", "monarch"), ("rome_59_bce", "apollo"), ("crusades_1097", "monarch")]:
+            with self.subTest(setting=setting_key):
+                provider = FakeProvider([providers.TurnResult(text_parts=["Hi."], tool_calls=[], usage=make_usage())])
+                engine.run_turn(
+                    provider, "gpt-5.6-luna", {"campaign_log_summary": [], "turn_number": 1}, setting_key,
+                    system_key, [], "do something",
+                )
+                tool_names = {t["name"] for t in provider.tool_specs_seen[0]}
+                self.assertIn("propose_mechanic_update", tool_names)
+
+    def test_ai_creating_a_mechanic_end_to_end_for_rome(self):
+        create_input = {
+            "action": "create", "type_key": "roman_senate_composition", "instance_id": "senate",
+            "title": "The Roman Senate — Factional Balance", "data": {"body_size": 600, "factions": []},
+            "review_after_turns": 5, "reasoning": "Bibulus's obstruction just became a live concern.",
+        }
+        provider = FakeProvider(
+            [
+                providers.TurnResult(
+                    text_parts=["The Senate murmurs."],
+                    tool_calls=[{"id": "1", "name": "propose_mechanic_update", "input": create_input}],
+                    usage=make_usage(),
+                ),
+                providers.TurnResult(text_parts=["Done."], tool_calls=[], usage=make_usage()),
+            ]
+        )
+        state = {"campaign_log_summary": [], "turn_number": 1}
+        engine.run_turn(
+            provider, "gpt-5.6-luna", state, "rome_59_bce", "apollo", [], "I address the Senate",
+        )
+        self.assertIn("senate", state["mechanics"])
+        self.assertEqual(state["mechanics"]["senate"]["render_primitive"], "seat_chart")
 
     def test_ai_creating_a_mechanic_end_to_end(self):
         create_input = {
