@@ -227,6 +227,51 @@
   #sidebar details > summary:hover { color: var(--text); }
   #sidebar details > .section-body { padding-top: 6px; }
   #sidebar-header { padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+
+  /* ---------- mechanics panel: a second slide-out, same pattern as the character sheet above
+     (deliberately duplicated rather than sharing a class - two similar 10-line blocks beats a shared
+     abstraction for just two panels). See mechanics.py for what populates this. ---------- */
+  #mech-panel-backdrop { position: fixed; inset: 0; background: rgba(10, 11, 14, 0.55);
+    opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 40; }
+  #mech-panel-backdrop.open { opacity: 1; pointer-events: auto; }
+  #mech-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 88vw;
+    background: var(--panel); border-left: 1px solid var(--border);
+    padding: 18px 18px 32px; overflow-y: auto; font-family: var(--font-ui); font-size: 12.5px;
+    transform: translateX(100%); transition: transform .22s ease; z-index: 50;
+    box-shadow: -8px 0 24px rgba(0,0,0,0.3); }
+  #mech-panel.open { transform: translateX(0); }
+  #mech-panel-close { position: sticky; top: 0; float: right; margin: -6px -6px 0 0; background: none;
+    border: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 6px; z-index: 1; }
+  #mech-panel-close:hover { color: var(--accent-2); }
+  .mech-empty { color: var(--muted); padding: 12px 0; }
+  .mech-card { margin: 0 0 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .mech-card:last-child { border-bottom: none; }
+  .mech-card-title { font-family: var(--font-display); font-weight: 600; font-size: 14.5px; margin-bottom: 2px; }
+  .mech-card-meta { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .mech-card-meta.due { color: var(--accent-2); }
+  /* seat_chart primitive: one horizontal proportional bar (seats as a stacked bar) plus a legend -
+     conveys "share of a fixed body" at a glance without needing a real SVG pie chart. */
+  .seat-bar { display: flex; height: 22px; border-radius: 4px; overflow: hidden; margin-bottom: 8px;
+    border: 1px solid var(--border); }
+  .seat-bar-seg { height: 100%; }
+  .seat-legend-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; gap: 8px; }
+  .seat-legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .seat-legend-name { flex: 1; }
+  .seat-legend-count { color: var(--muted); white-space: nowrap; }
+  .seat-legend-note { color: var(--muted); font-size: 11px; padding: 0 0 6px 18px; }
+  /* org_tree primitive: nested indented list - a real org-chart graphic would need real layout work
+     (SVG connectors, etc.) this app's single-file vanilla-JS frontend doesn't otherwise do anywhere;
+     an indented tree conveys the same hierarchy information without that machinery. */
+  .org-node { margin: 2px 0 2px 14px; padding-left: 10px; border-left: 2px solid var(--border); }
+  .org-node.org-root { margin-left: 0; padding-left: 0; border-left: none; }
+  .org-node-name { font-weight: 600; }
+  .org-node-note { color: var(--muted); font-size: 11px; margin: 1px 0 2px; }
+  /* text primitive: a running ledger - each entry a heading/tag/body block, oldest first. */
+  .text-entry { margin: 0 0 12px; padding-left: 10px; border-left: 2px solid var(--border); }
+  .text-entry-heading { font-weight: 600; }
+  .text-entry-tag { color: var(--accent-2); font-weight: 400; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .text-entry-body { color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.5; }
+
   .attr-row, .res-row, .rel-row, .skill-row, .enmity-row { display: flex; justify-content: space-between; margin: 4px 0; }
   .bar-wrap { background: var(--panel-2); border-radius: 3px; height: 6px; margin-top: 2px; overflow: hidden; }
   .bar-fill { height: 100%; background: var(--accent-2); }
@@ -606,8 +651,9 @@
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
-      <span title="Every turn is reviewed by a panel of judges - see Mechanics below for what they found.">Council Mode: always on</span>
+      <span title="Every turn is reviewed by a panel of judges - see Turn Log below for what they found.">Council Mode: always on</span>
       <button id="sheet-toggle-btn" title="Character sheet">Character Sheet <span class="dot"></span></button>
+      <button id="mech-toggle-btn" title="Mechanics">Mechanics</button>
     </div>
   </header>
   <div id="log"></div>
@@ -681,6 +727,14 @@
 <aside id="sidebar">
   <button id="sidebar-close" title="Close (Esc)">&times;</button>
   <div id="sidebar-content"></div>
+</aside>
+
+<!-- Mechanics panel (2026-09-09) - a second slide-out, same reasoning as the character sheet's own
+     comment above (must live outside #app/#mp-app for the same display:none-ancestor reason). -->
+<div id="mech-panel-backdrop"></div>
+<aside id="mech-panel">
+  <button id="mech-panel-close" title="Close (Esc)">&times;</button>
+  <div id="mech-panel-content"></div>
 </aside>
 
 <div id="status"></div>
@@ -1145,6 +1199,10 @@ const sidebarEl = document.getElementById('sidebar-content');
 const sidebarPanel = document.getElementById('sidebar');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 const sheetToggleBtn = document.getElementById('sheet-toggle-btn');
+const mechPanelEl = document.getElementById('mech-panel-content');
+const mechPanel = document.getElementById('mech-panel');
+const mechPanelBackdrop = document.getElementById('mech-panel-backdrop');
+const mechToggleBtn = document.getElementById('mech-toggle-btn');
 const modelSelect = document.getElementById('model-select');
 const inputBox = document.getElementById('inputbox');
 const sendBtn = document.getElementById('send-btn');
@@ -1224,6 +1282,104 @@ sidebarBackdrop.addEventListener('click', closeSheet);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && sidebarPanel.classList.contains('open')) closeSheet();
 });
+
+// ---------------- mechanics slide-out panel ----------------
+function openMechPanel() {
+  mechPanel.classList.add('open');
+  mechPanelBackdrop.classList.add('open');
+}
+function closeMechPanel() {
+  mechPanel.classList.remove('open');
+  mechPanelBackdrop.classList.remove('open');
+}
+mechToggleBtn.addEventListener('click', () => {
+  mechPanel.classList.contains('open') ? closeMechPanel() : openMechPanel();
+});
+document.getElementById('mech-panel-close').addEventListener('click', closeMechPanel);
+mechPanelBackdrop.addEventListener('click', closeMechPanel);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && mechPanel.classList.contains('open')) closeMechPanel();
+});
+
+// seat_chart primitive - a proportional stacked bar plus a legend. Colors are generated
+// deterministically from each faction's name (not stored data) so the same faction keeps the same
+// color across re-renders/updates without needing a color field in every catalog entry.
+const SEAT_COLORS = ['#8a6d3b', '#4a7c8c', '#a8493f', '#5c7a4a', '#7d5a8c', '#b08a3e', '#3f6b6e', '#8c4a6d'];
+function colorForName(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return SEAT_COLORS[hash % SEAT_COLORS.length];
+}
+function renderSeatChart(data) {
+  const factions = data.factions || [];
+  const total = data.body_size || factions.reduce((s, f) => s + (f.seats || 0), 0) || 1;
+  const bar = factions.map(f => {
+    const color = colorForName(f.name);
+    const pct = Math.max(0, (f.seats || 0) / total * 100);
+    return `<div class="seat-bar-seg" style="width:${pct}%;background:${color}" title="${escapeHtml(f.name)}: ${f.seats}/${total}"></div>`;
+  }).join('');
+  const legend = factions.map(f => `
+    <div class="seat-legend-row">
+      <span class="seat-legend-swatch" style="background:${colorForName(f.name)}"></span>
+      <span class="seat-legend-name">${escapeHtml(f.name)}</span>
+      <span class="seat-legend-count">${f.seats} / ${total}</span>
+    </div>
+    ${f.note ? `<div class="seat-legend-note">${escapeHtml(f.note)}</div>` : ''}
+  `).join('');
+  return `<div class="seat-bar">${bar}</div>${legend}`;
+}
+
+// org_tree primitive - an indented, bordered nested list. See the CSS comment above .org-node for
+// why this (not a real graphical chart) is what this single-file vanilla-JS frontend draws.
+function renderOrgNode(node, isRoot) {
+  const children = (node.children || []).map(c => renderOrgNode(c, false)).join('');
+  return `<div class="org-node${isRoot ? ' org-root' : ''}">
+    <div class="org-node-name">${escapeHtml(node.name || '')}</div>
+    ${node.note ? `<div class="org-node-note">${escapeHtml(node.note)}</div>` : ''}
+    ${children}
+  </div>`;
+}
+function renderOrgTree(data) {
+  return data.root ? renderOrgNode(data.root, true) : '<div class="mech-empty">No structure recorded.</div>';
+}
+
+// text primitive (2026-09-09) - a running ledger/notes list, for mechanics that are naturally
+// textual (a negotiation's history, a list of standing agreements) rather than chart-shaped. Entries
+// render oldest-first, same order the AI is asked to append them in (see mechanics_catalog.json's
+// diplomatic_position entry) - this is a history, not something that gets reordered on read.
+function renderTextMechanic(data) {
+  const entries = data.entries || [];
+  if (entries.length === 0) return '<div class="mech-empty">No entries yet.</div>';
+  return entries.map(e => `
+    <div class="text-entry">
+      <div class="text-entry-heading">${escapeHtml(e.heading || '')}${e.tag ? ` <span class="text-entry-tag">${escapeHtml(e.tag)}</span>` : ''}</div>
+      <div class="text-entry-body">${escapeHtml(e.body || '')}</div>
+    </div>
+  `).join('');
+}
+
+function renderMechPanel(state) {
+  const mechanicsMap = state.mechanics || {};
+  const entries = Object.entries(mechanicsMap);
+  if (entries.length === 0) {
+    mechPanelEl.innerHTML = '<div id="mech-panel-header"><h3 style="margin:0">Mechanics</h3></div><div class="mech-empty">No mechanics active yet. The game master introduces these when they become relevant to the story - a parliament seat chart, a military command structure, and so on.</div>';
+    return;
+  }
+  const turnNumber = state.turn_number || 0;
+  const cards = entries.map(([instanceId, m]) => {
+    const due = (m.next_review_turn || 0) <= turnNumber;
+    const body = m.render_primitive === 'seat_chart' ? renderSeatChart(m.data || {})
+      : m.render_primitive === 'org_tree' ? renderOrgTree(m.data || {})
+      : m.render_primitive === 'text' ? renderTextMechanic(m.data || {})
+      : `<div class="mech-empty">Unrecognized render type: ${escapeHtml(m.render_primitive || '')}</div>`;
+    return `<div class="mech-card">
+      <div class="mech-card-title">${escapeHtml(m.title || instanceId)}</div>
+      <div class="mech-card-meta${due ? ' due' : ''}">Updated turn ${m.updated_turn ?? '?'}${due ? ' · due for review' : ''}</div>
+      ${body}
+    </div>`;
+  }).join('');
+  mechPanelEl.innerHTML = `<div id="mech-panel-header"><h3 style="margin:0">Mechanics</h3></div>${cards}`;
+}
 
 function setStatus(text) { statusEl.textContent = text; }
 function attrMod(score) { return Math.floor((score - 10) / 2); }
@@ -1556,7 +1712,11 @@ function renderMechanics(debugEvents) {
     }
     return '';
   }).join('');
-  return `<details class="mechanics"><summary>Mechanics (${debugEvents.length})</summary>${lines}</details>`;
+  // Labeled "Turn Log" (not "Mechanics") specifically to not collide with the unrelated Mechanics
+  // panel (2026-09-09, see #mech-panel below) - that's a persistent library of structured trackers
+  // (parliament seat charts, org charts), this is per-turn dice/state-change debug detail. Same
+  // underlying CSS class name is fine (harmless, not user-visible) - only the label text mattered.
+  return `<details class="mechanics"><summary>Turn Log (${debugEvents.length})</summary>${lines}</details>`;
 }
 
 function appendTurn(userText, narration, debugEvents) {
@@ -1617,6 +1777,7 @@ async function loadCharacterState(isNew) {
   const data = await res.json();
   SHEET_CHARACTER_ID = CURRENT_CHARACTER_ID;
   renderSidebar(data.state);
+  renderMechPanel(data.state);
   if (isNew) {
     const openingRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/opening_scene`);
     const openingData = await openingRes.json();
@@ -1671,6 +1832,7 @@ async function sendTurn() {
     } else {
       appendTurn(text, data.narration, data.debug_events);
       renderSidebar(data.state);
+      renderMechPanel(data.state);
       renderBudget(data.budget);
       setStatus('');
       // Nudge the player toward the sheet if it's closed - the turn may have changed something

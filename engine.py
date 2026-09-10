@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 
 import council
+import mechanics
 from systems._shared import core as shared_core
 
 ROOT = Path(__file__).parent
@@ -177,6 +178,30 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None):
     resource_schema = load_json(setting_key, "resource_schema.json")
     digest = build_state_digest(state)
 
+    # Mechanics (2026-09-09, see mechanics.py) - only sections at all if this setting has a curated
+    # catalog; most settings won't yet (this shipped Petrograd-first - see NOTES.md). Kept as two
+    # separate blocks (catalog vs currently-active) rather than one, since the catalog is static per
+    # setting but the active list changes every turn - separating them makes it obvious to the model
+    # which mechanics already exist (touch via 'update'/'expire') vs which are just available types
+    # (touch via 'create').
+    mechanics_catalog = mechanics.load_catalog(setting_key)
+    mechanics_section = ""
+    if mechanics_catalog:
+        active = mechanics.active_mechanics_prompt_section(state)
+        mechanics_section = f"""
+
+# AVAILABLE MECHANIC TYPES (curated - never use a type_key not listed here)
+{mechanics.catalog_prompt_section(mechanics_catalog)}
+
+# CURRENTLY ACTIVE MECHANICS FOR THIS CHARACTER
+{active if active else "(none yet)"}
+
+Mechanics are structured trackers shown to the player outside the narration (e.g. a parliament seat
+chart, a military command tree) - use propose_mechanic_update to create one from the catalog above
+when it becomes contextually relevant, update one when its underlying facts have changed on-screen,
+or expire one that's no longer relevant. Don't create one just because it's available - only when the
+fiction actually calls for it. Address anything flagged DUE FOR REVIEW above before ignoring it again."""
+
     scene_section = f"""
 
 # OTHER CHARACTERS PRESENT - RECENT ACTIVITY IN THIS SHARED SCENE (most recent last)
@@ -211,6 +236,7 @@ the system's curated catalogs (by id) - never invent one.
 
 # CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
 {json.dumps(digest, indent=2)}
+{mechanics_section}
 {scene_section}
 
 Narrate in second person, present tense, evocative but not overwrought. Keep responses to a few
@@ -246,13 +272,15 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     """
     system = get_system(system_key)
     resource_schema = load_json(setting_key, "resource_schema.json")
+    mechanics_catalog = mechanics.load_catalog(setting_key)
+    tool_specs = system.TOOL_SPECS + ([mechanics.tool_spec()] if mechanics_catalog else [])
     provider.append_user_message(conversation, user_input)
     system_prompt = build_system_prompt(state, setting_key, system_key, extra_context=extra_context)
 
     text_parts = []
     debug_events = []
     while True:
-        turn_result = provider.call(model, system_prompt, system.TOOL_SPECS, conversation)
+        turn_result = provider.call(model, system_prompt, tool_specs, conversation)
         provider.append_assistant_turn(conversation, turn_result)
         text_parts.extend(turn_result.text_parts)
 
@@ -295,6 +323,12 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
                 changes = system.apply_level_up(state, tc["input"])
                 debug_events.append(
                     {"type": "level_up", "reasoning": tc["input"].get("reasoning", ""), "changes": changes}
+                )
+                results.append({"id": tc["id"], "content": json.dumps({"changes": changes})})
+            elif tc["name"] == "propose_mechanic_update":
+                changes = mechanics.apply_mechanic_update(state, mechanics_catalog, tc["input"])
+                debug_events.append(
+                    {"type": "mechanic_update", "reasoning": tc["input"].get("reasoning", ""), "changes": changes}
                 )
                 results.append({"id": tc["id"], "content": json.dumps({"changes": changes})})
             else:

@@ -1,0 +1,124 @@
+{
+  "_comment": "Curated 'mechanics' library for the petrograd_1917 setting - see mechanics.py and engine.py's propose_mechanic_update tool. Each entry is a TYPE the AI may instantiate (never invent a type_key not listed here). seed_data is a historically-researched starting point the AI should use for the instance's initial `data` unless the campaign's own state already reflects divergence from history by the time it's created. Sourcing/precision notes are inline per entry - some figures are primary-source-anchored, some are reasoned interpolations between two anchored dates (marked explicitly); none are invented from nothing. canon_triggers (2026-09-09) names the canon_timeline.md beat(s) that make each type newly relevant or due for reconsideration - a structured hint alongside the freeform when_relevant text, not a replacement for it; see mechanics.catalog_prompt_section.",
+
+  "petrograd_soviet_composition": {
+    "label": "Petrograd Soviet — Executive Committee (Ispolkom)",
+    "render_primitive": "seat_chart",
+    "when_relevant": "Create this once the player has real standing/visibility into the Petrograd Soviet's own internal politics - which is true from turn one of this campaign (the opening scene begins immediately after Trotsky's election as Chairman). Update it when a real shift in the Ispolkom's factional balance has plausibly occurred on-screen (a purge, a resignation wave, a faction splitting, a fresh election). Expire it if the Ispolkom itself is superseded or dissolved as a body (e.g. absorbed into a later Soviet government organ) - do not just let it go stale.",
+    "canon_triggers": ["Trotsky elected Chairman of the Petrograd Soviet (campaign start)", "The Central Committee vote for insurrection", "The October Revolution / storming of key institutions"],
+    "data_shape": {
+      "body_size": "integer - total seats",
+      "factions": "array of {name, seats, note} - note should be a short in-fiction gloss (leaning, mood, key figures), not just a label"
+    },
+    "sourcing_note": "Primary-source anchors: the Ispolkom had 72 members in May 1917 (23 Menshevik, 22 SR, 12 Bolshevik, 15 unaffiliated/other - en.wikipedia.org/wiki/Executive_Committee_of_the_Petrograd_Soviet); Trotsky was elected Chairman on 25 September 1917 the same day the Bolsheviks won a majority in the Soviet's Workers' Section; by early November the Bolsheviks held up to 90% of seats in the full Soviet plenum. The seed below is a reasoned interpolation for 25 September specifically (between the May anchor and the November anchor) - a modestly expanded Ispolkom with a fresh Bolshevik plurality, not yet the near-total dominance of November. Also reflects the real, contemporaneous Left SR/SR split (the Left SRs were visibly breaking from the SR mainstream in exactly this window).",
+    "seed_data": {
+      "body_size": 90,
+      "factions": [
+        {"name": "Bolsheviks", "seats": 37, "note": "Just won a majority in the Workers' Section; Trotsky elected Chairman today. Confident, organized, pushing the insurrection question."},
+        {"name": "Mensheviks", "seats": 17, "note": "Badly weakened since spring. Chkheidze's old bloc, now split between defensists and internationalists; distrustful of Trotsky's ascent."},
+        {"name": "Socialist Revolutionaries (mainstream)", "seats": 13, "note": "Aligned with the Provisional Government's coalition logic; increasingly isolated as the Left SRs peel away."},
+        {"name": "Left Socialist Revolutionaries", "seats": 9, "note": "Breaking from the SR mainstream this autumn; sympathetic to much of the Bolshevik program though not formally allied yet."},
+        {"name": "Unaffiliated / minor factions", "seats": 14, "note": "Anarchists, non-party delegates, and small groupings without reliable bloc discipline."}
+      ]
+    }
+  },
+
+  "petrograd_garrison": {
+    "label": "Petrograd Garrison — Order of Battle",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this once the military balance of power in Petrograd becomes something the player is actively reasoning about (e.g. weighing the garrison's loyalty ahead of a confrontation with the Provisional Government, or in the run-up to the insurrection). Update it as specific regiments' loyalty shifts on-screen. Expire it once it stops being the operative military structure - specifically, once the Red Army's founding beat fires and this garrison structure is superseded (see red_army_command); don't let both linger indefinitely once that transition happens, though a real gap between the two (garrison authority collapsing before the Red Army is organized) is historically honest and fine to portray.",
+    "canon_triggers": ["The Central Committee vote for insurrection", "The October Revolution / storming of key institutions", "Trotsky becomes People's Commissar for War; founds the Red Army (expire around here - see red_army_command)"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]} - use children for actual chain-of-command/grouping, not a flat list"
+    },
+    "sourcing_note": "Named Guards regiments and approximate reserve-battalion strengths (4,500-7,500 men each) per the Petrograd Military District's real February 1917 order of battle, which was still substantially the same formation set through autumn 1917 (en.wikipedia.org/wiki/Volinsky_Regiment; alphahistory.com/russianrevolution). Order No. 1 (March 1917, Petrograd Soviet) really did subordinate the garrison's political loyalty to soldiers' committees rather than the military chain of command - the nominal/de-facto split below reflects that real, documented arrangement, not invented framing. Kronstadt's sailors and the Bolshevik-organized Red Guards are both real, well-documented armed forces distinct from the regular garrison chain of command.",
+    "seed_data": {
+      "root": {
+        "name": "Petrograd Military District",
+        "note": "Nominal command structure only - since Order No. 1 (March 1917), real political authority over the garrison runs through elected soldiers' committees answerable to the Soviet, not this chain of command.",
+        "children": [
+          {
+            "name": "Guards Reserve Regiments (garrison infantry)",
+            "note": "Eleven Imperial Guards reserve regiments quartered in and around the capital, ~4,500-7,500 reserve troops each. Politically uneven - most are Soviet-leaning after February, none reliably loyal to the Provisional Government alone.",
+            "children": [
+              {"name": "Volynsky Regiment", "note": "First to mutiny in February 1917; a bellwether for the garrison's mood."},
+              {"name": "Preobrazhensky Regiment", "note": "Oldest Guards regiment (founded under Peter the Great); its own mutiny in February shocked the old order."},
+              {"name": "Semyonovsky Regiment", "note": "Followed Volynsky and Preobrazhensky into mutiny in February."},
+              {"name": "Izmailovsky Regiment", "note": "Solidly Soviet-aligned by autumn."},
+              {"name": "Litovsky Regiment", "note": "Solidly Soviet-aligned by autumn."},
+              {"name": "Moskovsky Regiment", "note": "Reliable Soviet sympathies."},
+              {"name": "Pavlovsky Regiment", "note": "Among the more radical/Bolshevik-leaning regiments."},
+              {"name": "Finlyandsky Regiment", "note": "Reliable Soviet sympathies."},
+              {"name": "Keksgolmsky Regiment", "note": "Reliable Soviet sympathies."},
+              {"name": "Petrogradsky Regiment", "note": "Reliable Soviet sympathies."},
+              {"name": "Yegersky Regiment", "note": "Reliable Soviet sympathies."}
+            ]
+          },
+          {
+            "name": "Kronstadt Naval Garrison",
+            "note": "The naval fortress and its sailors, a short sail from the capital. The single most reliably radical armed force available to the Soviet - Bolshevik and Left SR sympathies run deep here.",
+            "children": []
+          },
+          {
+            "name": "Red Guards",
+            "note": "Bolshevik-organized worker militia, armed separately from the regular garrison chain of command entirely. Small compared to the garrison proper, but answers directly to Bolshevik Military Organization leadership rather than any soldiers' committee compromise.",
+            "children": []
+          }
+        ]
+      }
+    }
+  },
+
+  "red_army_command": {
+    "label": "Workers' and Peasants' Red Army — Command Structure",
+    "render_primitive": "org_tree",
+    "when_relevant": "Create this only once the canon 'Trotsky becomes People's Commissar for War; founds the Red Army' beat has actually fired (see canon_timeline.md) - this is a real successor structure to petrograd_garrison, not something that should exist alongside it from the start. A real gap between the old garrison mechanic expiring and this one being created is historically honest (the old structure didn't survive intact into the new one) - don't force immediate continuity if the fiction doesn't support it.",
+    "canon_triggers": ["Trotsky becomes People's Commissar for War; founds the Red Army"],
+    "data_shape": {
+      "root": "a tree node {name, note, children: [...]}"
+    },
+    "sourcing_note": "Real historical structure: the Red Army was decreed 3 January 1918 (Sovnarkom) but only began forming from 23 February 1918; Trotsky became People's Commissar for Military Affairs in March 1918; the Supreme Military Council was established 3 March 1918 with three directorates (Operational, Organizational, Military Communications) - en.wikipedia.org/wiki/Supreme_Military_Council_(Soviet_Russia). The later Revolutionary Military Council (Revvoensovet, September 1918) is deliberately not included here - it postdates this setting pack's currently-scaffolded canon timeline (which currently ends at the Red Army's spring 1918 founding); extend this entry if the campaign is later continued into the Civil War proper.",
+    "seed_data": {
+      "root": {
+        "name": "Council of People's Commissars (Sovnarkom)",
+        "note": "The new Soviet government, which decreed the Red Army's founding.",
+        "children": [
+          {
+            "name": "People's Commissariat for Military Affairs",
+            "note": "Trotsky's own commissariat, held alongside (in place of) Foreign Affairs from March 1918.",
+            "children": [
+              {
+                "name": "Supreme Military Council",
+                "note": "Established 3 March 1918, days after Brest-Litovsk, to organize the new army's formation and defense. Chaired by Trotsky himself.",
+                "children": [
+                  {"name": "Operational Directorate", "note": "Front-facing military planning and operations."},
+                  {"name": "Organizational Directorate", "note": "Recruitment, unit formation, and the difficult work of building a real army from volunteer detachments and conscripts."},
+                  {"name": "Military Communications Directorate", "note": "Logistics, rail movement, and coordination across fronts."}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+
+  "diplomatic_position": {
+    "label": "Peace Negotiations — Diplomatic Ledger",
+    "render_primitive": "text",
+    "when_relevant": "Create this once Brest-Litovsk negotiations become a live concern for the player (canon 'Brest-Litovsk negotiations begin' beat). This tracks the negotiating position as a running ledger, not a chart - a new development is a new entry appended via 'update', not a wholesale rewrite of the earlier ones, so the ledger reads as a real history of how the talks moved. Update it as talks progress, recess, or collapse. Once a treaty is actually signed, update it one final time with the real terms and their consequences rather than creating a new instance. Expire only if the treaty is later formally abrogated/superseded (historically, the Armistice of November 1918 voided it) - not simply because active negotiating stopped, since signed terms remain a standing fact the player has to live with.",
+    "canon_triggers": ["Brest-Litovsk negotiations begin", "Treaty of Brest-Litovsk signed"],
+    "data_shape": {
+      "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label (e.g. a date or 'Trotsky's strategy'), body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
+    },
+    "sourcing_note": "Real timeline: Soviet Russia requested an immediate peace 8 November 1917; formal talks opened 22 December 1917 at Brest-Litovsk; Trotsky personally took over the Soviet delegation 9 January 1918 and pursued a deliberate 'neither war nor peace' strategy (refuse to sign, but unilaterally declare the war over) against Lenin's own preference to just accept German terms - a real, documented internal party fight, not invented drama. The strategy collapsed when Germany resumed its offensive 18 February 1918; the treaty was signed 3 March 1918 (the same day the Supreme Military Council was established - see red_army_command) on harsh terms: Russia ceded Ukraine, Poland, the Baltic provinces, Finland, and more - about a third of its population and pre-war European territory, and a majority of its coal/iron reserves and industry (britannica.com/event/treaties-of-Brest-Litovsk; history.com/articles/treaties-of-brest-litovsk). Only the negotiation-opening seed is below; the treaty's real final terms belong in a later 'update' once that canon beat fires, not in this initial seed.",
+    "seed_data": {
+      "entries": [
+        {"heading": "Peace negotiations open at Brest-Litovsk", "tag": "22 December 1917", "body": "Formal talks with the Central Powers began at the fortress of Brest-Litovsk, following the Soviet government's 8 November appeal for an immediate peace. German General Max Hoffmann leads the Central Powers' military delegation."},
+        {"heading": "Trotsky takes over the Soviet delegation", "tag": "9 January 1918", "body": "Trotsky, as Commissar for Foreign Affairs, personally leads the negotiations from this point - and deliberately slows them for propaganda value rather than settling quickly."},
+        {"heading": "German territorial demands", "tag": "Ongoing", "body": "Germany is demanding independence (under German influence) for Poland, the Baltic provinces, and Ukraine - effectively stripping them from Russian control. General Hoffmann pressed these terms firmly once talks resumed after Trotsky's own requested recess."},
+        {"heading": "'Neither war nor peace'", "tag": "Trotsky's strategy", "body": "Trotsky's own position, over Lenin's objections: refuse to sign these terms, but also unilaterally declare the war over and demobilize - betting that a wider European revolution makes the treaty irrelevant before Germany can enforce it. A genuinely contested call within the party, not Lenin's preference."}
+      ]
+    }
+  }
+}
