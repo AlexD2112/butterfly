@@ -46,7 +46,18 @@ as local-site-tunnel/start_local_site.ps1 - its own window, separate process fro
    the same system.apply_level_up call the web route uses, via multiplayer.level_up_options_for_character
    so the two can't silently drift apart. One simplification, not hidden: attribute points are
    1-per-selected-attribute (up to 3), not "put multiple points on one attribute" like the web allows.
-8. /refresh: admin-only (Discord's own Manage Server permission, not the app's web is_admin flag -
+8. /create_character (2026-09-14): full character creation, start to finish, without ever visiting
+   the website - the same three choices screen-character offers there (play the setting's flagship,
+   generate a real non-flagship historical figure via AI, or build a fully custom character), reusing
+   the exact same underlying functions the web routes call (engine.load_premade_character_state,
+   engine.generate_historical_character, systems/_shared/core.validate_and_build_character via
+   system.create_character) rather than reimplementing any of that logic here - only the presentation
+   is Discord-native. The custom builder is a chained-Select wizard in the same style /levelup
+   established: one attribute assigned per select (guarantees a valid standard-array permutation by
+   construction, not by validating after the fact), then skill tiers a group at a time, then a feat,
+   then up to two liabilities, then a review-and-confirm step. /join's own "you don't have a character
+   yet" reply now opens this same entry view directly, instead of just linking to the website.
+9. /refresh: admin-only (Discord's own Manage Server permission, not the app's web is_admin flag -
    there's no web session in a Discord interaction to check that against), forces one immediate
    _sync_once() pass and reports what it created. The ONLY manual Discord-structure action in this
    whole app, and explicitly optional.
@@ -69,11 +80,12 @@ subscriber queues.
 
 ## What this deliberately does NOT do
 
-Full character-sheet creation (attribute arrays, skill/feat picks) is NOT reimplemented as Discord
-modals - per /join's own reply, a player without a character yet is pointed at the website to build
-one (character creation there is already a real multi-step flow; redoing it as Discord UI would be a
-much bigger, separate undertaking, not implied by "get the bot running"). Once a character exists,
-play itself is fully playable from Discord.
+Nothing left requiring the website for a first-time player as of 2026-09-14 - see /create_character
+above. What's still web-only: the FULL character sheet panel (resources/relationships/enmity/
+commitments/canon-timeline/divergence-log - /sheet stays a compact reference, not a second UI to keep
+in lockstep), and admin actions (creating a server/location/subspace by hand, NPC editing) - Discord's
+own Manage Server permission gates /refresh, but there's no equivalent for the rest of the admin
+surface, and reproducing it wasn't asked for.
 """
 
 import asyncio
@@ -575,11 +587,437 @@ async def join_command(interaction: discord.Interaction):
             f"**{server['name']}**. Just chat or use /action in a channel/thread here to play."
         )
     else:
+        game = db.get_game_for_server(server["id"])
+        view = CharacterCreationEntryView(user_row, server, game, server["setting_key"])
         await interaction.followup.send(
             f"You're linked to Forking Paths as **{user_row['username']}** - no web login needed. "
-            f"You don't have a character in **{server['name']}** yet: create one at {WEBSITE_URL} "
-            f"(log in with this same Discord account), then come back and chat here."
+            f"You don't have a character in **{server['name']}** yet - create one right here:",
+            view=view,
         )
+
+
+# ==================== /create_character: full character creation without ever visiting the website
+# (2026-09-14) - the same three choices screen-character offers on the web (play the flagship, generate
+# a real historical figure via AI, or build a fully custom character), reusing the exact underlying
+# functions the web routes call rather than reimplementing any of the actual creation/validation logic
+# here. See the module docstring's point 8 for the fuller picture. ====================
+
+class CharacterCreationState:
+    """Carries the in-progress custom-character build across every step of the wizard below. Plain
+    data - no discord.py objects - so it's easy to reason about independent of any one interaction."""
+
+    def __init__(self, user_row, server, game, setting_key):
+        self.user_row = user_row
+        self.server = server
+        self.game = game
+        self.setting_key = setting_key
+        self.system_key = engine.SETTING_REGISTRY[setting_key]["system"]
+        self.name = None
+        self.role = None
+        self.attribute_assignment = {}
+        self.skill_tiers = {}
+        self.feat_id = None
+        self.liability_ids = []
+
+
+def _claim_name_or_none(game_id, name):
+    """Returns an error string if `name` is already taken in this game, else None - the same
+    claim-lock check server.py's creation routes apply (see db.find_character_by_name_in_game's own
+    docstring), reused here rather than re-derived."""
+    if db.find_character_by_name_in_game(game_id, name) is not None:
+        return f'"{name}" is already claimed by another player in this server.'
+    return None
+
+
+def _build_and_save_character(user_id, setting_key, system_key, game_id, character):
+    """Shared state-building for the historical and custom paths once a validated character dict
+    exists: builds the full state the same way engine's own premade-loading path does (setting's
+    resource/relationship/etc. scaffolding plus this specific character), and persists it. Mirrors
+    server.py's api_create_character/api_create_historical_character bodies exactly - not a parallel
+    reimplementation, the same shape those routes build. (premade creation doesn't need this - it uses
+    the loaded state wholesale, with no character to merge in - see CharacterCreationEntryView.)"""
+    fresh_setting = engine.load_premade_character_state(setting_key)
+    state = {k: v for k, v in fresh_setting.items() if k != "character" and not k.startswith("_")}
+    state["character"] = character
+    state["setting_pack"] = setting_key
+    state["system"] = system_key
+    db.create_character(user_id, setting_key, system_key, character["name"], state, is_premade=False, game_id=game_id)
+
+
+def _character_ready_message(name, server_name):
+    return (
+        f"**{name}** is ready in **{server_name}**. Chat or use /action in a channel/thread here to "
+        f"play - wherever you first post is where you'll start."
+    )
+
+
+class CharacterCreationEntryView(discord.ui.View):
+    """Entry point - three buttons matching the website's screen-character exactly. Reachable both
+    from /join's own "no character yet" reply and directly via /create_character."""
+
+    def __init__(self, user_row, server, game, setting_key):
+        super().__init__(timeout=600)
+        self.user_row = user_row
+        self.server = server
+        self.game = game
+        self.setting_key = setting_key
+        info = engine.SETTING_REGISTRY[setting_key]
+
+        premade_btn = discord.ui.Button(label=f"Play as {info['premade_character_name']}"[:80], style=discord.ButtonStyle.primary)
+        premade_btn.callback = self._on_premade
+        self.add_item(premade_btn)
+
+        historical_btn = discord.ui.Button(label="Generate a Historical Figure", style=discord.ButtonStyle.secondary)
+        historical_btn.callback = self._on_historical
+        self.add_item(historical_btn)
+
+        custom_btn = discord.ui.Button(label="Build a Custom Character", style=discord.ButtonStyle.secondary)
+        custom_btn.callback = self._on_custom
+        self.add_item(custom_btn)
+
+    async def _on_premade(self, interaction: discord.Interaction):
+        info = engine.SETTING_REGISTRY[self.setting_key]
+        name = info["premade_character_name"]
+        error = _claim_name_or_none(self.game["id"], name)
+        if error:
+            await interaction.response.edit_message(content=error, view=None)
+            return
+        state = engine.load_premade_character_state(self.setting_key)
+        state.pop("_is_new", None)
+        db.create_character(
+            self.user_row["id"], self.setting_key, info["system"], name, state,
+            is_premade=True, game_id=self.game["id"],
+        )
+        await interaction.response.edit_message(content=_character_ready_message(name, self.server["name"]), view=None)
+
+    async def _on_historical(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(HistoricalFigureModal(self.user_row, self.server, self.game, self.setting_key))
+
+    async def _on_custom(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(NameRoleModal(self.user_row, self.server, self.game, self.setting_key))
+
+
+class HistoricalFigureModal(discord.ui.Modal, title="Generate a Historical Figure"):
+    """AI-generated (not the flagship) real historical figure - same eligibility/generation logic and
+    the same real AI-call/budget cost as the web's own historical-figure path
+    (engine.generate_historical_character), not a separate or cheaper Discord version of it."""
+
+    figure_name = discord.ui.TextInput(label="Historical figure's name", placeholder="e.g. Nikolai Podvoisky", max_length=100)
+
+    def __init__(self, user_row, server, game, setting_key):
+        super().__init__()
+        self.user_row = user_row
+        self.server = server
+        self.game = game
+        self.setting_key = setting_key
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        figure_name = str(self.figure_name).strip()
+        error = _claim_name_or_none(self.game["id"], figure_name)
+        if error:
+            await interaction.followup.send(error)
+            return
+        budget_before = db.get_budget_status(self.user_row["id"])
+        if budget_before["remaining_usd"] <= 0:
+            await interaction.followup.send("Out of usage budget for this account - can't generate a historical figure right now.")
+            return
+        model_key = providers.DEFAULT_MODEL_KEY
+        try:
+            provider, model = providers.get_provider(model_key)
+        except providers.ProviderError as e:
+            await interaction.followup.send(str(e))
+            return
+        system_key = engine.SETTING_REGISTRY[self.setting_key]["system"]
+        usage_sink = []
+        try:
+            result = engine.generate_historical_character(
+                provider, model, self.setting_key, system_key, figure_name, usage_sink=usage_sink,
+            )
+        finally:
+            for usage in usage_sink:
+                cost = pricing.estimate_cost_usd(usage)
+                db.record_usage(
+                    self.user_row["id"], None, usage["provider"], usage["model"],
+                    usage["input_tokens"], usage["output_tokens"],
+                    usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0), cost,
+                )
+        if not result["eligible"]:
+            await interaction.followup.send(f"Not eligible: {result['reason']}")
+            return
+        character = result["character"]
+        error = _claim_name_or_none(self.game["id"], character["name"])
+        if error:
+            await interaction.followup.send(f'"{character["name"]}" was just claimed by another player.')
+            return
+        _build_and_save_character(self.user_row["id"], self.setting_key, system_key, self.game["id"], character)
+        await interaction.followup.send(_character_ready_message(character["name"], self.server["name"]))
+
+
+class NameRoleModal(discord.ui.Modal, title="Character Identity"):
+    """Step 1 of the custom-build wizard - the only two free-text fields in the whole flow. Every
+    later step is Select-menu-driven, not typed, to avoid the typo/invalid-value surface a raw text
+    field would have for skills/feats/liabilities (see AttributeValueSelect's own docstring)."""
+
+    name_input = discord.ui.TextInput(label="Character name", max_length=100)
+    role_input = discord.ui.TextInput(label="Role / description", max_length=200, required=False)
+
+    def __init__(self, user_row, server, game, setting_key):
+        super().__init__()
+        self.state = CharacterCreationState(user_row, server, game, setting_key)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        name = str(self.name_input).strip()
+        if not name:
+            await interaction.response.send_message("A character name is required.", ephemeral=True)
+            return
+        error = _claim_name_or_none(self.state.game["id"], name)
+        if error:
+            await interaction.response.edit_message(content=error, view=None)
+            return
+        self.state.name = name
+        self.state.role = str(self.role_input).strip()
+        system = engine.get_system(self.state.system_key)
+        values = list(shared_core.STANDARD_ATTRIBUTE_ARRAY)
+        attrs = list(system.ATTRIBUTES)
+        view = discord.ui.View(timeout=600)
+        view.add_item(AttributeValueSelect(self.state, values, attrs))
+        await interaction.response.edit_message(
+            content=f"**{name}** — assign the standard array {values} across your six attributes, one at a time.",
+            view=view,
+        )
+
+
+class AttributeValueSelect(discord.ui.Select):
+    """One step of the attribute-assignment wizard - assigns exactly ONE standard-array value to
+    whichever attribute the player picks, then chains to the next (remaining) value until all six are
+    assigned. This guarantees a valid one-to-one permutation by construction (each value offered
+    exactly once, each attribute removed once chosen) - the same rule
+    systems/_shared/core.validate_and_build_character enforces after the fact on the web, just made
+    impossible to violate here instead of merely checked."""
+
+    def __init__(self, state, remaining_values, remaining_attrs):
+        value = remaining_values[0]
+        options = [discord.SelectOption(label=a.replace("_", " ").capitalize(), value=a) for a in remaining_attrs]
+        super().__init__(placeholder=f"Which attribute should be {value}?", options=options, min_values=1, max_values=1)
+        self.state = state
+        self.value_to_assign = value
+        self.remaining_values = remaining_values
+        self.remaining_attrs = remaining_attrs
+
+    async def callback(self, interaction: discord.Interaction):
+        chosen_attr = self.values[0]
+        self.state.attribute_assignment[chosen_attr] = self.value_to_assign
+        next_values = self.remaining_values[1:]
+        next_attrs = [a for a in self.remaining_attrs if a != chosen_attr]
+        summary = " · ".join(f"{a} {v}" for a, v in self.state.attribute_assignment.items())
+        if next_values:
+            view = discord.ui.View(timeout=600)
+            view.add_item(AttributeValueSelect(self.state, next_values, next_attrs))
+            await interaction.response.edit_message(content=f"Assigned so far: {summary}", view=view)
+        else:
+            view = SkillGroupView(self.state, group_index=0)
+            await interaction.response.edit_message(content=f"Attributes set: {summary}\n\n{view.render_header()}", view=view)
+
+
+class SkillGroupView(discord.ui.View):
+    """One step per attribute group (matches system.SKILLS's own grouping) - two multi-selects,
+    Proficiency and Expertise, over that group's skills only (Discord's 5-action-row-per-message limit
+    rules out showing all ~23 skills across every group at once, and per-group is also just more
+    readable). A skill picked in both resolves to Expertise (whichever a player picks LAST simply
+    overwrites the tier in state - see the two selects' shared callback below), not an error - simpler
+    than forbidding the overlap outright. Final budget/expertise-count validation happens once, in
+    ReviewView, via the exact same core.validate_and_build_character every other creation path already
+    goes through - not re-implemented per step."""
+
+    def __init__(self, state, group_index):
+        super().__init__(timeout=600)
+        self.state = state
+        self.group_index = group_index
+        system = engine.get_system(state.system_key)
+        self.groups = list(system.SKILLS.items())
+        attr, skills = self.groups[group_index]
+        self.attr = attr
+        self.skills = skills
+
+        prof_default = {s for s, t in state.skill_tiers.items() if t == 1 and s in skills}
+        exp_default = {s for s, t in state.skill_tiers.items() if t == 2 and s in skills}
+
+        prof_select = discord.ui.Select(
+            placeholder=f"{attr}: pick Proficiency skills (optional)", min_values=0, max_values=len(skills),
+            options=[
+                discord.SelectOption(label=s.replace("_", " ")[:100], value=s, default=(s in prof_default))
+                for s in skills
+            ],
+        )
+        prof_select.callback = self._make_callback(prof_select, 1)
+        self.add_item(prof_select)
+
+        exp_select = discord.ui.Select(
+            placeholder=f"{attr}: pick Expertise skills (optional)", min_values=0, max_values=len(skills),
+            options=[
+                discord.SelectOption(label=s.replace("_", " ")[:100], value=s, default=(s in exp_default))
+                for s in skills
+            ],
+        )
+        exp_select.callback = self._make_callback(exp_select, 2)
+        self.add_item(exp_select)
+
+        is_last = group_index == len(self.groups) - 1
+        next_btn = discord.ui.Button(label="Choose a Feat →" if is_last else "Next Skill Group →", style=discord.ButtonStyle.primary, row=2)
+        next_btn.callback = self._on_next
+        self.add_item(next_btn)
+        if group_index > 0:
+            back_btn = discord.ui.Button(label="← Back", style=discord.ButtonStyle.secondary, row=2)
+            back_btn.callback = self._on_back
+            self.add_item(back_btn)
+
+    def render_header(self):
+        spent = sum(self.state.skill_tiers.values())
+        liabilities_bonus = shared_core.LIABILITY_BONUS_SKILL_POINTS * len(self.state.liability_ids)
+        budget = shared_core.SKILL_POINT_BUDGET + liabilities_bonus
+        return (
+            f"Skills — group {self.group_index + 1}/{len(self.groups)} ({self.attr}). "
+            f"{spent}/{budget} points spent so far (Proficiency=1, Expertise=2, checked again at the end)."
+        )
+
+    def _make_callback(self, select, tier):
+        async def callback(interaction: discord.Interaction):
+            chosen = select.values
+            for s in self.skills:
+                if s in chosen:
+                    self.state.skill_tiers[s] = tier
+                elif self.state.skill_tiers.get(s) == tier:
+                    # deselecting this tier's own picks shouldn't silently keep a stale tier around
+                    del self.state.skill_tiers[s]
+            await interaction.response.edit_message(content=self.render_header(), view=self)
+        return callback
+
+    async def _on_next(self, interaction: discord.Interaction):
+        if self.group_index + 1 < len(self.groups):
+            next_view = SkillGroupView(self.state, self.group_index + 1)
+            await interaction.response.edit_message(content=next_view.render_header(), view=next_view)
+        else:
+            system = engine.get_system(self.state.system_key)
+            starting_feats = {k: v for k, v in system.FEAT_CATALOG.items() if v.get("min_level", 1) <= 1}
+            view = discord.ui.View(timeout=600)
+            view.add_item(FeatSelectCustom(self.state, starting_feats))
+            await interaction.response.edit_message(content="Choose a starting feat:", view=view)
+
+    async def _on_back(self, interaction: discord.Interaction):
+        prev_view = SkillGroupView(self.state, self.group_index - 1)
+        await interaction.response.edit_message(content=prev_view.render_header(), view=prev_view)
+
+
+class FeatSelectCustom(discord.ui.Select):
+    def __init__(self, state, starting_feats):
+        options = [
+            discord.SelectOption(label=f["name"][:100], value=fid, description=(f.get("description") or "")[:100])
+            for fid, f in list(starting_feats.items())[:25]
+        ]
+        super().__init__(placeholder="Pick your starting feat...", options=options, min_values=1, max_values=1)
+        self.state = state
+
+    async def callback(self, interaction: discord.Interaction):
+        self.state.feat_id = self.values[0]
+        system = engine.get_system(self.state.system_key)
+        view = discord.ui.View(timeout=600)
+        view.add_item(LiabilitySelectCustom(self.state, system.LIABILITY_CATALOG))
+        await interaction.response.edit_message(
+            content=f"Optional: up to 2 starting liabilities, each granting {shared_core.LIABILITY_BONUS_SKILL_POINTS} "
+            f"bonus skill points already reflected in your total above. Pick none to skip.",
+            view=view,
+        )
+
+
+class LiabilitySelectCustom(discord.ui.Select):
+    def __init__(self, state, liability_catalog):
+        options = [
+            discord.SelectOption(label=l["name"][:100], value=lid, description=(l.get("description") or "")[:100])
+            for lid, l in list(liability_catalog.items())[:25]
+        ]
+        super().__init__(placeholder="Pick 0-2 starting liabilities...", options=options, min_values=0, max_values=min(2, len(options)))
+        self.state = state
+
+    async def callback(self, interaction: discord.Interaction):
+        self.state.liability_ids = list(self.values)
+        view = ReviewView(self.state)
+        await interaction.response.edit_message(content=view.render_summary(), view=view)
+
+
+class ReviewView(discord.ui.View):
+    """Final step - shows exactly what will be submitted and runs it through the real
+    system.create_character (== systems/_shared/core.validate_and_build_character) on confirm, the
+    same validation every other creation path in this app goes through. A rejection here (e.g. the
+    skill budget ended up over spent after going back and forth) is shown inline with a chance to
+    go back, not a silent failure."""
+
+    def __init__(self, state):
+        super().__init__(timeout=600)
+        self.state = state
+        confirm_btn = discord.ui.Button(label="Confirm & Create", style=discord.ButtonStyle.success)
+        confirm_btn.callback = self._on_confirm
+        self.add_item(confirm_btn)
+        cancel_btn = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.danger)
+        cancel_btn.callback = self._on_cancel
+        self.add_item(cancel_btn)
+
+    def render_summary(self):
+        s = self.state
+        attrs = " · ".join(f"{a} {v}" for a, v in s.attribute_assignment.items())
+        skilled = [f"{sk.replace('_', ' ')} ({shared_core.TIER_NAMES[t]})" for sk, t in s.skill_tiers.items() if t > 0]
+        system = engine.get_system(s.system_key)
+        feat_name = system.FEAT_CATALOG.get(s.feat_id, {}).get("name", s.feat_id)
+        liability_names = [system.LIABILITY_CATALOG.get(lid, {}).get("name", lid) for lid in s.liability_ids]
+        lines = [
+            f"**{s.name}** — {s.role or '(no role given)'}",
+            f"Attributes: {attrs}",
+            f"Skills: {', '.join(skilled) if skilled else '(none above Untrained)'}",
+            f"Feat: {feat_name}",
+            f"Liabilities: {', '.join(liability_names) if liability_names else '(none)'}",
+            "",
+            "Ready to create this character?",
+        ]
+        return "\n".join(lines)
+
+    async def _on_confirm(self, interaction: discord.Interaction):
+        s = self.state
+        error = _claim_name_or_none(s.game["id"], s.name)
+        if error:
+            await interaction.response.edit_message(content=error, view=None)
+            return
+        system = engine.get_system(s.system_key)
+        character, errors = system.create_character(
+            s.name, s.role, s.attribute_assignment, s.skill_tiers, s.feat_id, s.liability_ids,
+        )
+        if errors:
+            await interaction.response.edit_message(content="Couldn't create this character:\n" + "\n".join(errors), view=None)
+            return
+        _build_and_save_character(s.user_row["id"], s.setting_key, s.system_key, s.game["id"], character)
+        await interaction.response.edit_message(content=_character_ready_message(character["name"], s.server["name"]), view=None)
+
+    async def _on_cancel(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(content="Character creation cancelled.", view=None)
+
+
+@client.tree.command(name="create_character", description="Create a new character for this server, right here in Discord.")
+async def create_character_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    category_id = getattr(interaction.channel, "category_id", None)
+    server = discord_bot.server_for_category(str(category_id)) if category_id else None
+    if server is None:
+        await interaction.followup.send("Run this inside one of a game's own channels (under its category), not here.")
+        return
+    user_row = discord_bot.resolve_or_create_user(
+        interaction.user.id, str(interaction.user),
+        str(interaction.user.display_avatar.url) if interaction.user.display_avatar else None,
+    )
+    game = db.get_game_for_server(server["id"])
+    info = engine.SETTING_REGISTRY[server["setting_key"]]
+    view = CharacterCreationEntryView(user_row, server, game, server["setting_key"])
+    await interaction.followup.send(
+        f"Create a character for **{server['name']}** ({info['label']}):", view=view,
+    )
 
 
 def _build_sheet_embed(char_row):
