@@ -1133,42 +1133,71 @@ function effectiveSkillBudget() {
 function updateBudgetLine() {
   const spent = Object.values(CREATION_SKILL_TIERS).reduce((a, b) => a + b, 0);
   const budget = effectiveSkillBudget();
+  const expertiseCount = Object.values(CREATION_SKILL_TIERS).filter(t => t === 2).length;
+  const maxExpertise = CREATION_SCHEMA.max_starting_expertise_skills;
   const el = document.getElementById('cc-budget');
-  el.textContent = `${spent} / ${budget} points spent`;
-  el.className = spent > budget ? 'budget-line over' : 'budget-line';
+  el.textContent = `${spent} / ${budget} points spent · ${expertiseCount} / ${maxExpertise} at Expertise`;
+  el.className = (spent > budget || expertiseCount > maxExpertise) ? 'budget-line over' : 'budget-line';
 }
 
 async function submitCreation() {
-  const name = document.getElementById('cc-name').value.trim();
-  const role = document.getElementById('cc-role').value.trim();
-  const attribute_assignment = {};
-  document.querySelectorAll('#creation-form [data-attr]').forEach(sel => {
-    attribute_assignment[sel.dataset.attr] = parseInt(sel.value, 10);
-  });
-  const feat_id = (document.querySelector('input[name=feat]:checked') || {}).value;
-  const liability_ids = Array.from(document.querySelectorAll('input[name=liability]:checked')).map(el => el.value);
-
   const errEl = document.getElementById('cc-error');
+  const submitBtn = document.getElementById('cc-submit');
   errEl.textContent = '';
-  if (!name) { errEl.textContent = 'A character name is required.'; return; }
-  if (!feat_id) { errEl.textContent = 'Choose a starting feat.'; return; }
 
-  const body = {
-    type: 'custom', setting_key: SELECTED_SETTING.key, name, role,
-    attribute_assignment, skill_tiers: CREATION_SKILL_TIERS, feat_id, liability_ids,
-  };
-  if (MP_SERVER_ID) body.multiplayer_server_id = MP_SERVER_ID;
-  const res = await fetch('/api/characters', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (data.error) {
-    errEl.textContent = data.error + (data.details ? '\n' + data.details.join('\n') : '');
-    return;
+  // Guards against a double-click firing two concurrent submissions (no previous debounce existed -
+  // this button had no disabled/loading state at all before), and gives real visual feedback that a
+  // click registered instead of nothing visibly happening while the request is in flight.
+  if (submitBtn.disabled) return;
+  submitBtn.disabled = true;
+  const originalLabel = submitBtn.textContent;
+  submitBtn.textContent = 'Creating...';
+
+  try {
+    const name = document.getElementById('cc-name').value.trim();
+    const role = document.getElementById('cc-role').value.trim();
+    const attribute_assignment = {};
+    document.querySelectorAll('#creation-form [data-attr]').forEach(sel => {
+      attribute_assignment[sel.dataset.attr] = parseInt(sel.value, 10);
+    });
+    const feat_id = (document.querySelector('input[name=feat]:checked') || {}).value;
+    const liability_ids = Array.from(document.querySelectorAll('input[name=liability]:checked')).map(el => el.value);
+
+    if (!name) { errEl.textContent = 'A character name is required.'; return; }
+    if (!feat_id) { errEl.textContent = 'Choose a starting feat.'; return; }
+    if (!SELECTED_SETTING) { errEl.textContent = 'Lost track of which setting this is for - go back and re-enter character creation.'; return; }
+
+    const body = {
+      type: 'custom', setting_key: SELECTED_SETTING.key, name, role,
+      attribute_assignment, skill_tiers: CREATION_SKILL_TIERS, feat_id, liability_ids,
+    };
+    if (MP_SERVER_ID) body.multiplayer_server_id = MP_SERVER_ID;
+    const res = await fetch('/api/characters', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    let data;
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      errEl.textContent = `Unexpected response from the server (status ${res.status}). Nothing was created - try again.`;
+      return;
+    }
+    if (data.error) {
+      errEl.textContent = data.error + (data.details ? '\n' + data.details.join('\n') : '');
+      return;
+    }
+    if (MP_SERVER_ID) launchMpLobbyPostCreate(data.character_id, data.state.character.name);
+    else launchGame(data.character_id, true);
+  } catch (err) {
+    // A silent failure here (an uncaught exception anywhere above) used to mean the click just did
+    // nothing - no character, no error, no clue why. Catching it keeps that from ever happening again,
+    // whatever the actual cause turns out to be.
+    errEl.textContent = `Something went wrong creating this character (${err.message || err}). Nothing was created - try again.`;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
   }
-  if (MP_SERVER_ID) launchMpLobbyPostCreate(data.character_id, data.state.character.name);
-  else launchGame(data.character_id, true);
 }
 
 // ==================== screen 6: the game ====================
