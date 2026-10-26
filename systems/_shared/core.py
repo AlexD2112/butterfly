@@ -123,6 +123,16 @@ def build_tool_specs(feat_catalog):
                         "type": ["string", "null"],
                         "description": "Key of the NPC this check is directed at/against, if any (used for enmity tracking).",
                     },
+                    "at_stake": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Optional: the one resource category this attempt actually risks or builds (e.g. "
+                            "personal_safety for slipping a tail, party_standing for a Central Committee fight). "
+                            "The application moves it automatically by the result: +4 critical success, +2 strong "
+                            "success, 0 success, -3 success at a cost, -4 failure, -8 critical failure. Don't "
+                            "propose a second delta for the same thing in propose_state_update."
+                        ),
+                    },
                 },
                 "required": ["attribute", "dc", "description"],
             },
@@ -211,6 +221,64 @@ def build_tool_specs(feat_catalog):
     ]
 
 
+# Degrees of success (2026-10-26). Checks used to be strictly binary past a natural 20/1, which made
+# most rolls feel identical and gave the GM no code-backed reason to vary consequences. The margin
+# (total - DC) now sets one of six degrees:
+#   critical_success   natural 20, or beat the DC by 10+
+#   strong_success     beat the DC by 5-9
+#   success            met the DC, or beat it by up to 4
+#   success_at_cost    missed by 1-3: the goal is reached, but something is paid for it
+#   failure            missed by 4-9
+#   critical_failure   natural 1, or missed by 10+
+# success_at_cost counts as a success for anything asking "did it work" (see SUCCESS_DEGREES), but
+# engine.run_turn also charges an at-stake resource for it automatically - see AT_STAKE_DELTAS.
+STRONG_SUCCESS_MARGIN = 5
+CRITICAL_MARGIN = 10
+COST_MARGIN = 3
+
+SUCCESS_DEGREES = ("critical_success", "strong_success", "success", "success_at_cost")
+FAILURE_DEGREES = ("failure", "critical_failure")
+
+DEGREE_GUIDANCE = {
+    "critical_success": "Exceptional success: the goal is achieved and the GM should narrate a real extra benefit.",
+    "strong_success": "Clean success: the goal is achieved with no complication, and slightly more than asked.",
+    "success": "Success: the goal is achieved.",
+    "success_at_cost": "Success at a cost: the goal is achieved, but narrate a real price (time, exposure, a promise, someone's goodwill).",
+    "failure": "Failure: the goal is not achieved; the situation moves on without it.",
+    "critical_failure": "Critical failure: the goal is not achieved and something actively goes wrong beyond that.",
+}
+
+# What an at-stake resource (request_check's optional at_stake field) moves by, per degree. Applied by
+# engine.run_turn in code, so a failure costs something even if the GM never proposes a delta for it.
+AT_STAKE_DELTAS = {
+    "critical_success": 4,
+    "strong_success": 2,
+    "success": 0,
+    "success_at_cost": -3,
+    "failure": -4,
+    "critical_failure": -8,
+}
+
+
+def degree_for(roll, total, dc):
+    if roll == 20:
+        return "critical_success"
+    if roll == 1:
+        return "critical_failure"
+    margin = total - dc
+    if margin >= CRITICAL_MARGIN:
+        return "critical_success"
+    if margin >= STRONG_SUCCESS_MARGIN:
+        return "strong_success"
+    if margin >= 0:
+        return "success"
+    if margin >= -COST_MARGIN:
+        return "success_at_cost"
+    if margin > -CRITICAL_MARGIN:
+        return "failure"
+    return "critical_failure"
+
+
 def roll_check(character, attribute, skill, dc, target_npc=None, feat_catalog=None):
     score = character["attributes"][attribute]
     mod = attribute_modifier(score)
@@ -245,15 +313,7 @@ def roll_check(character, attribute, skill, dc, target_npc=None, feat_catalog=No
     modifier = mod + tier_bonus(tier_index, proficiency_bonus) + feat_bonus
     roll = random.randint(1, 20)
     total = roll + modifier
-
-    if roll == 20:
-        degree = "critical_success"
-    elif roll == 1:
-        degree = "critical_failure"
-    elif total >= dc:
-        degree = "success"
-    else:
-        degree = "failure"
+    degree = degree_for(roll, total, dc)
 
     # Track attribute/skill usage since the last level-up, for the reinforcement-bonus check at the
     # next level-up - the application tracks this, not the model's self-report.
@@ -276,7 +336,9 @@ def roll_check(character, attribute, skill, dc, target_npc=None, feat_catalog=No
         "roll": roll,
         "total": total,
         "dc": dc,
+        "margin": total - dc,
         "degree": degree,
+        "gm_instruction": DEGREE_GUIDANCE[degree],
         "target_npc": target_npc,
     }
 
@@ -287,7 +349,7 @@ def apply_auto_liability_effects(state, check_result, liability_catalog):
     than hardcoding any specific liability's name in code, so any system's catalog can define its
     own auto-triggering liabilities without touching this function."""
     changes = []
-    if check_result["degree"] not in ("failure", "critical_failure"):
+    if check_result["degree"] not in FAILURE_DEGREES:
         return changes
     target = check_result.get("target_npc")
     if not target or target not in state.get("enmity", {}):
@@ -309,6 +371,33 @@ def apply_auto_liability_effects(state, check_result, liability_catalog):
             changes.append(
                 {"kind": "enmity_auto", "key": target, "before": before, "after": after, "cause": f"{liability.get('name', liability_id)} liability"}
             )
+    return changes
+
+
+BROKEN_COMMITMENT_TRUST_PENALTY = 2
+
+
+def _party_key(name):
+    return str(name).strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def apply_broken_commitment(state, commitment_key, entry):
+    changes = []
+    for party in (entry or {}).get("parties") or []:
+        key = _party_key(party)
+        if key in state.get("relationships", {}):
+            before = state["relationships"][key]["trust"]
+            after = clamp(before - BROKEN_COMMITMENT_TRUST_PENALTY, -5, 5)
+            state["relationships"][key]["trust"] = after
+            changes.append({"kind": "relationship", "key": key, "before": before, "after": after,
+                             "requested_delta": -BROKEN_COMMITMENT_TRUST_PENALTY, "clamped": False,
+                             "cause": f"broke commitment '{commitment_key}'"})
+        if key in state.get("enmity", {}):
+            before = state["enmity"][key]["pips"]
+            after = clamp(before + 1, 0, 3)
+            state["enmity"][key]["pips"] = after
+            changes.append({"kind": "enmity_auto", "key": key, "before": before, "after": after,
+                             "cause": f"broke commitment '{commitment_key}'"})
     return changes
 
 
@@ -380,8 +469,15 @@ def apply_state_update(state, update, resource_schema, liability_catalog=None):
         changes.append({"kind": "flag", "key": key, "value": value})
 
     for key, entry in (update.get("commitments_upserted") or {}).items():
+        previous_status = (state["commitments"].get(key) or {}).get("status")
         state["commitments"][key] = entry
         changes.append({"kind": "commitment", "key": key, "value": entry})
+        # A commitment going from active to broken costs something in code, not just in narration
+        # (2026-10-26): every bound party loses 2 trust and gains an enmity pip. Parties are matched
+        # against existing relationship/enmity keys, so a party named only in prose ("the Left SRs")
+        # is skipped rather than invented as a new NPC.
+        if previous_status == "active" and (entry or {}).get("status") == "broken":
+            changes.extend(apply_broken_commitment(state, key, entry))
 
     existing_liability_ids = {l.get("id") for l in character.get("liabilities", [])}
     for liability_id in (update.get("liabilities_gained") or []):

@@ -19,22 +19,26 @@ Provisional Government). The Left SRs are a plausible coalition partner for an i
 ## Provisional Government
 Headed by Kerensky, formally the government of Russia since February 1917, increasingly unable to
 resolve the core crises (the war, land, food) that are driving support toward the Soviets. Its
-`stability` is tracked as a world-state resource - watch it erode over the campaign rather than
-assuming a fixed collapse date.
+strength is the `government_stability` world track, which the application lowers every day on its
+own (faster while bread is short) - watch it erode rather than assuming a fixed collapse date. Its
+armed backing is in the forces tracker: the officer cadets, the Women's Battalion, and whatever the
+Cossacks can be talked into.
 
 ## Petrograd Soviet
-Not a party but an institution - the workers' and soldiers' council the player now chairs.
-Increasingly Bolshevik-aligned in its voting composition through this period, and the player's
-main institutional power base independent of the party itself.
+Not a party but an institution - the workers' and soldiers' council of the capital. When the
+campaign opens it has just passed its first Bolshevik resolution, but the Menshevik-SR presidium
+still runs it; winning the chair is the player's first arc. Its plenum is the seat chart that
+`call_vote` resolves, and `soviet_authority` measures the player's standing in it.
 
 ## The Military Right (Kornilov's circle)
 Officers and conservative political figures who attempted a coup against Kerensky in
-late August 1917 (just before the campaign start) and failed - discredited but not eliminated,
-a latent threat if the Provisional Government's authority collapses further.
+late August 1917 (days before the campaign start) and failed - discredited but not eliminated.
+Tracked as the `counterrevolution_threat` world track, which grows while the government looks too
+weak to hold the line; at high values it produces plots, and danger to the player personally.
 
 ## The Central Powers / the war
 Germany and Austria-Hungary remain Russia's active wartime enemy for the whole opening arc of this
 campaign - the war itself (exhaustion, the front, eventually Brest-Litovsk) is a persistent
-background pressure, tracked via the `war_exhaustion` world-state resource, not a faction the
+background pressure, tracked via the `war_exhaustion` world track, not a faction the
 player interacts with directly until the diplomatic and military beats in
 `canon_timeline.md` (Brest-Litovsk, the founding of the Red Army) become relevant.

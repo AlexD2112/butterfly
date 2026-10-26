@@ -17,8 +17,12 @@ import importlib
 import json
 from pathlib import Path
 
+import copy
+
 import council
+import dynamics
 import mechanics
+import operations
 from systems._shared import core as shared_core
 
 ROOT = Path(__file__).parent
@@ -52,7 +56,7 @@ SETTING_REGISTRY = {
         # comes first for historical/narrative reasons, not date order), and the label string alone
         # ("Rome, 59 BCE" vs "Petrograd, 1917") doesn't sort correctly as text either.
         "sort_year": 1917,
-        "blurb": "Leon Trotsky, Chairman of the Petrograd Soviet. It's September 1917, and Kerensky's government is barely holding on.",
+        "blurb": "Leon Trotsky, just out of prison on bail. It's September 4, 1917: Kornilov has failed, the Soviet is turning Bolshevik, and the Congress of Soviets is seven weeks away.",
         "premade_character_file": "new_campaign_state.json",
         "premade_character_name": "Leon Trotsky",
         "location_scale_hint": (
@@ -159,7 +163,7 @@ def build_state_digest(state):
     return {k: v for k, v in state.items() if not k.startswith("_")}
 
 
-def build_system_prompt(state, setting_key, system_key, extra_context=None):
+def build_system_prompt(state, setting_key, system_key, extra_context=None, allow_time_advance=True):
     """extra_context (2026-09-03): optional shared-scene text - see multiplayer.resolve_action, which
     is the only caller that passes it. This function/run_turn are otherwise the same single-player-
     shaped path multiplayer's mechanical action resolution deliberately reuses unchanged (see
@@ -177,6 +181,16 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None):
     canon = load_text(setting_key, "canon_timeline.md")
     resource_schema = load_json(setting_key, "resource_schema.json")
     digest = build_state_digest(state)
+    # Sections rendered elsewhere in this prompt are dropped from the raw state dump (2026-10-26) so
+    # the same facts aren't paid for twice every turn: mechanics (compact rendering below), and - for
+    # settings with dynamics.json - the world, the calendar and the canon beats (THE CLOCK section).
+    if mechanics.load_catalog(setting_key):
+        digest.pop("mechanics", None)
+    if dynamics.load(setting_key):
+        for key in ("world", "calendar", "world_notices", "dynamics_log"):
+            digest.pop(key, None)
+        canon = digest.pop("canon_events", {}) or {}
+        digest["canon_events_fired"] = [k for k, v in canon.items() if v.get("status") == "fired"]
 
     # Mechanics (2026-09-09, see mechanics.py) - only sections at all if this setting has a curated
     # catalog; most settings won't yet (this shipped Petrograd-first - see NOTES.md). Kept as two
@@ -201,6 +215,23 @@ chart, a military command tree) - use propose_mechanic_update to create one from
 when it becomes contextually relevant, update one when its underlying facts have changed on-screen,
 or expire one that's no longer relevant. Don't create one just because it's available - only when the
 fiction actually calls for it. Address anything flagged DUE FOR REVIEW above before ignoring it again."""
+
+    dyn = dynamics.load(setting_key)
+    dynamics_section = ""
+    if dyn:
+        dynamics_section = "\n\n" + dynamics.prompt_section(state, dyn, allow_time_advance=allow_time_advance)
+
+    operations_section = ""
+    if mechanics_catalog:
+        primitives = {e.get("render_primitive") for e in mechanics_catalog.values()}
+        ops = []
+        if "seat_chart" in primitives:
+            ops.append("- Formal votes in a body with a seat_chart: call_vote. The application decides the result; you narrate it. If the player speaks first, pass speech_attribute/skill and the application rolls the speech too.")
+        if "forces" in primitives:
+            ops.append("- Winning over a unit in person (or talking a hostile one into staying in barracks): sway_unit. Never move a unit's loyalty more than a step by propose_mechanic_update when sway_unit is the honest description of what happened.")
+            ops.append("- Any armed clash: resolve_confrontation. Units only fight at loyalty +2/+3 (for the player) or -2/-3 (against); waverers stay home. Narrate who refused - it's usually the story.")
+        if ops:
+            operations_section = "\n\n# OPERATIONS (resolved by the application - never narrate these outcomes on your own)\n" + "\n".join(ops)
 
     scene_section = f"""
 
@@ -236,17 +267,21 @@ the system's curated catalogs (by id) - never invent one.
 
 # CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
 {json.dumps(digest, indent=2)}
-{mechanics_section}
+{mechanics_section}{operations_section}{dynamics_section}
 {scene_section}
 
 Narrate in second person, present tense, evocative but not overwrought. Keep responses to a few
-paragraphs. Never resolve an uncertain action without calling request_check first. If the current
+paragraphs. Never resolve an uncertain action without calling request_check first. Checks come back
+with one of six degrees (critical_success, strong_success, success, success_at_cost, failure,
+critical_failure) and a gm_instruction - honor the degree: a success_at_cost really does cost
+something, a strong success really does go better than asked. When a check plainly risks or builds
+one resource, name it as at_stake and the application moves it for you. If the current
 state shows level_up_pending: true, remind the player at a natural pause and offer them the three
 level-up options from the system rules before proceeding.
 {council.VOICE_GUIDANCE}"""
 
 
-def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None, council_mode=False, model_key=None, extra_context=None):
+def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None, council_mode=False, model_key=None, extra_context=None, allow_time_advance=True):
     """Returns (narration, debug_events).
 
     extra_context: see build_system_prompt - only ever passed by multiplayer.resolve_action, for
@@ -269,13 +304,24 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     MODEL_REGISTRY key, e.g. "sonnet" - distinct from `model`, the raw model id string) is needed to
     pick a cheaper same-provider model for the council's judges; without it (the loop.py CLI path
     never passes it) council_mode is silently a no-op regardless of its value.
+
+    allow_time_advance (2026-10-26): single-player campaigns keep their own calendar, moved by the GM
+    through propose_state_update's days_elapsed (see dynamics.py). Multiplayer passes False - a shared
+    server's date belongs to scheduler.py's ticks, and one player's turn must not move it.
     """
     system = get_system(system_key)
     resource_schema = load_json(setting_key, "resource_schema.json")
     mechanics_catalog = mechanics.load_catalog(setting_key)
-    tool_specs = system.TOOL_SPECS + ([mechanics.tool_spec()] if mechanics_catalog else [])
+    dyn = dynamics.load(setting_key)
+    dynamics.ensure_initialized(state, dyn)
+    if dyn:
+        dynamics.recompute_derived(state, dyn)
+        dynamics.update_calendar(state, dyn)
+    tool_specs = build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance)
     provider.append_user_message(conversation, user_input)
-    system_prompt = build_system_prompt(state, setting_key, system_key, extra_context=extra_context)
+    system_prompt = build_system_prompt(
+        state, setting_key, system_key, extra_context=extra_context, allow_time_advance=allow_time_advance,
+    )
 
     text_parts = []
     debug_events = []
@@ -301,40 +347,18 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
 
         results = []
         for tc in turn_result.tool_calls:
-            if tc["name"] == "request_check":
-                inp = tc["input"]
-                result = system.roll_check(
-                    state["character"], inp["attribute"], inp.get("skill"), inp["dc"], inp.get("target_npc")
-                )
-                auto_changes = system.apply_auto_liability_effects(state, result)
-                debug_events.append({"type": "check", "description": inp.get("description", ""), **result})
-                if auto_changes:
-                    debug_events.append({"type": "state_update", "reasoning": "Automatic liability trigger.", "changes": auto_changes})
-                results.append({"id": tc["id"], "content": json.dumps(result)})
-            elif tc["name"] == "propose_state_update":
-                changes = system.apply_state_update(state, tc["input"], resource_schema)
-                debug_events.append(
-                    {"type": "state_update", "reasoning": tc["input"].get("reasoning", ""), "changes": changes}
-                )
-                results.append(
-                    {"id": tc["id"], "content": "Applied (values may have been clamped or rejected by the application)."}
-                )
-            elif tc["name"] == "propose_level_up":
-                changes = system.apply_level_up(state, tc["input"])
-                debug_events.append(
-                    {"type": "level_up", "reasoning": tc["input"].get("reasoning", ""), "changes": changes}
-                )
-                results.append({"id": tc["id"], "content": json.dumps({"changes": changes})})
-            elif tc["name"] == "propose_mechanic_update":
-                changes = mechanics.apply_mechanic_update(state, mechanics_catalog, tc["input"])
-                debug_events.append(
-                    {"type": "mechanic_update", "reasoning": tc["input"].get("reasoning", ""), "changes": changes}
-                )
-                results.append({"id": tc["id"], "content": json.dumps({"changes": changes})})
-            else:
-                results.append({"id": tc["id"], "content": f"Unknown tool: {tc['name']}"})
+            content, events = handle_tool_call(
+                tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance,
+            )
+            debug_events.extend(events)
+            results.append({"id": tc["id"], "content": content})
 
         provider.append_tool_results(conversation, turn_result, results)
+
+    if dyn:
+        closing = dynamics.end_of_turn(state, dyn, resource_schema, system)
+        if closing:
+            debug_events.append({"type": "world", "reasoning": "End of turn: the world moves.", "changes": closing})
 
     narration = "\n".join(text_parts).strip()
 
@@ -353,6 +377,191 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     state["campaign_log_summary"].append({"turn": state["turn_number"], "summary": narration[:400]})
     state["turn_number"] += 1
     return narration, debug_events
+
+
+# ==================== tool handling (2026-10-26) ====================
+# Split out of run_turn when the tool set grew past the original four. Each handler returns
+# (content_for_the_model, debug_events).
+
+def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance):
+    specs = copy.deepcopy(system.TOOL_SPECS)
+    for spec in specs:
+        if spec["name"] != "propose_state_update":
+            continue
+        props = spec["parameters"]["properties"]
+        if dyn and allow_time_advance:
+            max_days = (dyn.get("calendar") or {}).get("max_days_per_update", dynamics.DEFAULT_MAX_DAYS)
+            props["days_elapsed"] = {
+                "type": "integer",
+                "description": f"Days that pass as this beat closes (0-{max_days}). The world drifts and dated events fire for each day.",
+            }
+        if dyn and dyn.get("world"):
+            props["world_deltas"] = {
+                "type": "object",
+                "description": "The player's direct impact on the world tracks in THE WORLD, e.g. {\"government_stability\": -3}. Small (the application clamps it); the world already drifts on its own.",
+            }
+    if mechanics_catalog:
+        specs.append(mechanics.tool_spec())
+        primitives = {e.get("render_primitive") for e in mechanics_catalog.values()}
+        if "seat_chart" in primitives:
+            specs.append(operations.vote_tool_spec())
+        if "forces" in primitives:
+            specs.append(operations.sway_tool_spec())
+            specs.append(operations.confrontation_tool_spec())
+    return specs
+
+
+def _resource_value(state, key):
+    if not key:
+        return None
+    return (state.get("resources") or {}).get(key)
+
+
+def _apply_at_stake(state, resource_schema, dyn, key, degree, cause):
+    """Moves one resource by the fixed per-degree amount in core.AT_STAKE_DELTAS, bypassing the GM."""
+    if not key or key not in (state.get("resources") or {}) or key in dynamics.derived_keys(dyn):
+        return []
+    delta = shared_core.AT_STAKE_DELTAS.get(degree, 0)
+    if not delta:
+        return []
+    lo, hi = (resource_schema["resources"].get(key) or {}).get("range", [0, 100])
+    before = state["resources"][key]
+    after = shared_core.clamp(before + delta, lo, hi)
+    state["resources"][key] = after
+    return [{"kind": "resource", "key": key, "before": before, "after": after,
+             "before_label": shared_core.label_for_value(before), "after_label": shared_core.label_for_value(after),
+             "requested_delta": delta, "clamped": False, "cause": cause}]
+
+
+def _post_change_bookkeeping(state, dyn, resource_schema, system):
+    """After anything that moves numbers: re-derive computed resources and check thresholds, so a
+    threshold crossed mid-turn fires in time for the GM to narrate it this turn."""
+    if not dyn:
+        return []
+    return dynamics.recompute_derived(state, dyn) + dynamics.check_thresholds(state, dyn, resource_schema, system)
+
+
+def _notices_for(changes):
+    lines = [c["message"] for c in changes if c.get("kind") == "threshold" and c.get("message")]
+    lines += [f"canon event fired: {c['key']}" for c in changes if c.get("kind") == "canon_event"]
+    return lines
+
+
+def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance):
+    name, inp = tc["name"], dict(tc["input"] or {})
+    events = []
+
+    if name == "request_check":
+        result = system.roll_check(
+            state["character"], inp["attribute"], inp.get("skill"), inp["dc"], inp.get("target_npc")
+        )
+        auto_changes = system.apply_auto_liability_effects(state, result)
+        stake_changes = _apply_at_stake(state, resource_schema, dyn, inp.get("at_stake"), result["degree"], "at stake in check")
+        follow = _post_change_bookkeeping(state, dyn, resource_schema, system) if stake_changes else []
+        events.append({"type": "check", "description": inp.get("description", ""), "at_stake": inp.get("at_stake"), **result})
+        if auto_changes or stake_changes or follow:
+            events.append({"type": "state_update", "reasoning": "Automatic: liability trigger / at-stake resource.",
+                           "changes": auto_changes + stake_changes + follow})
+        payload = dict(result)
+        if stake_changes:
+            payload["at_stake_applied"] = {c["key"]: c["after"] - c["before"] for c in stake_changes}
+        notices = _notices_for(follow)
+        if notices:
+            payload["world_events"] = notices
+        return json.dumps(payload), events
+
+    if name == "propose_state_update":
+        days = inp.pop("days_elapsed", None)
+        world_deltas = inp.pop("world_deltas", None)
+        canon_key = inp.pop("canon_event_triggered", None)
+        derived = dynamics.derived_keys(dyn)
+        ignored = []
+        if derived and inp.get("resource_deltas"):
+            ignored = [{"kind": "derived_resource_ignored", "key": k} for k in inp["resource_deltas"] if k in derived]
+            inp["resource_deltas"] = {k: v for k, v in inp["resource_deltas"].items() if k not in derived}
+        changes = ignored + system.apply_state_update(state, inp, resource_schema)
+        if world_deltas and dyn:
+            changes += dynamics.apply_world_deltas(state, dyn, resource_schema, world_deltas)
+        if canon_key:
+            if dyn:
+                changes += dynamics.try_fire_event(state, dyn, resource_schema, canon_key, "GM")
+            else:
+                # Settings without dynamics.json keep the original ungated behavior.
+                changes += system.apply_state_update(state, {"canon_event_triggered": canon_key, "reasoning": ""}, resource_schema)
+        if days:
+            if dyn and allow_time_advance:
+                changes += dynamics.advance_time(state, dyn, resource_schema, system, days)
+            elif not allow_time_advance:
+                changes.append({"kind": "time_ignored", "reason": "this shared world's clock is run by the server"})
+        changes += _post_change_bookkeeping(state, dyn, resource_schema, system)
+        events.append({"type": "state_update", "reasoning": inp.get("reasoning", ""), "changes": changes})
+        rejected = [c for c in changes if c.get("kind") in ("canon_event_rejected", "derived_resource_ignored", "time_ignored")]
+        payload = {"applied": "Values may have been clamped or rejected by the application."}
+        if rejected:
+            payload["rejected"] = rejected
+        time_change = next((c for c in changes if c.get("kind") == "time"), None)
+        if time_change:
+            payload["date_now"] = state.get("date")
+        notices = _notices_for(changes)
+        if notices:
+            payload["world_events"] = notices
+        return json.dumps(payload), events
+
+    if name == "propose_level_up":
+        changes = system.apply_level_up(state, inp)
+        events.append({"type": "level_up", "reasoning": inp.get("reasoning", ""), "changes": changes})
+        return json.dumps({"changes": changes}), events
+
+    if name == "propose_mechanic_update" and mechanics_catalog:
+        changes = mechanics.apply_mechanic_update(state, mechanics_catalog, inp)
+        changes += _post_change_bookkeeping(state, dyn, resource_schema, system)
+        events.append({"type": "mechanic_update", "reasoning": inp.get("reasoning", ""), "changes": changes})
+        return json.dumps({"changes": changes}), events
+
+    if name == "call_vote" and mechanics_catalog:
+        m = (state.get("mechanics") or {}).get(inp.get("instance_id")) or {}
+        influence_key = (m.get("data") or {}).get("influence_resource") or ((dyn or {}).get("influence") or {}).get("vote")
+        result, changes = operations.call_vote(state, system, inp, influence_value=_resource_value(state, influence_key))
+        if "error" not in result and result["passed"] and inp.get("canon_event"):
+            if dyn:
+                fire = dynamics.try_fire_event(state, dyn, resource_schema, inp["canon_event"], "vote")
+            else:
+                fire = system.apply_state_update(state, {"canon_event_triggered": inp["canon_event"], "reasoning": ""}, resource_schema)
+            changes += fire
+            result["canon_event"] = fire
+        changes += _post_change_bookkeeping(state, dyn, resource_schema, system)
+        if result.get("speech"):
+            events.append({"type": "check", "description": f"Speech before the vote: {inp.get('motion', '')}", **result["speech"]})
+        events.append({"type": "operation", "operation": "call_vote", "reasoning": inp.get("motion", ""), "result": result, "changes": changes})
+        return json.dumps(result), events
+
+    if name == "sway_unit" and mechanics_catalog:
+        influence_key = ((dyn or {}).get("influence") or {}).get("sway")
+        result, changes = operations.sway_unit(state, system, inp, influence_value=_resource_value(state, influence_key))
+        if "error" not in result:
+            risk = (dyn or {}).get("sway_risk_resource")
+            degree = result["check"]["degree"]
+            if risk and shared_core.AT_STAKE_DELTAS.get(degree, 0) < 0:
+                changes += _apply_at_stake(state, resource_schema, dyn, risk, degree, "exposure from sway_unit")
+            changes += _post_change_bookkeeping(state, dyn, resource_schema, system)
+            events.append({"type": "check", "description": inp.get("description", ""), **result["check"]})
+        events.append({"type": "operation", "operation": "sway_unit", "reasoning": inp.get("description", ""), "result": result, "changes": changes})
+        return json.dumps(result), events
+
+    if name == "resolve_confrontation" and mechanics_catalog:
+        result, changes = operations.resolve_confrontation(state, system, inp)
+        if "error" not in result and dyn:
+            changes += dynamics.apply_confrontation_effects(state, dyn, resource_schema, result)
+            changes += _post_change_bookkeeping(state, dyn, resource_schema, system)
+            notices = _notices_for(changes)
+            if notices:
+                result["world_events"] = notices
+        if result.get("command_check"):
+            events.append({"type": "check", "description": f"Command: {inp.get('objective', '')}", **result["command_check"]})
+        events.append({"type": "operation", "operation": "resolve_confrontation", "reasoning": inp.get("objective", ""), "result": result, "changes": changes})
+        return json.dumps(result), events
+
+    return f"Unknown tool: {name}", events
 
 
 def generate_historical_character(provider, model, setting_key, system_key, figure_name, usage_sink=None):

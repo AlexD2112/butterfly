@@ -18,11 +18,15 @@ class TestLoadCatalog(unittest.TestCase):
             },
         )
         for type_key, entry in catalog.items():
-            self.assertIn(entry["render_primitive"], {"seat_chart", "org_tree", "text"})
+            self.assertIn(entry["render_primitive"], set(mechanics.RENDER_PRIMITIVES))
             self.assertIn("seed_data", entry)
             self.assertIn("data_shape", entry)
             self.assertIn("when_relevant", entry)
             self.assertTrue(entry.get("canon_triggers"), f"{type_key} should list at least one canon trigger")
+        # 2026-10-26: the three entries that operations.py resolves in code.
+        self.assertEqual(catalog["petrograd_garrison"]["render_primitive"], "forces")
+        self.assertEqual(catalog["petrograd_soviet_composition"]["render_primitive"], "seat_chart")
+        self.assertEqual(catalog["bolshevik_central_committee"]["render_primitive"], "seat_chart")
 
     def test_diplomatic_position_uses_the_text_primitive(self):
         catalog = mechanics.load_catalog("petrograd_1917")
@@ -55,7 +59,9 @@ class TestLoadCatalog(unittest.TestCase):
             self.assertGreaterEqual(len(catalog), 3, f"{setting_key} should have at least 3 pilot types")
             for type_key, entry in catalog.items():
                 with self.subTest(setting=setting_key, type_key=type_key):
-                    self.assertIn(entry["render_primitive"], {"seat_chart", "org_tree", "text"})
+                    self.assertIn(entry["render_primitive"], set(mechanics.RENDER_PRIMITIVES))
+                    clean, errors, _ = mechanics.validate_data(entry["render_primitive"], entry["seed_data"])
+                    self.assertEqual(errors, [], "seed_data must pass the primitive's own validator")
                     self.assertIn("seed_data", entry)
                     self.assertIn("data_shape", entry)
                     self.assertIn("when_relevant", entry)
@@ -70,6 +76,10 @@ class TestLoadCatalog(unittest.TestCase):
                     elif entry["render_primitive"] == "org_tree":
                         self.assertIn("root", entry["seed_data"])
                         self.assertIn("name", entry["seed_data"]["root"])
+                    elif entry["render_primitive"] == "forces":
+                        for unit in entry["seed_data"]["units"]:
+                            self.assertIn(unit["loyalty"], range(-3, 4))
+                            self.assertIn(unit["readiness"], range(1, 6))
                     elif entry["render_primitive"] == "text":
                         entries = entry["seed_data"]["entries"]
                         self.assertGreater(len(entries), 0)
@@ -112,8 +122,8 @@ class TestApplyMechanicUpdate(unittest.TestCase):
             {
                 "action": "create", "type_key": "petrograd_soviet_composition",
                 "instance_id": "soviet_ispolkom", "title": "Petrograd Soviet — Ispolkom",
-                "data": {"body_size": 90, "factions": []}, "review_after_turns": 5,
-                "reasoning": "Trotsky was just elected chairman.",
+                "data": {"body_size": 90, "factions": [{"name": "Bolsheviks", "seats": 50, "lean": 3}, {"name": "Others", "seats": 40, "lean": -1}]},
+                "review_after_turns": 5, "reasoning": "Trotsky was just elected chairman.",
             },
         )
         self.assertEqual(changes[0]["kind"], "mechanic_created")
@@ -143,10 +153,23 @@ class TestApplyMechanicUpdate(unittest.TestCase):
         self.assertEqual(changes[0]["kind"], "mechanic_rejected")
         self.assertIn("already exists", changes[0]["reason"])
 
-    def test_create_requires_title_data_and_cadence(self):
+    def test_create_without_data_uses_the_catalog_seed(self):
+        """2026-10-26: title, data and cadence are optional on create - the researched seed is the
+        default instead of whatever the model improvises."""
         changes = mechanics.apply_mechanic_update(
             self.state, self.catalog,
             {"action": "create", "type_key": "petrograd_soviet_composition", "instance_id": "x", "reasoning": "no"},
+        )
+        self.assertEqual(changes[0]["kind"], "mechanic_created")
+        self.assertTrue(changes[0]["used_seed"])
+        seed = self.catalog["petrograd_soviet_composition"]["seed_data"]
+        self.assertEqual(self.state["mechanics"]["x"]["data"]["body_size"], seed["body_size"])
+
+    def test_create_rejects_invalid_data(self):
+        changes = mechanics.apply_mechanic_update(
+            self.state, self.catalog,
+            {"action": "create", "type_key": "petrograd_soviet_composition", "instance_id": "x",
+             "data": {"body_size": 90, "factions": []}, "reasoning": "no"},
         )
         self.assertEqual(changes[0]["kind"], "mechanic_rejected")
         self.assertEqual(self.state["mechanics"], {})
@@ -155,20 +178,20 @@ class TestApplyMechanicUpdate(unittest.TestCase):
         mechanics.apply_mechanic_update(
             self.state, self.catalog,
             {
-                "action": "create", "type_key": "petrograd_garrison", "instance_id": "garrison",
-                "title": "Petrograd Garrison", "data": {"root": {"name": "old"}}, "review_after_turns": 4,
+                "action": "create", "type_key": "military_revolutionary_committee", "instance_id": "mrc",
+                "title": "MRC", "data": {"root": {"name": "old"}}, "review_after_turns": 4,
                 "reasoning": "setup",
             },
         )
         changes = mechanics.apply_mechanic_update(
             self.state, self.catalog,
             {
-                "action": "update", "type_key": "petrograd_garrison", "instance_id": "garrison",
-                "data": {"root": {"name": "new"}}, "review_after_turns": 2, "reasoning": "a regiment defected",
+                "action": "update", "type_key": "military_revolutionary_committee", "instance_id": "mrc",
+                "data": {"root": {"name": "new"}}, "review_after_turns": 2, "reasoning": "reorganized",
             },
         )
         self.assertEqual(changes[0]["kind"], "mechanic_updated")
-        entry = self.state["mechanics"]["garrison"]
+        entry = self.state["mechanics"]["mrc"]
         self.assertEqual(entry["data"]["root"]["name"], "new")
         self.assertEqual(entry["updated_turn"], 3)
         self.assertEqual(entry["next_review_turn"], 5)
@@ -200,7 +223,6 @@ class TestApplyMechanicUpdate(unittest.TestCase):
             self.state, self.catalog,
             {
                 "action": "create", "type_key": "petrograd_garrison", "instance_id": "garrison",
-                "title": "Petrograd Garrison", "data": {"root": {"name": "old"}}, "review_after_turns": 4,
                 "reasoning": "setup",
             },
         )
@@ -317,7 +339,7 @@ class TestEngineIntegration(unittest.TestCase):
     def test_ai_creating_a_mechanic_end_to_end_for_rome(self):
         create_input = {
             "action": "create", "type_key": "roman_senate_composition", "instance_id": "senate",
-            "title": "The Roman Senate — Factional Balance", "data": {"body_size": 600, "factions": []},
+            "title": "The Roman Senate — Factional Balance",
             "review_after_turns": 5, "reasoning": "Bibulus's obstruction just became a live concern.",
         }
         provider = FakeProvider(
@@ -340,8 +362,7 @@ class TestEngineIntegration(unittest.TestCase):
     def test_ai_creating_the_central_committee_mechanic_end_to_end(self):
         """Exercises one of the newly-added (2026-09-10) mechanics specifically, since the general
         catalog-structure test only checks the seed_data's shape, not the full create pipeline for
-        every single new type - this is the org_tree-of-named-individuals pattern, distinct from
-        petrograd_garrison's org_tree-of-military-units pattern already covered above."""
+        every single new type - this is the seat-chart-of-named-individuals pattern."""
         catalog = mechanics.load_catalog("petrograd_1917")
         seed = catalog["bolshevik_central_committee"]["seed_data"]
         create_input = {
@@ -364,14 +385,17 @@ class TestEngineIntegration(unittest.TestCase):
             provider, "gpt-5.6-luna", state, "petrograd_1917", "red_admiral", [], "I call the vote",
         )
         entry = state["mechanics"]["cc_oct_10"]
-        self.assertEqual(entry["render_primitive"], "org_tree")
-        stance_names = {c["name"] for c in entry["data"]["root"]["children"]}
-        self.assertIn("Opposed", stance_names)
+        # 2026-10-26: a seat_chart of named members (one seat each), resolved by call_vote.
+        self.assertEqual(entry["render_primitive"], "seat_chart")
+        members = {f["name"]: f["lean"] for f in entry["data"]["factions"]}
+        self.assertEqual(members["Kamenev"], -3)
+        self.assertEqual(members["Zinoviev"], -3)
+        self.assertTrue(entry["data"]["includes_player"])
 
     def test_ai_creating_a_mechanic_end_to_end(self):
         create_input = {
             "action": "create", "type_key": "petrograd_soviet_composition", "instance_id": "soviet_ispolkom",
-            "title": "Petrograd Soviet — Ispolkom", "data": {"body_size": 90, "factions": []},
+            "title": "Petrograd Soviet — Ispolkom",
             "review_after_turns": 5, "reasoning": "Just elected chairman - clearly relevant now.",
         }
         provider = FakeProvider(

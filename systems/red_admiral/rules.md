@@ -1,4 +1,4 @@
-# Red Admiral System — v2
+# Red Admiral System — v3
 
 Part of **Butterfly**, an AI-narrated historical RPG engine. Red Admiral is a d20
 attribute/skill/progression ruleset originally drafted for a Trotsky/Petrograd 1917 campaign, then
@@ -80,14 +80,24 @@ Procedure:
    pack) as a reference point for a sensible DC rather than inventing one from nothing - a common
    rule of thumb is `10 + that NPC's relevant modifier` as a starting anchor, adjusted for context.
 3. The application rolls `1d20`, adds the attribute modifier plus the skill's tier bonus (if a
-   skill applies), and compares to the DC:
-   - **Natural 20** (before any modifiers): automatic success, regardless of total - and an
-     exceptional one, meaning the GM should narrate an extra benefit beyond the basic goal.
-   - **Natural 1**: automatic failure, regardless of total - and a complication beyond just "it
-     didn't work."
-   - Otherwise: total >= DC is a success, total < DC is a failure. There's no separate "critical"
-     tier for a very high or very low total short of a natural 20/1 - keep it binary past that,
-     matching standard d20 conventions rather than stacking on extra margin-based tiers.
+   skill applies), and sets the degree from the margin (total minus DC):
+
+   | Degree | When | What the GM narrates |
+   |--------|------|----------------------|
+   | Critical success | natural 20, or beat the DC by 10+ | the goal, plus a real extra benefit |
+   | Strong success | beat the DC by 5-9 | the goal, cleanly, a little more than asked |
+   | Success | met the DC, or beat it by up to 4 | the goal |
+   | Success at a cost | missed by 1-3 | the goal, but a real price is paid |
+   | Failure | missed by 4-9 | the goal isn't reached |
+   | Critical failure | natural 1, or missed by 10+ | the goal isn't reached and something goes wrong |
+
+   (Through v2 checks were strictly binary past a natural 20/1. That made most rolls feel the
+   same and left consequences entirely to the GM's mood; v3 gives the margin teeth.)
+
+   **At stake.** A check may name one resource as `at_stake` - the thing the attempt genuinely
+   risks or builds. The application moves it by the degree: +4 critical success, +2 strong
+   success, 0 success, -3 success at a cost, -4 failure, -8 critical failure. Failure costs
+   something even if the GM forgets to propose a delta.
 4. The model narrates the outcome in-fiction and proposes a state update (section 9) consistent
    with the result.
 
@@ -190,19 +200,22 @@ displayed as one of six labels:
 
 Keeping a real number underneath the label is what lets the application clamp changes to a
 sensible per-check maximum the same way it does for anything else - the categorical label is a
-display convenience, not a separate data type. Certain thresholds can carry automatic narrative
-weight (e.g. a "Personal Safety" category hitting the bottom band making arrest or assassination
-an active, GM-flagged threat) - that's setting-defined, described in the setting pack's
-`resource_schema.json`.
+display convenience, not a separate data type.
+
+A setting with a `dynamics.json` (Petrograd 1917 has one) makes resources move on their own:
+**drift** (a per-day change while a condition holds - hunger raising mass influence, a strong
+right wing eroding personal safety), **thresholds** (crossing a value fires a code-applied event,
+sometimes with a roll the application makes itself - e.g. personal safety below 18 sends the
+militia with a warrant), and **derived** resources computed from a tracker rather than proposed
+(Petrograd's garrison loyalty is the strength-weighted loyalty of the garrison regiments). GM
+deltas to a derived resource are ignored.
 
 ## 9. Commitments
 
 Formal promises or agreements the character has made, each tracked as: a short description, which
-parties are bound, and a status (active / fulfilled / broken). These carry narrative weight (an
-NPC who co-signed a commitment should face a higher bar to act against the character over it
-publicly) without being a hard mechanical rule the application enforces - the GM is expected to
-actually honor commitments in how it plays NPCs, the same way it's expected to stay in character
-generally.
+parties are bound, and a status (active / fulfilled / broken). The GM is expected to honor them in
+how NPCs behave. One part is enforced in code: when a commitment goes from **active to broken**,
+every bound party who has a relationship or enmity entry loses 2 trust and gains an enmity pip.
 
 ## 10. Canon and divergence
 
@@ -212,6 +225,16 @@ running list of short, specific entries describing exactly how and where the cam
 from the historical record (e.g. "a document formalizing an alliance was signed that, historically,
 never was"). This is what makes divergence legible to both the GM and the player over a long
 campaign, rather than just an opaque counter.
+
+In a setting with a `dynamics.json`, canon is enforced: **locked** events fire on their own when
+the calendar reaches their date (and can't be fired early), and **contingent** events carry
+requirements the application checks - a `canon_event_triggered` that fails them is rejected with
+the missing conditions listed. Events can carry code-applied effects.
+
+**The clock.** In such a setting the date moves only when the GM sets `days_elapsed` (at most 7 at
+once) on `propose_state_update`. Each day applies the world's drift, fires any locked event whose
+date has arrived, and checks thresholds. Multiplayer servers keep their own clock; there the GM
+can't move the date.
 
 ## 11. Opposed checks and NPCs
 
@@ -224,18 +247,39 @@ engine works (the player's actions get checked; the world reacts).
 
 ## 12. State update protocol (tool reference)
 
-Three tools, defined in `mechanics.py`:
-
-- `request_check(attribute, skill, dc, description, target_npc)` - `skill` and `target_npc` are
-  optional. Returns the roll result; the application computes it, the model never generates it.
+- `request_check(attribute, skill, dc, description, target_npc, at_stake)` - `skill`, `target_npc`
+  and `at_stake` are optional. Returns the roll, margin, degree and a narration instruction; the
+  application computes it, the model never generates it.
 - `propose_state_update(...)` - the general-purpose state-change tool: resource deltas,
   relationship deltas, enmity deltas, flags, commitments, XP awards, liabilities gained/removed
-  (by `liability_id` only), canon events, divergence log entries. Validated and clamped before
-  being applied. Feats are never granted here - only through `propose_level_up`.
+  (by `liability_id` only), canon events, divergence log entries - and, in settings with a
+  `dynamics.json`, `days_elapsed` and `world_deltas`. Validated and clamped before being applied.
+  Feats are never granted here - only through `propose_level_up`.
 - `propose_level_up(choice, ...)` - only valid while `level_up_pending` is true. Applies exactly
-  one of the three level-up options from section 5, with its own bounds checking (max 2 skill
-  steps / max 1 step per skill, +3 attribute points total, one feat by `feat_id` validated against
-  the catalog and its prerequisites).
+  one of the three level-up options from section 5.
+- `propose_mechanic_update(...)` - create/update/expire a tracker from the setting's catalog. Data
+  is validated per type (seat totals must add up; a bloc's lean or a unit's loyalty moves at most
+  one step per update). Omitting data on create uses the catalog's researched seed.
+
+**Operations** - code-resolved actions on trackers (`operations.py`):
+
+- `call_vote(instance_id, motion, player_position, speech_attribute?, speech_skill?, threshold?,
+  motion_alignment?, canon_event?)` - resolves a formal vote in a seat-chart body from each bloc's
+  seats and lean (-3..+3), the player's influence resource, an optional speech the application
+  rolls (DC rises with the share of the room leaning against the player), and dice. Firmly
+  committed blocs barely move; persuadable ones swing on the speech. Can fire a canon event if it
+  passes (through the same requirements gate).
+- `sway_unit(instance_id, unit_id, attribute, skill?, direction?)` - the player's in-person appeal
+  to one unit. DC 11 at neutral, -2 per step already toward the player, +2 per step against, ±2 by
+  the influence resource. Degree moves loyalty (crit +2, success +1, critical failure -1). One
+  attempt per unit per in-game day. `stand_down` asks a hostile unit only to stay in barracks.
+- `resolve_confrontation(instance_id, objective, player_side_attacking, player_units,
+  opposing_units?, adhoc_opposition?, terrain, player_commanding?, command_attribute?,
+  command_skill?)` - an armed clash. Only units at loyalty +2/+3 fight for the player and -2/-3
+  against; everyone else refuses. When one side is outmatched 2.5:1 or worse, its shakier units may
+  melt away before a shot is fired. Power is strength × quality (readiness), the defender gets a
+  terrain multiplier (street ×1.3, fortified ×1.8, fortress ×2.6), and the player's command check
+  multiplies their side. Outcome, casualties and loyalty shifts are applied in code.
 
 ## 13. Character creation
 

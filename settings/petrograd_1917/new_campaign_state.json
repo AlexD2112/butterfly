@@ -2,10 +2,10 @@
   "setting_pack": "petrograd_1917",
   "system": "red_admiral",
   "turn_number": 0,
-  "date": "1917-09-25",
+  "date": "1917-09-04",
   "character": {
     "name": "Lev Davidovich Trotsky (Leon Trotsky)",
-    "role": "Bolshevik Central Committee member; Chairman, Petrograd Soviet",
+    "role": "Bolshevik Central Committee member; deputy of the Petrograd Soviet, just released from Kresty on bail",
     "level": 1,
     "xp": 0,
     "level_up_pending": false,
@@ -20,34 +20,98 @@
       "physique": 12
     },
     "skills": {
-      "platform_speechmaking": {"attribute": "oration", "tier": 1},
-      "debate_and_public_argument": {"attribute": "oration", "tier": 2},
-      "crowd_command_and_agitation": {"attribute": "oration", "tier": 1},
-      "intimidation": {"attribute": "oration", "tier": 0},
-
-      "revolutionary_theory": {"attribute": "intellect", "tier": 2},
-      "written_propaganda": {"attribute": "intellect", "tier": 2},
-      "military_strategic_planning": {"attribute": "intellect", "tier": 0},
-      "situation_analysis": {"attribute": "intellect", "tier": 1},
-      "languages_and_translation": {"attribute": "intellect", "tier": 1},
-
-      "crisis_command": {"attribute": "resolve", "tier": 1},
-      "psychological_endurance": {"attribute": "resolve", "tier": 1},
-      "willpower_vs_coercion": {"attribute": "resolve", "tier": 0},
-
-      "inspiring_loyalty": {"attribute": "presence", "tier": 1},
-      "negotiation": {"attribute": "presence", "tier": 1},
-      "personal_persuasion": {"attribute": "presence", "tier": 1},
-      "cultivating_allies": {"attribute": "presence", "tier": 0},
-
-      "factional_maneuvering": {"attribute": "cunning", "tier": 0},
-      "deception": {"attribute": "cunning", "tier": 0},
-      "reading_hidden_agendas": {"attribute": "cunning", "tier": 0},
-      "operational_security": {"attribute": "cunning", "tier": 0},
-
-      "endurance_and_travel": {"attribute": "physique", "tier": 1},
-      "physical_confrontation": {"attribute": "physique", "tier": 0},
-      "stealth_and_evasion": {"attribute": "physique", "tier": 0}
+      "platform_speechmaking": {
+        "attribute": "oration",
+        "tier": 1
+      },
+      "debate_and_public_argument": {
+        "attribute": "oration",
+        "tier": 2
+      },
+      "crowd_command_and_agitation": {
+        "attribute": "oration",
+        "tier": 1
+      },
+      "intimidation": {
+        "attribute": "oration",
+        "tier": 0
+      },
+      "revolutionary_theory": {
+        "attribute": "intellect",
+        "tier": 2
+      },
+      "written_propaganda": {
+        "attribute": "intellect",
+        "tier": 2
+      },
+      "military_strategic_planning": {
+        "attribute": "intellect",
+        "tier": 0
+      },
+      "situation_analysis": {
+        "attribute": "intellect",
+        "tier": 1
+      },
+      "languages_and_translation": {
+        "attribute": "intellect",
+        "tier": 1
+      },
+      "crisis_command": {
+        "attribute": "resolve",
+        "tier": 1
+      },
+      "psychological_endurance": {
+        "attribute": "resolve",
+        "tier": 1
+      },
+      "willpower_vs_coercion": {
+        "attribute": "resolve",
+        "tier": 0
+      },
+      "inspiring_loyalty": {
+        "attribute": "presence",
+        "tier": 1
+      },
+      "negotiation": {
+        "attribute": "presence",
+        "tier": 1
+      },
+      "personal_persuasion": {
+        "attribute": "presence",
+        "tier": 1
+      },
+      "cultivating_allies": {
+        "attribute": "presence",
+        "tier": 0
+      },
+      "factional_maneuvering": {
+        "attribute": "cunning",
+        "tier": 0
+      },
+      "deception": {
+        "attribute": "cunning",
+        "tier": 0
+      },
+      "reading_hidden_agendas": {
+        "attribute": "cunning",
+        "tier": 0
+      },
+      "operational_security": {
+        "attribute": "cunning",
+        "tier": 0
+      },
+      "endurance_and_travel": {
+        "attribute": "physique",
+        "tier": 1
+      },
+      "physical_confrontation": {
+        "attribute": "physique",
+        "tier": 0
+      },
+      "stealth_and_evasion": {
+        "attribute": "physique",
+        "tier": 0
+      }
     },
     "feats": [],
     "liabilities": [
@@ -65,53 +129,423 @@
     "flags": {
       "in_exile": false,
       "in_prison": false,
-      "party_position": "Central Committee; Chairman, Petrograd Soviet",
+      "under_indictment": true,
+      "soviet_chairman": false,
+      "party_position": "Central Committee member (elected in absentia at the Sixth Congress, August 1917)",
       "married_to_natalia": true,
       "recently_joined_bolsheviks": true,
       "has_military_command_experience": false
     },
-    "recent_check_usage": {"attributes": [], "skills": []}
+    "recent_check_usage": {
+      "attributes": [],
+      "skills": []
+    }
   },
   "relationships": {
-    "lenin": {"trust": 3, "note": "Recently reconciled - Trotsky joined the Bolsheviks outright only this summer."},
-    "stalin": {"trust": 0, "note": "Correct but cold."},
-    "kamenev": {"trust": 1, "note": "Old acquaintance from exile; more moderate, frequent friction over tactics."},
-    "zinoviev": {"trust": 0, "note": "Wary of each other; both compete for Lenin's confidence."},
-    "sverdlov": {"trust": 2, "note": "Efficient, cooperative on organizational matters."},
-    "kerensky": {"trust": -3, "note": "Head of the Provisional Government; adversary."},
-    "natalia_sedova": {"trust": 5, "note": "Wife and closest personal confidante."}
+    "lenin": {
+      "trust": 3,
+      "note": "Allies since the summer, when Trotsky's group joined the Bolsheviks. Lenin is in hiding in Finland and reaches you only by letter."
+    },
+    "kamenev": {
+      "trust": 1,
+      "note": "Leads the Bolshevik fraction in the Soviet. Old acquaintance; more cautious than you, and he thinks the Soviet majority should be used to build a socialist coalition, not to rise."
+    },
+    "zinoviev": {
+      "trust": 0,
+      "note": "In hiding since July, close to Lenin personally but closer to Kamenev politically. Wary of you."
+    },
+    "stalin": {
+      "trust": 0,
+      "note": "Edits the party paper. Correct but cold."
+    },
+    "sverdlov": {
+      "trust": 2,
+      "note": "The party's organizer. Efficient, cooperative."
+    },
+    "kollontai": {
+      "trust": 2,
+      "note": "Arrested after the July Days too. A real ally."
+    },
+    "joffe": {
+      "trust": 3,
+      "note": "Old comrade from your own group. The person you trust most in politics."
+    },
+    "martov": {
+      "trust": 1,
+      "note": "Menshevik-Internationalist leader and an old friend from the Iskra days. He shares half your critique and none of your conclusions."
+    },
+    "dan": {
+      "trust": -2,
+      "note": "Fyodor Dan, Menshevik leader on the Soviet presidium. Sees you as the man who will wreck the Soviet."
+    },
+    "kerensky": {
+      "trust": -3,
+      "note": "Minister-President. His government put you in prison."
+    },
+    "natalia_sedova": {
+      "trust": 5,
+      "note": "Wife and closest confidante."
+    }
   },
   "enmity": {
-    "stalin": {"pips": 0, "note": "Unengaged - no open friction yet."},
-    "zinoviev": {"pips": 0, "note": "Cautious, not yet hostile."},
-    "kamenev": {"pips": 0, "note": "Cautious, not yet hostile."},
-    "kerensky": {"pips": 0, "note": "Political adversary, but not yet a personal enmity track - see relationships.kerensky for the general disposition."}
+    "stalin": {
+      "pips": 0,
+      "note": "Unengaged - no open friction yet."
+    },
+    "zinoviev": {
+      "pips": 0,
+      "note": "Cautious, not yet hostile."
+    },
+    "kamenev": {
+      "pips": 0,
+      "note": "Cautious, not yet hostile."
+    },
+    "dan": {
+      "pips": 1,
+      "note": "Opposes you on every question before the Soviet."
+    },
+    "kerensky": {
+      "pips": 1,
+      "note": "His ministry is still pressing the July charges against you."
+    }
   },
   "resources": {
-    "mass_influence": 55,
-    "party_standing": 62,
-    "soviet_authority": 72,
-    "state_legitimacy": 20,
-    "left_sr_alliance": 45,
-    "menshevik_internationalist_alignment": 30,
-    "lenins_trust": 58,
-    "mrc_authority": 5,
-    "garrison_loyalty": 50,
-    "international_reputation": 28,
-    "personal_safety": 52
+    "mass_influence": 56,
+    "party_standing": 52,
+    "soviet_authority": 44,
+    "state_legitimacy": 16,
+    "left_sr_alliance": 40,
+    "menshevik_internationalist_alignment": 38,
+    "lenins_trust": 56,
+    "mrc_authority": 0,
+    "garrison_loyalty": 63,
+    "international_reputation": 30,
+    "personal_safety": 38
   },
-  "commitments": {},
+  "world": {
+    "government_stability": 30,
+    "bread_supply": 40,
+    "war_exhaustion": 78,
+    "counterrevolution_threat": 35
+  },
+  "commitments": {
+    "bail_conditions": {
+      "description": "Released on bail pending trial on the July charges (incitement, and the 'German agent' accusation)",
+      "parties": [
+        "kerensky"
+      ],
+      "status": "active"
+    }
+  },
   "canon_events": {
-    "trotsky_elected_chairman": {"status": "fired", "type": "locked"},
-    "lenin_returns_to_petrograd": {"status": "pending", "type": "locked"},
-    "central_committee_insurrection_vote": {"status": "pending", "type": "contingent"},
-    "october_revolution": {"status": "pending", "type": "contingent"},
-    "sovnarkom_formed": {"status": "pending", "type": "contingent"},
-    "brest_litovsk_negotiations_begin": {"status": "pending", "type": "contingent"},
-    "brest_litovsk_signed": {"status": "pending", "type": "contingent"},
-    "red_army_founded": {"status": "pending", "type": "contingent"},
-    "civil_war_begins": {"status": "pending", "type": "contingent"}
+    "kornilov_affair_defeated": {
+      "status": "fired",
+      "type": "locked",
+      "fired_date": "1917-08-31"
+    },
+    "trotsky_released_from_kresty": {
+      "status": "fired",
+      "type": "locked",
+      "fired_date": "1917-09-04"
+    },
+    "presidium_no_confidence": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "democratic_conference": {
+      "status": "pending",
+      "type": "locked"
+    },
+    "trotsky_elected_chairman": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "third_coalition_formed": {
+      "status": "pending",
+      "type": "locked"
+    },
+    "pre_parliament_opens": {
+      "status": "pending",
+      "type": "locked"
+    },
+    "pre_parliament_walkout": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "lenin_returns_to_petrograd": {
+      "status": "pending",
+      "type": "locked"
+    },
+    "garrison_transfer_order": {
+      "status": "pending",
+      "type": "locked"
+    },
+    "mrc_formed": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "central_committee_insurrection_vote": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "october_revolution": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "sovnarkom_formed": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "brest_litovsk_negotiations_begin": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "brest_litovsk_signed": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "red_army_founded": {
+      "status": "pending",
+      "type": "contingent"
+    },
+    "civil_war_begins": {
+      "status": "pending",
+      "type": "contingent"
+    }
   },
+  "mechanics": {
+    "petrograd_soviet": {
+      "type_key": "petrograd_soviet_composition",
+      "title": "Petrograd Soviet — Plenum",
+      "render_primitive": "seat_chart",
+      "data": {
+        "body_size": 1000,
+        "influence_resource": "soviet_authority",
+        "factions": [
+          {
+            "name": "Bolsheviks",
+            "seats": 400,
+            "lean": 3,
+            "note": "Swelling since Kornilov. Kamenev leads the fraction and wants to use the majority carefully; the district organizers want to use it now."
+          },
+          {
+            "name": "Non-party soldiers' delegates",
+            "seats": 140,
+            "lean": 1,
+            "note": "Elected by regimental committees. Angry about the front and the officers, wary of any party - will follow whoever talks about peace and bread."
+          },
+          {
+            "name": "Left Socialist-Revolutionaries",
+            "seats": 70,
+            "lean": 1,
+            "note": "Breaking from the SR leadership over land and the war. Natural allies, but they want to be partners, not followers."
+          },
+          {
+            "name": "Menshevik-Internationalists",
+            "seats": 55,
+            "lean": 0,
+            "note": "Martov's people. Agree with much of the critique, fear a one-party seizure. Persuadable by argument, not by pressure."
+          },
+          {
+            "name": "Socialist-Revolutionaries (leadership)",
+            "seats": 180,
+            "lean": -2,
+            "note": "Chernov's and Avksentiev's party machine, still tied to coalition with the government."
+          },
+          {
+            "name": "Mensheviks (defensist)",
+            "seats": 155,
+            "lean": -3,
+            "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument."
+          }
+        ]
+      },
+      "status": "active",
+      "created_turn": 0,
+      "updated_turn": 0,
+      "review_after_turns": 6,
+      "next_review_turn": 6
+    },
+    "petrograd_garrison": {
+      "type_key": "petrograd_garrison",
+      "title": "Armed Forces in Petrograd",
+      "render_primitive": "forces",
+      "data": {
+        "loyalty_scale": "+3 marches for the Soviet unprompted · +2 fights for the Soviet when called · +1/0/-1 stays in barracks · -2 fights for the Provisional Government when ordered · -3 moves against the Soviet unprompted",
+        "units": [
+          {
+            "id": "red_guards",
+            "name": "Red Guards",
+            "kind": "militia",
+            "strength": 12000,
+            "readiness": 2,
+            "loyalty": 3,
+            "note": "Factory militias, rifles handed out during the Kornilov scare. Enthusiastic, badly trained, short of officers."
+          },
+          {
+            "id": "kronstadt_sailors",
+            "name": "Kronstadt sailors",
+            "kind": "naval",
+            "strength": 4000,
+            "readiness": 4,
+            "loyalty": 3,
+            "note": "Baltic Fleet sailors from the island base - the most radical armed men in Russia. A day's movement from the city."
+          },
+          {
+            "id": "pavlovsky",
+            "name": "Pavlovsky Regiment",
+            "kind": "garrison",
+            "strength": 2500,
+            "readiness": 3,
+            "loyalty": 2,
+            "note": "Its committee is solidly Bolshevik. Barracks on the Field of Mars, a few hundred meters from the Winter Palace."
+          },
+          {
+            "id": "keksgolmsky",
+            "name": "Keksgolmsky Regiment",
+            "kind": "garrison",
+            "strength": 2000,
+            "readiness": 3,
+            "loyalty": 2,
+            "note": "Radicalized, close to the Bolshevik Military Organization."
+          },
+          {
+            "id": "volynsky",
+            "name": "Volynsky Regiment",
+            "kind": "garrison",
+            "strength": 2500,
+            "readiness": 3,
+            "loyalty": 1,
+            "note": "Mutinied first in February and is proud of it. Sympathetic, but won't move without a reason."
+          },
+          {
+            "id": "litovsky",
+            "name": "Litovsky Regiment",
+            "kind": "garrison",
+            "strength": 2000,
+            "readiness": 3,
+            "loyalty": 1,
+            "note": "Joined the February rising early. Leans left; tired."
+          },
+          {
+            "id": "izmailovsky",
+            "name": "Izmailovsky Regiment",
+            "kind": "garrison",
+            "strength": 2500,
+            "readiness": 3,
+            "loyalty": 1,
+            "note": "Soviet-leaning, committee divided between Bolsheviks and SRs."
+          },
+          {
+            "id": "grenadier",
+            "name": "Grenadier Regiment",
+            "kind": "garrison",
+            "strength": 2000,
+            "readiness": 3,
+            "loyalty": 1,
+            "note": "On the Petrograd side, near the Bolshevik district committees."
+          },
+          {
+            "id": "finlyandsky",
+            "name": "Finlyandsky Regiment",
+            "kind": "garrison",
+            "strength": 2000,
+            "readiness": 3,
+            "loyalty": 1,
+            "note": "On Vasilievsky Island. Sympathetic, not committed."
+          },
+          {
+            "id": "moskovsky",
+            "name": "Moskovsky Regiment",
+            "kind": "garrison",
+            "strength": 2000,
+            "readiness": 3,
+            "loyalty": 1,
+            "note": "Vyborg side, surrounded by the most militant factories in the city."
+          },
+          {
+            "id": "egersky",
+            "name": "Egersky Regiment",
+            "kind": "garrison",
+            "strength": 1500,
+            "readiness": 3,
+            "loyalty": 0,
+            "note": "Undecided. Its officers still have some hold over it."
+          },
+          {
+            "id": "preobrazhensky",
+            "name": "Preobrazhensky Regiment",
+            "kind": "garrison",
+            "strength": 2500,
+            "readiness": 3,
+            "loyalty": 0,
+            "note": "The oldest Guards regiment. Wants no part of a fight between socialists."
+          },
+          {
+            "id": "semyonovsky",
+            "name": "Semyonovsky Regiment",
+            "kind": "garrison",
+            "strength": 2500,
+            "readiness": 3,
+            "loyalty": 0,
+            "note": "Crushed the Moscow rising in 1905 and hasn't forgotten it; neither have the workers. Neutral, watchful."
+          },
+          {
+            "id": "peter_paul",
+            "name": "Peter and Paul Fortress garrison",
+            "kind": "garrison",
+            "strength": 1500,
+            "readiness": 3,
+            "loyalty": -1,
+            "note": "Holds the fortress and its arsenal - tens of thousands of rifles - with guns facing the Winter Palace across the Neva. Wary of the Bolsheviks."
+          },
+          {
+            "id": "don_cossacks",
+            "name": "Don Cossack regiments (1st, 4th, 14th)",
+            "kind": "cossack",
+            "strength": 3000,
+            "readiness": 4,
+            "loyalty": -1,
+            "note": "Experienced cavalry. Distrust the Soviet, but bitter at Kerensky for how he treated Kornilov. Their neutrality is for sale; their loyalty isn't."
+          },
+          {
+            "id": "junkers",
+            "name": "Officer cadets (junkers)",
+            "kind": "cadet",
+            "strength": 3500,
+            "readiness": 4,
+            "loyalty": -3,
+            "note": "Students of the military schools - young, disciplined, and the government's most reliable armed men in the city."
+          },
+          {
+            "id": "womens_battalion",
+            "name": "1st Petrograd Women's Battalion",
+            "kind": "volunteer",
+            "strength": 1000,
+            "readiness": 3,
+            "loyalty": -2,
+            "note": "Volunteers raised to shame the army into fighting on. Loyal to the government, quartered outside the city at Levashovo."
+          },
+          {
+            "id": "armored_cars",
+            "name": "Armored car units",
+            "kind": "armor",
+            "strength": 400,
+            "readiness": 4,
+            "loyalty": 0,
+            "note": "A few dozen machine-gun cars. Whoever has them controls the streets for an afternoon - their committee hasn't chosen."
+          }
+        ]
+      },
+      "status": "active",
+      "created_turn": 0,
+      "updated_turn": 0,
+      "review_after_turns": 6,
+      "next_review_turn": 6
+    }
+  },
+  "world_notices": [],
+  "dynamics_log": {},
   "divergence_score": 0,
   "divergence_log": [],
   "campaign_log_summary": []

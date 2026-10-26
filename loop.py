@@ -48,6 +48,13 @@ def print_debug_events(debug_events):
                 f"  [CHECK] {ev['attribute']}{skill_part} vs DC {ev['dc']}: rolled {ev['roll']} {mod} "
                 f"-> total {ev['total']} = {ev['degree'].upper()}{target}"
             )
+        elif ev["type"] in ("world", "operation", "mechanic_update"):
+            label = ev.get("operation", ev["type"]).upper()
+            print(f"  [{label}] {ev.get('reasoning', '')}")
+            if (ev.get("result") or {}).get("error"):
+                print(f"    {ev['result']['error']}")
+            for c in ev.get("changes", []):
+                print(f"    {c.get('kind')}: " + ", ".join(f"{k}={v}" for k, v in c.items() if k != "kind"))
         elif ev["type"] in ("state_update", "level_up"):
             label = "LEVEL-UP CHOICE" if ev["type"] == "level_up" else "STATE UPDATE"
             print(f"  [{label}] {ev.get('reasoning', '')}")

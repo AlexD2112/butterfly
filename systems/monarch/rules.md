@@ -49,9 +49,15 @@ description. **The application rolls the die, not the model.**
 | 18 | Very hard |
 | 22 | Extraordinary |
 
-`1d20 + attribute modifier + skill tier bonus` vs. DC. Natural 20 is an automatic, exceptional
-success; natural 1 is an automatic failure with a complication. Otherwise strictly binary:
-total >= DC succeeds, total < DC fails.
+`1d20 + attribute modifier + skill tier bonus` vs. DC. The margin (total minus DC) sets one of six
+degrees, applied by the application: **critical success** (natural 20, or beat the DC by 10+),
+**strong success** (beat it by 5-9), **success** (met it, or beat it by up to 4), **success at a
+cost** (missed by 1-3: the goal is reached, but the GM narrates a real price), **failure** (missed
+by 4-9), **critical failure** (natural 1, or missed by 10+). A check may name one resource
+`at_stake`; the application moves it by the degree (+4 / +2 / 0 / -3 / -4 / -8).
+
+**Commitments** (section 9): when a commitment goes from active to broken, the application itself
+takes 2 trust and adds an enmity pip for each bound party who has a relationship or enmity entry.
 
 ## 5. Experience and leveling
 
