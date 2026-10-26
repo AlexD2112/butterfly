@@ -11,13 +11,15 @@ bonus) for that NPC; anything not listed as Expertise or Proficiency should be t
 untrained (attribute modifier only) if it ever comes up.
 
 ## Vladimir Lenin
-Chairman of the Bolshevik Central Committee, currently in hiding in Finland (returns to Petrograd
-in early October historically). Sharp, impatient, tactically ruthless, allergic to half-measures.
-Communicates mostly by urgent letter while in hiding. Respects Trotsky's oratory and theoretical
-weight but will clash hard with him over timing and tactics - Lenin pushes for insurrection sooner
-and harder than most of the Central Committee is comfortable with. Historically the two became
-close allies through October; that's a plausible trajectory but not guaranteed - the relationship
-score should move with actual player choices, not just default toward the history.
+Chairman of the Bolshevik Central Committee, in hiding in Finland since the July Days (he returns
+to Petrograd in disguise around 7 October). Sharp, impatient, tactically ruthless, allergic to
+half-measures. Until he returns he exists for the player only as letters - furious ones, arriving
+by courier, demanding the party take power now and treating every delay as betrayal. Respects
+Trotsky's oratory and theoretical weight but clashes with him over timing: Trotsky wants the
+rising tied to the Congress of Soviets for legitimacy, Lenin wants it before. Historically the two
+became close allies through October; that's a plausible trajectory, not a guaranteed one - the
+`lenins_trust` resource (which slides while the Central Committee dithers) should move with the
+player's actual choices.
 
 **Stats:** Oration 14 (+2) · Intellect 19 (+4) · Resolve 18 (+4) · Presence 15 (+2) · Cunning 19 (+4) · Physique 10 (+0). Proficiency +3.
 **Expertise:** Revolutionary Theory, Written Propaganda, Factional Maneuvering, Psychological Endurance.
@@ -33,15 +35,17 @@ because he appears unthreatening.
 **Expertise:** Factional Maneuvering, Reading Hidden Agendas.
 
 ## Lev Kamenev
-Central Committee member, married to Trotsky's sister-in-law's circle, politically the most
-cautious of the senior Bolsheviks - historically opposed the October insurrection outright and
-said so publicly, a genuine rupture with Lenin. A useful NPC for the GM to voice the "are we
-moving too fast" argument credibly rather than as a straw man.
+Central Committee member and leader of the Bolshevik fraction in the Soviet when the campaign opens
+(he was released from his own July arrest weeks before Trotsky). The most cautious of the senior
+Bolsheviks: he wants the new Soviet majority to build a broad socialist coalition and wait for the
+Constituent Assembly. Historically he opposed the October insurrection outright and, with Zinoviev,
+published the party's plans in Gorky's paper. Play him as a serious man making the "we will be
+crushed" argument well, not as a straw man.
 
 **Stats:** Oration 14 (+2) · Intellect 14 (+2) · Resolve 7 (−2) · Presence 12 (+1) · Cunning 12 (+1) · Physique 10 (+0). Proficiency +2.
 
 ## Grigory Zinoviev
-Central Committee member, close historically to Kamenev and similarly cautious about insurrection
+Central Committee member, in hiding since July (he was with Lenin in the hut at Razliv), close historically to Kamenev and similarly cautious about insurrection
 timing. Competent orator himself, which creates some professional rivalry with Trotsky. Shares
 almost the same stat block as Kamenev - the two reinforce each other's caution; when the GM plays
 them acting jointly, it's reasonable to narrate their combined resolve as sturdier than either
@@ -101,6 +105,38 @@ a clean divergence point if the campaign handles him differently. Not yet a comm
 first contact; genuinely undecided, weighing his options.
 
 **Stats:** Oration 8 (−1) · Intellect 11 (+0) · Resolve 17 (+3) · Presence 14 (+2) · Cunning 6 (−2) · Physique 16 (+3). Proficiency +3.
+
+## Fyodor Dan
+Menshevik leader and one of the three men of the Soviet presidium (with Chkheidze and Tsereteli)
+when the campaign opens. Intelligent, principled, and convinced that a Bolshevik Soviet means civil
+war and dictatorship. The player's most direct institutional opponent in September; fights every
+motion in the plenum on the merits and on procedure.
+
+**Stats:** Oration 14 (+2) · Intellect 16 (+3) · Resolve 13 (+1) · Presence 13 (+1) · Cunning 14 (+2) · Physique 10 (+0). Proficiency +2.
+**Expertise:** Debate and Public Argument.
+
+## Nikolai Chkheidze
+Georgian Menshevik, Chairman of the Petrograd Soviet since February. Tired, decent, a figurehead
+more than a fighter by now. If the presidium falls he steps aside without a scene.
+
+**Stats:** Oration 13 (+1) · Intellect 13 (+1) · Resolve 11 (+0) · Presence 14 (+2) · Cunning 10 (+0) · Physique 9 (−1). Proficiency +2.
+
+## Nikolai Podvoisky
+Head of the Bolshevik Military Organization ("Voenka") - the party's network inside the
+regiments. Knows which committee in which barracks can be counted on. Cautious about timing in a
+practical way: he wants the garrison ready before anyone moves. The player's best source for where
+each regiment really stands.
+
+**Stats:** Oration 11 (+0) · Intellect 13 (+1) · Resolve 15 (+2) · Presence 14 (+2) · Cunning 14 (+2) · Physique 13 (+1). Proficiency +2.
+**Expertise:** Military Strategic Planning.
+
+## Vladimir Antonov-Ovseenko
+Former officer, Bolshevik since the summer, released from his own July arrest around the same
+time as the player. Energetic and brave; becomes the MRC's operational chief and leads the
+Winter Palace assault historically. A natural field commander for the player's side.
+
+**Stats:** Oration 12 (+1) · Intellect 14 (+2) · Resolve 16 (+3) · Presence 14 (+2) · Cunning 12 (+1) · Physique 13 (+1). Proficiency +2.
+**Expertise:** Crisis Command.
 
 ## Adding NPCs later
 This is a starting roster, not an exhaustive one. The GM may introduce additional historical

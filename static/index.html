@@ -200,8 +200,34 @@
   .mechanics { margin-top: 10px; font-family: 'Courier New', monospace; font-size: 12px; color: var(--muted); }
   .mechanics summary { cursor: pointer; font-family: var(--font-ui); }
   .mechanics .line { padding: 3px 0 3px 14px; border-left: 2px solid var(--border); margin-top: 4px; }
-  .mechanics .critical-success, .mechanics .success { color: var(--ok); }
+  .mechanics .critical-success, .mechanics .strong-success, .mechanics .success { color: var(--ok); }
+  .mechanics .success-at-cost { color: var(--accent-2); }
   .mechanics .critical-failure, .mechanics .failure { color: var(--bad); }
+  .mechanics .line.world-event { border-left: 2px solid var(--accent-2); padding-left: 8px; }
+  /* forces primitive (2026-10-26): one row per unit, a -3..+3 loyalty meter centered on neutral. */
+  .force-scale { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+  .force-row { padding: 5px 0; border-bottom: 1px dashed var(--border); }
+  .force-row:last-child { border-bottom: none; }
+  .force-head { display: flex; justify-content: space-between; gap: 8px; }
+  .force-name { font-weight: 600; }
+  .force-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .loyalty-meter { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 4px 0 2px; }
+  .loyalty-pip { height: 6px; border-radius: 1px; background: var(--border); }
+  .loyalty-pip.mid { background: var(--muted); opacity: 0.5; }
+  .loyalty-pip.on.pos { background: var(--ok); }
+  .loyalty-pip.on.neg { background: var(--bad); }
+  .force-note { color: var(--muted); font-size: 11px; }
+  .force-fights-for { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .force-fights-for.pos { color: var(--ok); }
+  .force-fights-for.neg { color: var(--bad); }
+  .force-fights-for.idle { color: var(--muted); }
+  .seat-lean { font-size: 10.5px; color: var(--muted); margin-left: 6px; }
+  .seat-last-vote { margin-top: 8px; font-size: 11.5px; }
+  /* world / clock (2026-10-26) */
+  .clock-line { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .clock-days { color: var(--accent-2); white-space: nowrap; }
+  .notice { font-size: 11.5px; color: var(--muted); padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .notice:last-child { border-bottom: none; }
   .mechanics .clamped { color: var(--accent-2); }
 
   /* ---------- character sheet: slide-out panel, not a permanent column ---------- */
@@ -1351,11 +1377,51 @@ function renderSeatChart(data) {
     <div class="seat-legend-row">
       <span class="seat-legend-swatch" style="background:${colorForName(f.name)}"></span>
       <span class="seat-legend-name">${escapeHtml(f.name)}</span>
-      <span class="seat-legend-count">${f.seats} / ${total}</span>
+      <span class="seat-legend-count">${f.seats} / ${total}${typeof f.lean === 'number' ? `<span class="seat-lean">${data.lean_toward ? (f.lean > 0 ? '+' : '') + f.lean : leanLabel(f.lean)}</span>` : ''}</span>
     </div>
     ${f.note ? `<div class="seat-legend-note">${escapeHtml(f.note)}</div>` : ''}
   `).join('');
-  return `<div class="seat-bar">${bar}</div>${legend}`;
+  const lastVote = data.last_vote
+    ? `<div class="seat-last-vote">Last vote (${escapeHtml(data.last_vote.date || '')}): “${escapeHtml(data.last_vote.motion || '')}” — <strong>${data.last_vote.passed ? 'passed' : 'failed'}</strong> ${data.last_vote.yes}–${data.last_vote.no}${data.last_vote.abstain ? `, ${data.last_vote.abstain} abstained` : ''}</div>`
+    : '';
+  const axis = data.lean_toward ? `<div class="force-scale">Lean shows support for ${escapeHtml(data.lean_toward)}.</div>` : '';
+  return `${axis}<div class="seat-bar">${bar}</div>${legend}${lastVote}`;
+}
+
+function leanLabel(lean) {
+  if (lean >= 3) return 'solidly with you';
+  if (lean === 2) return 'with you';
+  if (lean === 1) return 'leaning your way';
+  if (lean === 0) return 'persuadable';
+  if (lean === -1) return 'leaning against';
+  if (lean === -2) return 'against you';
+  return 'solidly against';
+}
+
+// forces primitive (2026-10-26) - an order of battle. Loyalty runs -3..+3 toward the player's side;
+// only units at +2/+3 or -2/-3 actually take the field (see operations.py), which is what the
+// "fights for" label states plainly.
+function renderForces(data) {
+  const units = data.units || [];
+  if (units.length === 0) return '<div class="mech-empty">No units recorded.</div>';
+  const rows = units.map(u => {
+    const pips = [-3, -2, -1, 0, 1, 2, 3].map(v => {
+      const on = u.loyalty === 0 ? v === 0 : (u.loyalty > 0 ? v > 0 && v <= u.loyalty : v < 0 && v >= u.loyalty);
+      const cls = v === 0 ? (u.loyalty === 0 ? 'mid' : '') : `${on ? 'on' : ''} ${v > 0 ? 'pos' : 'neg'}`;
+      return `<div class="loyalty-pip ${cls}"></div>`;
+    }).join('');
+    const fights = u.loyalty >= 2 ? ['pos', 'Fights for you'] : u.loyalty <= -2 ? ['neg', 'Fights against you'] : ['idle', 'Stays in barracks'];
+    return `<div class="force-row">
+      <div class="force-head"><span class="force-name">${escapeHtml(u.name)}</span><span class="force-meta">${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5</span></div>
+      <div class="loyalty-meter" title="Loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty}">${pips}</div>
+      <div class="force-fights-for ${fights[0]}">${fights[1]}</div>
+      ${u.note ? `<div class="force-note">${escapeHtml(u.note)}</div>` : ''}
+    </div>`;
+  }).join('');
+  const last = data.last_engagement
+    ? `<div class="seat-last-vote">Last engagement (${escapeHtml(data.last_engagement.date || '')}): ${escapeHtml(data.last_engagement.objective || '')} — <strong>${escapeHtml((data.last_engagement.player_outcome || '').replace(/_/g, ' '))}</strong></div>`
+    : '';
+  return `<div class="force-scale">Red: fights against you · Green: fights for you · Grey: neutral</div>${rows}${last}`;
 }
 
 // org_tree primitive - an indented, bordered nested list. See the CSS comment above .org-node for
@@ -1400,6 +1466,7 @@ function renderMechPanel(state) {
     const body = m.render_primitive === 'seat_chart' ? renderSeatChart(m.data || {})
       : m.render_primitive === 'org_tree' ? renderOrgTree(m.data || {})
       : m.render_primitive === 'text' ? renderTextMechanic(m.data || {})
+      : m.render_primitive === 'forces' ? renderForces(m.data || {})
       : `<div class="mech-empty">Unrecognized render type: ${escapeHtml(m.render_primitive || '')}</div>`;
     return `<div class="mech-card">
       <div class="mech-card-title">${escapeHtml(m.title || instanceId)}</div>
@@ -1465,6 +1532,22 @@ function renderSidebar(state) {
       <div class="bar-wrap"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div>`)
     .join('');
 
+  // The clock and the world (2026-10-26, settings with dynamics.json only - both are absent
+  // otherwise and the sections simply don't render).
+  const upcoming = ((state.calendar || {}).upcoming || []).map(ms =>
+    `<div class="clock-line"><span>${escapeHtml(ms.label)}</span><span class="clock-days">${ms.days_until === 0 ? 'today' : `${ms.days_until} day${ms.days_until === 1 ? '' : 's'}`}</span></div>`
+  ).join('');
+  const worldRows = Object.entries(state.world || {})
+    .map(([k, v]) => `<div class="res-row"><span>${k.replace(/_/g, ' ')}</span><span>${pcLabel(v)} (${Math.round(v)})</span></div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div>`)
+    .join('');
+  const recentNotices = (state.world_notices || []).slice(-4).reverse().map(n =>
+    `<div class="notice"><strong>${escapeHtml(n.date || '')}</strong> — ${escapeHtml(n.message || '')}</div>`
+  ).join('');
+  const worldSection = (upcoming || worldRows)
+    ? `${upcoming}${worldRows ? `<div style="margin-top:8px">${worldRows}</div>` : ''}${recentNotices ? `<div style="margin-top:8px">${recentNotices}</div>` : ''}`
+    : '';
+
   const commitmentCards = Object.entries(state.commitments || {}).map(([id, cm]) =>
     `<div class="card"><div class="card-title">${(cm.description || id)}</div><div class="commitment-status ${cm.status}">${cm.status}</div></div>`
   ).join('') || '<div class="card-desc">None yet.</div>';
@@ -1502,6 +1585,7 @@ function renderSidebar(state) {
     </div>
     ${section('Attributes', attrRows, true)}
     ${section('Skills', skillGroups, true)}
+    ${worldSection ? section('The Clock &amp; The World', worldSection, true) : ''}
     ${section('Resources', resRows, true)}
     ${section('Feats', `<div class="card-list">${featCards}</div>`, false)}
     ${section('Liabilities', `<div class="card-list">${liabilityCards}</div>`, false)}
@@ -1684,48 +1768,79 @@ function pcLabel(v) {
 
 function degreeClass(degree) { return degree.replace(/_/g, '-'); }
 
+// One line of a turn's change list. Split out (2026-10-26) so world/operation/tracker events reuse it.
+function renderChangeLine(c) {
+    if (c.kind === 'resource') {
+      const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
+      const why = c.cause ? ` (${escapeHtml(c.cause)})` : ` [requested ${c.requested_delta > 0 ? '+' : ''}${c.requested_delta}]`;
+      return `${c.key}: ${c.before} (${c.before_label}) → ${c.after} (${c.after_label})${why}${clampNote}`;
+    }
+    if (c.kind === 'relationship') {
+      const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
+      return `${c.key} trust: ${c.before} → ${c.after}${clampNote}`;
+    }
+    if (c.kind === 'enmity' || c.kind === 'enmity_auto') {
+      const cause = c.cause ? ` (${c.cause})` : '';
+      return `${c.key} enmity: ${c.before} → ${c.after} pips${cause}`;
+    }
+    if (c.kind === 'flag') return `flag ${c.key} = ${c.value}`;
+    if (c.kind === 'commitment') return `commitment "${c.key}" set: ${c.value.status}`;
+    if (c.kind === 'feat_gained') return `feat gained: ${c.name}`;
+    if (c.kind === 'feat_rejected') return `feat rejected (${c.id}): ${c.reason}`;
+    if (c.kind === 'liability_gained') return `liability gained: ${c.name}`;
+    if (c.kind === 'liability_removed') return `liability removed: ${c.id}`;
+    if (c.kind === 'liability_rejected') return `liability rejected (${c.id}): ${c.reason}`;
+    if (c.kind === 'xp') return `+${c.applied} XP${c.applied !== c.requested ? ` (requested ${c.requested}, clamped)` : ''}`;
+    if (c.kind === 'level_up') return `LEVEL UP → ${c.new_level}`;
+    if (c.kind === 'skill_upgrade') return `${c.skill}: ${c.before} → ${c.after}`;
+    if (c.kind === 'skill_upgrade_rejected') return `skill upgrade rejected (${c.skill}): ${c.reason}`;
+    if (c.kind === 'attribute_improvement') return `${c.attribute}: ${c.before} → ${c.after}`;
+    if (c.kind === 'reinforcement_bonus') return `reinforcement bonus: next level ${Math.round(c.discount * 100)}% cheaper`;
+    if (c.kind === 'level_up_rejected') return `level-up rejected: ${c.reason}`;
+    if (c.kind === 'canon_event') return `canon event fired: ${c.key}`;
+    if (c.kind === 'divergence') return `divergence logged: ${c.note}`;
+    if (c.kind === 'ignored_unknown_category') return `ignored unknown category: ${c.key}`;
+    if (c.kind === 'time') return `<strong>${c.days} day${c.days === 1 ? '' : 's'} pass</strong> — now ${c.after}`;
+    if (c.kind === 'world') return `world: ${c.key.replace(/_/g, ' ')} ${c.before} → ${c.after}${c.cause ? ` (${escapeHtml(c.cause)})` : ''}`;
+    if (c.kind === 'threshold') {
+      const chk = c.check ? ` — rolled ${c.check.roll} ${fmtMod(c.check.modifier)} vs DC ${c.check.dc}: ${c.check.degree.toUpperCase().replace(/_/g, ' ')}` : '';
+      return `<span class="world-event">EVENT: ${escapeHtml(c.message || c.id)}${chk}</span>`;
+    }
+    if (c.kind === 'canon_event_rejected') return `canon event not yet possible (${c.key}): ${escapeHtml(c.reason)}`;
+    if (c.kind === 'derived_resource_ignored') return `${c.key} is derived from the tracker; the proposed change was ignored`;
+    if (c.kind === 'time_ignored') return `time not advanced: ${escapeHtml(c.reason)}`;
+    if (c.kind === 'unit_loyalty') return `${escapeHtml(c.unit)} loyalty: ${c.before} → ${c.after}${c.cause ? ` (${escapeHtml(c.cause)})` : ''}`;
+    if (c.kind === 'vote') return `VOTE “${escapeHtml(c.motion)}”: ${c.passed ? 'PASSED' : 'FAILED'} ${c.yes}–${c.no} (${c.abstain} abstained)`;
+    if (c.kind === 'confrontation') return `CLASH ${escapeHtml(c.objective)}: ${c.player_outcome.toUpperCase().replace(/_/g, ' ')}`;
+    if (c.kind === 'mechanic_created') return `tracker created: ${escapeHtml(c.title || c.instance_id)}`;
+    if (c.kind === 'mechanic_updated') return `tracker updated: ${escapeHtml(c.instance_id)}${c.adjusted ? ` (adjusted: ${escapeHtml(c.adjusted.join('; '))})` : ''}`;
+    if (c.kind === 'mechanic_expired') return `tracker expired: ${escapeHtml(c.instance_id)}`;
+    if (c.kind === 'mechanic_rejected') return `tracker change rejected: ${escapeHtml(c.reason)}`;
+    return JSON.stringify(c);
+}
+
 function renderMechanics(debugEvents) {
   if (!debugEvents || debugEvents.length === 0) return '';
   const lines = debugEvents.map(ev => {
     if (ev.type === 'check') {
       const skillPart = ev.skill ? ` / ${ev.skill} (${ev.tier})` : '';
       const featPart = ev.feat_bonus ? ` [+${ev.feat_bonus} from ${escapeHtml(ev.feat_bonus_source || 'a feat')}]` : '';
-      return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}${featPart}<br><span style="color:var(--muted)">${ev.description || ''}</span></div>`;
+      const stakePart = ev.at_stake ? ` [at stake: ${escapeHtml(ev.at_stake.replace(/_/g, ' '))}]` : '';
+      return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}${featPart}${stakePart}<br><span style="color:var(--muted)">${escapeHtml(ev.description || '')}</span></div>`;
     }
     if (ev.type === 'state_update' || ev.type === 'level_up') {
-      const changeLines = (ev.changes || []).map(c => {
-        if (c.kind === 'resource') {
-          const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
-          return `${c.key}: ${c.before} (${c.before_label}) → ${c.after} (${c.after_label}) [requested ${c.requested_delta > 0 ? '+' : ''}${c.requested_delta}]${clampNote}`;
-        }
-        if (c.kind === 'relationship') {
-          const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
-          return `${c.key} trust: ${c.before} → ${c.after}${clampNote}`;
-        }
-        if (c.kind === 'enmity' || c.kind === 'enmity_auto') {
-          const cause = c.cause ? ` (${c.cause})` : '';
-          return `${c.key} enmity: ${c.before} → ${c.after} pips${cause}`;
-        }
-        if (c.kind === 'flag') return `flag ${c.key} = ${c.value}`;
-        if (c.kind === 'commitment') return `commitment "${c.key}" set: ${c.value.status}`;
-        if (c.kind === 'feat_gained') return `feat gained: ${c.name}`;
-        if (c.kind === 'feat_rejected') return `feat rejected (${c.id}): ${c.reason}`;
-        if (c.kind === 'liability_gained') return `liability gained: ${c.name}`;
-        if (c.kind === 'liability_removed') return `liability removed: ${c.id}`;
-        if (c.kind === 'liability_rejected') return `liability rejected (${c.id}): ${c.reason}`;
-        if (c.kind === 'xp') return `+${c.applied} XP${c.applied !== c.requested ? ` (requested ${c.requested}, clamped)` : ''}`;
-        if (c.kind === 'level_up') return `LEVEL UP → ${c.new_level}`;
-        if (c.kind === 'skill_upgrade') return `${c.skill}: ${c.before} → ${c.after}`;
-        if (c.kind === 'skill_upgrade_rejected') return `skill upgrade rejected (${c.skill}): ${c.reason}`;
-        if (c.kind === 'attribute_improvement') return `${c.attribute}: ${c.before} → ${c.after}`;
-        if (c.kind === 'reinforcement_bonus') return `reinforcement bonus: next level ${Math.round(c.discount * 100)}% cheaper`;
-        if (c.kind === 'level_up_rejected') return `level-up rejected: ${c.reason}`;
-        if (c.kind === 'canon_event') return `canon event fired: ${c.key}`;
-        if (c.kind === 'divergence') return `divergence logged: ${c.note}`;
-        if (c.kind === 'ignored_unknown_category') return `ignored unknown category: ${c.key}`;
-        return JSON.stringify(c);
-      }).join('<br>');
+      const changeLines = (ev.changes || []).map(renderChangeLine).join('<br>');
       return `<div class="line">${ev.type === 'level_up' ? 'LEVEL-UP CHOICE' : 'STATE UPDATE'} — ${ev.reasoning || ''}<br>${changeLines}</div>`;
+    }
+    if (ev.type === 'world' || ev.type === 'mechanic_update' || ev.type === 'operation') {
+      const label = ev.type === 'world' ? 'THE WORLD MOVES' : ev.type === 'operation' ? ev.operation.toUpperCase().replace(/_/g, ' ') : 'TRACKER';
+      const r = ev.result || {};
+      const extras = [];
+      if (r.error) extras.push(`<span class="clamped">${escapeHtml(r.error)}</span>`);
+      if ((r.refused_to_fight || []).length) extras.push(`Refused to fight: ${r.refused_to_fight.map(x => escapeHtml(x.unit)).join(', ')}`);
+      if ((r.melted_away || []).length) extras.push(`Melted away: ${r.melted_away.map(escapeHtml).join(', ')}`);
+      const lines = extras.concat((ev.changes || []).map(renderChangeLine));
+      return `<div class="line world-event">${label}${ev.reasoning ? ` — ${escapeHtml(ev.reasoning)}` : ''}<br>${lines.join('<br>')}</div>`;
     }
     if (ev.type === 'council') {
       const judgesSelected = (ev.judges_selected || []).join(', ');

@@ -135,7 +135,9 @@ class ScriptedFlagProvider:
         if self.calls == 1:
             update = {"reasoning": "a significant turn of events"}
             if self.fire_canon_event:
-                update["canon_event_triggered"] = "lenin_returns_to_petrograd"
+                # A contingent beat whose requirements the fixture's state meets (2026-10-26: canon
+                # events are now gated in code, and locked ones only fire when their date arrives).
+                update["canon_event_triggered"] = "presidium_no_confidence"
             return providers.TurnResult(
                 text_parts=[], tool_calls=[{"id": "t1", "name": "propose_state_update", "input": update}],
                 usage=_usage(),
@@ -165,6 +167,7 @@ class TestActionFlags(unittest.TestCase):
         user = db.get_or_create_discord_user("2", "Player", None)
         state = engine.load_premade_character_state("petrograd_1917")
         state.pop("_is_new", None)
+        state["date"] = "1917-09-06"  # past presidium_no_confidence's not_before date
         self.char_id = db.create_character(user["id"], "petrograd_1917", "red_admiral", "Player", state, game_id=self.game["id"])
         db.move_character(self.char_id, self.server_id, self.location_id, self.subspace_id)
 

@@ -49,6 +49,11 @@ server.py                        - Flask webapp (routes, sessions, gunicorn entr
 proxy_app.py                     - thin reverse proxy Render runs instead of server.py, forwarding
                                     to wherever the real app is locally hosted (see "Hosting" below)
 loop.py                          - terminal CLI
+mechanics.py                     - trackers (seat charts, orders of battle, org trees, ledgers),
+                                    validated per type and rate-limited between updates
+operations.py                    - code-resolved votes, unit appeals and armed confrontations
+dynamics.py                      - the clock, world tracks, drift, thresholds, canon gates and
+                                    derived resources (opt-in per setting via dynamics.json)
 view_transcript.py               - local script to read back a character's full saved turn history
 static/index.html                - the webapp frontend (single file, no build step)
 requirements.txt, Procfile       - deployment (see "Deploying" below)
@@ -60,7 +65,8 @@ systems/
 settings/
   petrograd_1917/, britannia_876/, rome_59_bce/, crusades_1097/  - each: character_sheet.json
   (docs), new_campaign_state.json (real starting state), npcs.md, factions.md,
-  canon_timeline.md, opening_scene.md, resource_schema.json
+  canon_timeline.md, opening_scene.md, resource_schema.json, mechanics_catalog.json;
+  petrograd_1917/ also has dynamics.json
 ```
 
 ## Usage budget

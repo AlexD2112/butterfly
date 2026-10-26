@@ -1,0 +1,235 @@
+{
+  "_comment": "Clock, world, thresholds and canon gates for Petrograd 1917 - see dynamics.py for the format. Dates are Julian (Old Style), matching every other date in this setting pack. The arc this file is built around: the player walks out of Kresty on 4 September with no office, a CC seat won in absentia, and seven weeks until the Second Congress of Soviets. Every day the Provisional Government weakens and bread runs shorter on its own; the player's job is to be holding the city - the Soviet, the garrison, the party - when the dates arrive. Starting values and drift rates are design calls tuned for pacing, anchored to the real direction of travel (the Provisional Government's collapse, the autumn bread crisis), not to any measured quantity.",
+
+  "calendar": {"style": "Julian (Old Style)", "max_days_per_update": 7},
+
+  "milestones": [
+    {"label": "Democratic Conference opens", "date": "1917-09-14"},
+    {"label": "Pre-Parliament opens", "date": "1917-10-07"},
+    {"label": "Second All-Russian Congress of Soviets", "date": "1917-10-25"},
+    {"label": "Constituent Assembly elections", "date": "1917-11-12"}
+  ],
+
+  "world": {
+    "government_stability": {
+      "label": "Provisional Government stability", "start": 30, "range": [0, 100],
+      "description": "How far Kerensky's government can still govern - make appointments stick, move troops, enforce arrests. Already shaken by the Kornilov affair; erodes on its own every day, faster while bread is short. When it bottoms out, ministries stop functioning."
+    },
+    "bread_supply": {
+      "label": "Bread in Petrograd", "start": 40, "range": [0, 100],
+      "description": "Grain reaching the capital. Falling all autumn as rail and requisitioning break down. Hunger pushes workers and soldiers toward whoever promises to end it."
+    },
+    "war_exhaustion": {
+      "label": "War exhaustion", "start": 78, "range": [0, 100],
+      "description": "How badly soldiers and the country want out of the war. Rising. High values make 'peace' the most powerful word anyone can say in a barracks."
+    },
+    "counterrevolution_threat": {
+      "label": "Threat from the right", "start": 35, "range": [0, 100],
+      "description": "Officers, Kadets and Cossack circles regrouping after Kornilov's failure. Discredited for now; grows while the government looks too weak to hold the line. High values mean plots - and danger to the player personally."
+    }
+  },
+  "world_max_delta_per_update": 5,
+
+  "drift": [
+    {"target": "world.government_stability", "per_day": -0.35},
+    {"target": "world.government_stability", "per_day": -0.25, "when": [{"path": "world.bread_supply", "op": "<", "value": 30}]},
+    {"target": "world.bread_supply", "per_day": -0.35},
+    {"target": "world.war_exhaustion", "per_day": 0.15},
+    {"target": "world.counterrevolution_threat", "per_day": 0.3, "when": [{"path": "world.government_stability", "op": "<", "value": 25}]},
+    {"target": "world.counterrevolution_threat", "per_day": -0.2, "when": [{"path": "world.government_stability", "op": ">=", "value": 25}]},
+    {"target": "resources.mass_influence", "per_day": 0.3, "when": [{"path": "world.bread_supply", "op": "<", "value": 30}]},
+    {"target": "resources.mass_influence", "per_day": 0.15, "when": [{"path": "world.war_exhaustion", "op": ">=", "value": 85}]},
+    {"target": "resources.personal_safety", "per_day": -0.3, "when": [{"path": "world.counterrevolution_threat", "op": ">=", "value": 55}]},
+    {"target": "resources.personal_safety", "per_day": -0.15, "when": [{"path": "flags.under_indictment", "op": "==", "value": true}]},
+    {"target": "resources.lenins_trust", "per_day": -0.25, "when": [
+      {"path": "date", "op": ">=", "value": "1917-09-20"},
+      {"path": "canon.central_committee_insurrection_vote", "op": "==", "value": "pending"}
+    ]}
+  ],
+
+  "thresholds": [
+    {
+      "id": "bread_riots", "once": true,
+      "when": [{"path": "world.bread_supply", "op": "<", "value": 22}],
+      "message": "Bread queues on the Vyborg side turn into a riot; a bakery is stripped and a militia post burned. The government's food commissioner resigns. Hungry crowds are listening to anyone who will name a culprit.",
+      "effects": {"world": {"government_stability": -5}, "resources": {"mass_influence": 3}}
+    },
+    {
+      "id": "government_paralysis", "once": true,
+      "when": [{"path": "world.government_stability", "op": "<", "value": 15}],
+      "message": "The Provisional Government is barely functioning: ministers resign faster than they are replaced, orders go unanswered, and Kerensky governs by telegram from the Winter Palace. Whoever acts with confidence now will find little to stop them - on the left or the right.",
+      "effects": {"world": {"counterrevolution_threat": 5}}
+    },
+    {
+      "id": "kornilovite_plot", "once": true,
+      "when": [{"path": "world.counterrevolution_threat", "op": ">=", "value": 60}],
+      "message": "Word comes through the soldiers' committees that officers in the capital are in contact with Kaledin's Don Cossacks, and that lists of Soviet leaders have been drawn up. The barracks are furious; so are the officers.",
+      "effects": {"resources": {"personal_safety": -6, "mass_influence": 3}, "unit_loyalty": {"type_key": "petrograd_garrison", "kinds": ["garrison"], "delta": 1}}
+    },
+    {
+      "id": "lenin_threatens_resignation", "once": true,
+      "when": [
+        {"path": "date", "op": ">=", "value": "1917-09-29"},
+        {"path": "canon.central_committee_insurrection_vote", "op": "==", "value": "pending"},
+        {"path": "resources.lenins_trust", "op": "<", "value": 60}
+      ],
+      "message": "A furious letter from Lenin reaches the Central Committee: he is resigning from it, he writes, so he can agitate freely in the ranks - the committee is letting the moment slip, and anyone who waits for the Congress of Soviets is a traitor or a fool. Copies are circulating among district organizers.",
+      "effects": {"resources": {"party_standing": -3, "lenins_trust": -3}}
+    },
+    {
+      "id": "arrest_attempt", "once": false, "cooldown_days": 5,
+      "when": [
+        {"path": "resources.personal_safety", "op": "<", "value": 18},
+        {"path": "flags.in_prison", "op": "!=", "value": true}
+      ],
+      "message": "Militiamen with a warrant come for you, acting on the July charges.",
+      "roll": {
+        "attribute": "cunning", "skill": "operational_security", "dc": 14,
+        "description": "Slip the arrest",
+        "success_message": "Warned in time, you are gone before they reach the door - but you'll be sleeping somewhere different for a while.",
+        "failure_message": "They take you. You are back in a cell, and the Soviet is without you until someone gets you out.",
+        "on_success": {"resources": {"personal_safety": 8}},
+        "on_failure": {"flags": {"in_prison": true}, "resources": {"soviet_authority": -8, "mass_influence": 4}}
+      }
+    },
+    {
+      "id": "kerensky_strikes_first", "once": true,
+      "when": [
+        {"path": "date", "op": ">=", "value": "1917-10-22"},
+        {"path": "world.government_stability", "op": ">=", "value": 12},
+        {"path": "canon.october_revolution", "op": "==", "value": "pending"}
+      ],
+      "message": "Before dawn, government cadets seize the presses of Rabochii Put' and the Soviet's papers; Kerensky orders the bridges raised to cut the working districts from the center and announces arrests of the Military-Revolutionary Committee. Whatever the Soviet means to do, it has to do it now - or be doing it from prison.",
+      "effects": {"resources": {"personal_safety": -8, "mass_influence": 4}, "world": {"government_stability": -3}, "unit_loyalty": {"type_key": "petrograd_garrison", "kinds": ["garrison"], "delta": 1}}
+    }
+  ],
+
+  "canon": {
+    "kornilov_affair_defeated": {
+      "type": "locked", "date": "1917-08-31",
+      "summary": "Kornilov's march on the capital collapsed; already true when the campaign opens."
+    },
+    "trotsky_released_from_kresty": {
+      "type": "locked", "date": "1917-09-04",
+      "summary": "Released on bail - the campaign's first scene."
+    },
+    "presidium_no_confidence": {
+      "type": "contingent", "historical_date": "1917-09-09", "not_before": "1917-09-05",
+      "requires": [{"path": "resources.soviet_authority", "op": ">=", "value": 40}],
+      "how": "Fire it through call_vote on the Soviet plenum chart (canon_event: presidium_no_confidence), on a motion of no confidence in the Menshevik-SR presidium of Chkheidze, Tsereteli and Dan.",
+      "message": "The old presidium has lost the Soviet. Chkheidze, Tsereteli and Dan step down; the chair is open.",
+      "effects": {"resources": {"soviet_authority": 8, "menshevik_internationalist_alignment": -3}, "world": {"government_stability": -3}}
+    },
+    "democratic_conference": {
+      "type": "locked", "date": "1917-09-14",
+      "summary": "The Democratic Conference convenes to give Kerensky's government a broader base. The Bolsheviks attend; what they do there is up to the player."
+    },
+    "trotsky_elected_chairman": {
+      "type": "contingent", "historical_date": "1917-09-25",
+      "requires": [
+        {"path": "canon.presidium_no_confidence", "op": "==", "value": "fired"},
+        {"path": "resources.soviet_authority", "op": ">=", "value": 50}
+      ],
+      "how": "Fire it through call_vote on the Soviet plenum chart (canon_event: trotsky_elected_chairman), or by propose_state_update when the fiction settles it without a contested vote.",
+      "message": "You hold the Soviet's gavel. The body that runs the capital's workers and soldiers now answers to its Bolshevik chairman.",
+      "effects": {"resources": {"soviet_authority": 12, "personal_safety": 4, "mass_influence": 3}, "flags": {"soviet_chairman": true}}
+    },
+    "third_coalition_formed": {
+      "type": "locked", "date": "1917-09-25",
+      "summary": "Kerensky forms his third coalition cabinet with the Kadets - a brief steadying of the government, deeply unpopular in the Soviets.",
+      "message": "Kerensky announces a new coalition cabinet with the Kadets. It steadies the ministries for a moment and enrages the barracks.",
+      "effects": {"world": {"government_stability": 6}, "resources": {"mass_influence": 2}}
+    },
+    "pre_parliament_opens": {
+      "type": "locked", "date": "1917-10-07",
+      "summary": "The Provisional Council of the Republic (Pre-Parliament) opens at the Mariinsky Palace."
+    },
+    "pre_parliament_walkout": {
+      "type": "contingent", "historical_date": "1917-10-07",
+      "requires": [{"path": "canon.pre_parliament_opens", "op": "==", "value": "fired"}],
+      "how": "Optional beat: the Bolshevik delegation walks out of the Pre-Parliament on the player's declaration. Fire with propose_state_update if the player leads it.",
+      "message": "The Bolsheviks have walked out of the Pre-Parliament, declaring it a screen for counterrevolution. There is no longer any doubt which way the party is going.",
+      "effects": {"resources": {"mass_influence": 4, "state_legitimacy": -6, "menshevik_internationalist_alignment": -4, "lenins_trust": 4}}
+    },
+    "lenin_returns_to_petrograd": {
+      "type": "locked", "date": "1917-10-07",
+      "summary": "Lenin returns from Finland in disguise and hides in the Vyborg district. The player can react but not prevent it.",
+      "message": "Lenin is back in Petrograd - clean-shaven, in a wig, hidden in a flat in the Vyborg district - and demanding a Central Committee meeting."
+    },
+    "garrison_transfer_order": {
+      "type": "locked", "date": "1917-10-08",
+      "summary": "The government orders much of the Petrograd garrison to the front. It backfires: even the neutral regiments see it as a plot to strip the capital of revolutionary troops.",
+      "message": "Headquarters has ordered garrison regiments transferred to the Northern Front. The barracks are in uproar - soldiers' committees are passing resolutions refusing to go and looking to the Soviet for protection.",
+      "effects": {"world": {"government_stability": -3}, "unit_loyalty": {"type_key": "petrograd_garrison", "kinds": ["garrison"], "max_loyalty": 0, "delta": 1}}
+    },
+    "mrc_formed": {
+      "type": "contingent", "historical_date": "1917-10-16",
+      "not_before": "1917-10-08",
+      "requires": [{"path": "resources.soviet_authority", "op": ">=", "value": 55}],
+      "how": "The Soviet creates a Military-Revolutionary Committee, ostensibly to defend the capital. Fire via call_vote on the Soviet chart or propose_state_update; create the military_revolutionary_committee mechanic when it does.",
+      "message": "The Soviet has created a Military-Revolutionary Committee. On paper it defends the capital; in practice it is a staff for whatever comes next.",
+      "effects": {"resources": {"mrc_authority": 35}}
+    },
+    "central_committee_insurrection_vote": {
+      "type": "contingent", "historical_date": "1917-10-10",
+      "requires": [
+        {"path": "canon.lenin_returns_to_petrograd", "op": "==", "value": "fired"},
+        {"path": "resources.party_standing", "op": ">=", "value": 50}
+      ],
+      "how": "Fire it through call_vote on the bolshevik_central_committee seat chart (create it from the catalog when the meeting is called) with canon_event: central_committee_insurrection_vote.",
+      "message": "The Central Committee has voted that armed insurrection is on the agenda. Kamenev and Zinoviev voted against - and they are not going to keep quiet about it.",
+      "effects": {"resources": {"party_standing": 4, "lenins_trust": 8}, "enmity": {"kamenev": 1, "zinoviev": 1}}
+    },
+    "october_revolution": {
+      "type": "contingent", "historical_date": "1917-10-25",
+      "requires": [
+        {"path": "canon.central_committee_insurrection_vote", "op": "==", "value": "fired"},
+        {"path": "canon.mrc_formed", "op": "==", "value": "fired"},
+        {"path": "resources.garrison_loyalty", "op": ">=", "value": 72},
+        {"path": "world.government_stability", "op": "<=", "value": 30}
+      ],
+      "how": "The seizure itself should be played out through resolve_confrontation on the key objectives (bridges, the telegraph, the stations, the Winter Palace); fire this once the city is actually held.",
+      "message": "Petrograd belongs to the Soviet. The Provisional Government's ministers are under arrest or in flight, and the Congress of Soviets is about to be handed power it did not quite vote to take.",
+      "effects": {"resources": {"state_legitimacy": 40, "mass_influence": 5, "personal_safety": 10}, "world": {"government_stability": -30}, "flags": {"under_indictment": false}}
+    },
+    "sovnarkom_formed": {
+      "type": "contingent", "historical_date": "1917-10-26",
+      "requires": [{"path": "canon.october_revolution", "op": "==", "value": "fired"}],
+      "how": "The Congress of Soviets forms the Council of People's Commissars."
+    },
+    "brest_litovsk_negotiations_begin": {
+      "type": "contingent", "historical_date": "1917-11-20",
+      "requires": [{"path": "canon.sovnarkom_formed", "op": "==", "value": "fired"}]
+    },
+    "brest_litovsk_signed": {
+      "type": "contingent", "historical_date": "1918-03-03",
+      "requires": [{"path": "canon.brest_litovsk_negotiations_begin", "op": "==", "value": "fired"}]
+    },
+    "red_army_founded": {
+      "type": "contingent", "historical_date": "1918-02-23",
+      "requires": [{"path": "canon.sovnarkom_formed", "op": "==", "value": "fired"}]
+    },
+    "civil_war_begins": {
+      "type": "contingent", "historical_date": "1918",
+      "requires": [{"path": "canon.red_army_founded", "op": "==", "value": "fired"}]
+    }
+  },
+
+  "derived": {
+    "garrison_loyalty": {"from_forces": "petrograd_garrison", "kinds": ["garrison"]}
+  },
+
+  "influence": {"vote": "soviet_authority", "sway": "soviet_authority"},
+  "sway_risk_resource": "personal_safety",
+
+  "confrontation_effects": [
+    {"outcome": "win", "effects": {"resources": {"mass_influence": 3}, "world": {"government_stability": -4}}},
+    {"outcome": "loss", "effects": {"resources": {"mass_influence": -4, "personal_safety": -5}, "world": {"government_stability": 3, "counterrevolution_threat": 3}}},
+    {
+      "outcome": "any", "player_attacking": true,
+      "when": [{"path": "canon.central_committee_insurrection_vote", "op": "==", "value": "pending"}],
+      "message": "Shots in the streets without any decision of the party or the Soviet. The Central Committee is furious, the Mensheviks are calling it the July Days all over again, and the government has the pretext it was waiting for.",
+      "effects": {"resources": {"party_standing": -6, "personal_safety": -8, "state_legitimacy": -5}, "world": {"counterrevolution_threat": 6}}
+    }
+  ]
+}

@@ -1,48 +1,92 @@
 {
   "resources": {
     "mass_influence": {
-      "range": [0, 100], "start": 55,
+      "range": [
+        0,
+        100
+      ],
+      "start": 56,
       "description": "Support for the Bolsheviks among workers, soldiers, and (more thinly) peasants in Petrograd and beyond - public standing, not internal party standing."
     },
     "party_standing": {
-      "range": [0, 100], "start": 62,
+      "range": [
+        0,
+        100
+      ],
+      "start": 52,
       "description": "Trotsky's standing within the Bolshevik party and Central Committee specifically - high means the party follows his lead on contested tactical questions."
     },
     "soviet_authority": {
-      "range": [0, 100], "start": 72,
-      "description": "Institutional authority as Chairman of the Petrograd Soviet, independent of party standing."
+      "range": [
+        0,
+        100
+      ],
+      "start": 44,
+      "description": "Standing and institutional power in the Petrograd Soviet, independent of party standing. Starts moderate: a famous voice back from prison, with no office - the Menshevik-SR presidium still runs the body. Winning the chair is the first arc."
     },
     "state_legitimacy": {
-      "range": [0, 100], "start": 20,
-      "description": "Standing with/recognition from the Provisional Government's own institutions - low by design, since the character is in opposition to them."
+      "range": [
+        0,
+        100
+      ],
+      "start": 16,
+      "description": "Standing with/recognition from the Provisional Government's own institutions - very low by design, since the character is under indictment and in opposition."
     },
     "left_sr_alliance": {
-      "range": [0, 100], "start": 45,
+      "range": [
+        0,
+        100
+      ],
+      "start": 40,
       "description": "Working relationship with the Left Socialist-Revolutionaries, the most plausible coalition partner for an insurrection."
     },
     "menshevik_internationalist_alignment": {
-      "range": [0, 100], "start": 30,
+      "range": [
+        0,
+        100
+      ],
+      "start": 38,
       "description": "Overlap/goodwill with the Menshevik-Internationalist wing specifically (distinct from the Menshevik party as a whole)."
     },
     "lenins_trust": {
-      "range": [0, 100], "start": 58,
+      "range": [
+        0,
+        100
+      ],
+      "start": 56,
       "description": "Lenin's confidence in Trotsky specifically - distinct from the general relationships.lenin trust score, this is the mechanically load-bearing number for whether Lenin backs Trotsky's calls on contested tactics."
     },
     "mrc_authority": {
-      "range": [0, 100], "start": 5,
-      "description": "Authority within/over the Military-Revolutionary Committee. Starts near zero because the MRC doesn't exist yet at campaign start - it's formed in October."
+      "range": [
+        0,
+        100
+      ],
+      "start": 0,
+      "description": "Authority within/over the Military-Revolutionary Committee. Zero at campaign start because the MRC doesn't exist yet - it's created by the Soviet in October (canon event mrc_formed)."
     },
     "garrison_loyalty": {
-      "range": [0, 100], "start": 50,
-      "description": "How reliably the Petrograd garrison would act on the Soviet's orders over the Provisional Government's."
+      "range": [
+        0,
+        100
+      ],
+      "start": 63,
+      "description": "How reliably the Petrograd garrison would act on the Soviet's orders over the Provisional Government's. DERIVED: the application computes it from the garrison regiments' loyalties in the 'Armed Forces in Petrograd' tracker (strength-weighted), so it moves only when regiments do - through sway_unit, confrontations, and events. Deltas proposed for it are ignored."
     },
     "international_reputation": {
-      "range": [0, 100], "start": 28,
+      "range": [
+        0,
+        100
+      ],
+      "start": 30,
       "description": "Standing among foreign socialist movements and governments - low for now, since the character is still primarily a domestic figure at campaign start."
     },
     "personal_safety": {
-      "range": [0, 100], "start": 52,
-      "description": "How safe the character actually is from arrest, violence, or assassination right now. High = safe. Hitting the bottom band (Suspect/Negative) should make arrest or assassination an active, GM-flagged threat, not just flavor text."
+      "range": [
+        0,
+        100
+      ],
+      "start": 38,
+      "description": "How safe the character actually is from arrest, violence, or assassination. High = safe. Starts low: out on bail with the July charges still open. Below 18, the application itself sends the militia with a warrant (an arrest attempt the player must roll to escape) - not just flavor text."
     }
   },
   "per_check_max_delta": 10,

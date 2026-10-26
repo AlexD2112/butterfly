@@ -706,6 +706,8 @@ def resolve_action(provider, model, model_key, char_row, location_id, subspace_i
         # so it's explicitly off for this path rather than silently half-applied.
         council_mode=False, model_key=model_key,
         extra_context=scene_context,
+        # The server's shared date is advanced by scheduler.py ticks, never by one player's turn.
+        allow_time_advance=False,
     )
 
     # Significance flag - free, no new AI call. Reuses council.detect_stakes_signals, the same

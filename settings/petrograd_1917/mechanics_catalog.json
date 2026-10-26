@@ -1,79 +1,254 @@
 {
-  "_comment": "Curated 'mechanics' library for the petrograd_1917 setting - see mechanics.py and engine.py's propose_mechanic_update tool. Each entry is a TYPE the AI may instantiate (never invent a type_key not listed here). seed_data is a historically-researched starting point the AI should use for the instance's initial `data` unless the campaign's own state already reflects divergence from history by the time it's created. Sourcing/precision notes are inline per entry - some figures are primary-source-anchored, some are reasoned interpolations between two anchored dates (marked explicitly); none are invented from nothing. canon_triggers (2026-09-09) names the canon_timeline.md beat(s) that make each type newly relevant or due for reconsideration - a structured hint alongside the freeform when_relevant text, not a replacement for it; see mechanics.catalog_prompt_section.",
-
+  "_comment": "Curated 'mechanics' library for the petrograd_1917 setting - see mechanics.py and engine.py's propose_mechanic_update tool. Each entry is a TYPE the AI may instantiate (never invent a type_key not listed here). seed_data is a historically-researched starting point the AI should use for the instance's initial `data` unless the campaign's own state already reflects divergence from history by the time it's created. Sourcing/precision notes are inline per entry - some figures are primary-source-anchored, some are reasoned interpolations between two anchored dates (marked explicitly); none are invented from nothing. canon_triggers (2026-09-09) names the canon_timeline.md beat(s) that make each type newly relevant or due for reconsideration - a structured hint alongside the freeform when_relevant text, not a replacement for it; see mechanics.catalog_prompt_section. 2026-10-26: render primitives are now validated in code (mechanics.validate_data), and three entries became 'hard' - the Soviet plenum and the Central Committee are seat_charts with per-bloc lean that operations.call_vote resolves by dice, and the garrison is a 'forces' order of battle that operations.sway_unit and resolve_confrontation read and write. The plenum and the garrison are seeded directly into new_campaign_state.json, so they exist from turn one; the others are still created by the GM when they become relevant (omitting data on create now uses seed_data).",
   "petrograd_soviet_composition": {
-    "label": "Petrograd Soviet — Executive Committee (Ispolkom)",
+    "label": "Petrograd Soviet — Plenum",
     "render_primitive": "seat_chart",
-    "when_relevant": "Create this once the player has real standing/visibility into the Petrograd Soviet's own internal politics - which is true from turn one of this campaign (the opening scene begins immediately after Trotsky's election as Chairman). Update it when a real shift in the Ispolkom's factional balance has plausibly occurred on-screen (a purge, a resignation wave, a faction splitting, a fresh election). Expire it if the Ispolkom itself is superseded or dissolved as a body (e.g. absorbed into a later Soviet government organ) - do not just let it go stale.",
-    "canon_triggers": ["Trotsky elected Chairman of the Petrograd Soviet (campaign start)", "The Central Committee vote for insurrection", "The October Revolution / storming of key institutions"],
+    "default_review_after_turns": 6,
+    "when_relevant": "Exists from turn one (seeded in the starting state). Resolve any formal vote of the full Soviet with call_vote against it. Update it when the composition really shifts on-screen - a by-election wave in the factories, a regiment recalling its delegates, a faction splitting - and expect leans to move one step at a time. Expire only if the Soviet itself is superseded.",
+    "canon_triggers": [
+      "presidium_no_confidence",
+      "trotsky_elected_chairman",
+      "mrc_formed"
+    ],
     "data_shape": {
-      "body_size": "integer - total seats",
-      "factions": "array of {name, seats, note} - note should be a short in-fiction gloss (leaning, mood, key figures), not just a label"
+      "body_size": "integer - total voting delegates (must equal the sum of seats)",
+      "factions": "array of {name, seats, lean, note} - lean -3..+3 toward the player's side (+3 votes with the player almost always, 0 is persuadable, -3 almost never)",
+      "influence_resource": "fixed: the resource whose value nudges persuadable blocs (soviet_authority)"
     },
-    "sourcing_note": "Primary-source anchors: the Ispolkom had 72 members in May 1917 (23 Menshevik, 22 SR, 12 Bolshevik, 15 unaffiliated/other - en.wikipedia.org/wiki/Executive_Committee_of_the_Petrograd_Soviet); Trotsky was elected Chairman on 25 September 1917 the same day the Bolsheviks won a majority in the Soviet's Workers' Section; by early November the Bolsheviks held up to 90% of seats in the full Soviet plenum. The seed below is a reasoned interpolation for 25 September specifically (between the May anchor and the November anchor) - a modestly expanded Ispolkom with a fresh Bolshevik plurality, not yet the near-total dominance of November. Also reflects the real, contemporaneous Left SR/SR split (the Left SRs were visibly breaking from the SR mainstream in exactly this window).",
+    "sourcing_note": "Anchors: on 31 August 1917 the Petrograd Soviet passed a Bolshevik resolution on power for the first time, and on 9 September (Julian) a Bolshevik motion of no confidence in the Menshevik-SR presidium carried - commonly given as 519 to 414 with 67 abstentions - after which Chkheidze's presidium resigned; Trotsky was elected chairman on 25 September. The bloc sizes below are a reasoned reconstruction of a ~1,000-delegate plenum consistent with that 9 September tally (Bolshevik core plus sympathetic non-party soldiers and Left SRs on one side; defensist Mensheviks and mainstream SRs on the other; Menshevik-Internationalists in between), not a recorded roll call. Leans are design values: with no speech and average authority, the no-confidence motion passes most of the time but not always.",
     "seed_data": {
-      "body_size": 90,
+      "body_size": 1000,
+      "influence_resource": "soviet_authority",
       "factions": [
-        {"name": "Bolsheviks", "seats": 37, "note": "Just won a majority in the Workers' Section; Trotsky elected Chairman today. Confident, organized, pushing the insurrection question."},
-        {"name": "Mensheviks", "seats": 17, "note": "Badly weakened since spring. Chkheidze's old bloc, now split between defensists and internationalists; distrustful of Trotsky's ascent."},
-        {"name": "Socialist Revolutionaries (mainstream)", "seats": 13, "note": "Aligned with the Provisional Government's coalition logic; increasingly isolated as the Left SRs peel away."},
-        {"name": "Left Socialist Revolutionaries", "seats": 9, "note": "Breaking from the SR mainstream this autumn; sympathetic to much of the Bolshevik program though not formally allied yet."},
-        {"name": "Unaffiliated / minor factions", "seats": 14, "note": "Anarchists, non-party delegates, and small groupings without reliable bloc discipline."}
+        {
+          "name": "Bolsheviks",
+          "seats": 400,
+          "lean": 3,
+          "note": "Swelling since Kornilov. Kamenev leads the fraction and wants to use the majority carefully; the district organizers want to use it now."
+        },
+        {
+          "name": "Non-party soldiers' delegates",
+          "seats": 140,
+          "lean": 1,
+          "note": "Elected by regimental committees. Angry about the front and the officers, wary of any party - will follow whoever talks about peace and bread."
+        },
+        {
+          "name": "Left Socialist-Revolutionaries",
+          "seats": 70,
+          "lean": 1,
+          "note": "Breaking from the SR leadership over land and the war. Natural allies, but they want to be partners, not followers."
+        },
+        {
+          "name": "Menshevik-Internationalists",
+          "seats": 55,
+          "lean": 0,
+          "note": "Martov's people. Agree with much of the critique, fear a one-party seizure. Persuadable by argument, not by pressure."
+        },
+        {
+          "name": "Socialist-Revolutionaries (leadership)",
+          "seats": 180,
+          "lean": -2,
+          "note": "Chernov's and Avksentiev's party machine, still tied to coalition with the government."
+        },
+        {
+          "name": "Mensheviks (defensist)",
+          "seats": 155,
+          "lean": -3,
+          "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument."
+        }
       ]
     }
   },
-
   "petrograd_garrison": {
-    "label": "Petrograd Garrison — Order of Battle",
-    "render_primitive": "org_tree",
-    "when_relevant": "Create this once the military balance of power in Petrograd becomes something the player is actively reasoning about (e.g. weighing the garrison's loyalty ahead of a confrontation with the Provisional Government, or in the run-up to the insurrection). Update it as specific regiments' loyalty shifts on-screen. Expire it once it stops being the operative military structure - specifically, once the Red Army's founding beat fires and this garrison structure is superseded (see red_army_command); don't let both linger indefinitely once that transition happens, though a real gap between the two (garrison authority collapsing before the Red Army is organized) is historically honest and fine to portray.",
-    "canon_triggers": ["The Central Committee vote for insurrection", "The October Revolution / storming of key institutions", "Trotsky becomes People's Commissar for War; founds the Red Army (expire around here - see red_army_command)"],
+    "label": "Armed Forces in Petrograd",
+    "render_primitive": "forces",
+    "default_review_after_turns": 6,
+    "when_relevant": "Exists from turn one (seeded in the starting state). Every unit's loyalty runs -3 (fights for the Provisional Government) to +3 (fights for the Soviet); units at -1..+1 stay in barracks. Use sway_unit for the player's personal appeals and resolve_confrontation for any armed clash. Use propose_mechanic_update only for changes the fiction produces without an operation (a regiment's committee re-elected, reinforcements arriving) - the app limits loyalty moves to one step per update. Add units that arrive in the city (front-line troops, Cossack columns) with an update rather than inventing them mid-fight.",
+    "canon_triggers": [
+      "garrison_transfer_order",
+      "mrc_formed",
+      "october_revolution"
+    ],
     "data_shape": {
-      "root": "a tree node {name, note, children: [...]} - use children for actual chain-of-command/grouping, not a flat list"
+      "units": "array of {id, name, kind, strength, readiness 1-5, loyalty -3..+3, note}. kind is garrison | militia | naval | cossack | cadet | volunteer | armor - garrison units drive the derived garrison_loyalty resource.",
+      "loyalty_scale": "fixed description of what + and - mean"
     },
-    "sourcing_note": "Named Guards regiments and approximate reserve-battalion strengths (4,500-7,500 men each) per the Petrograd Military District's real February 1917 order of battle, which was still substantially the same formation set through autumn 1917 (en.wikipedia.org/wiki/Volinsky_Regiment; alphahistory.com/russianrevolution). Order No. 1 (March 1917, Petrograd Soviet) really did subordinate the garrison's political loyalty to soldiers' committees rather than the military chain of command - the nominal/de-facto split below reflects that real, documented arrangement, not invented framing. Kronstadt's sailors and the Bolshevik-organized Red Guards are both real, well-documented armed forces distinct from the regular garrison chain of command.",
+    "sourcing_note": "Unit list from the Petrograd Military District's garrison in 1917: the Guards reserve regiments (Pavlovsky, Keksgolmsky, Volynsky, Litovsky, Izmailovsky, Grenadier, Finlyandsky, Moskovsky, Egersky, Preobrazhensky, Semyonovsky), the Peter and Paul Fortress garrison, the 1st, 4th and 14th Don Cossack regiments, the officer-cadet (junker) schools, the 1st Petrograd Women's Battalion, the armored car units, the Red Guards (armed in large numbers during the Kornilov affair), and the Kronstadt sailors. Reserve battalions numbered thousands on paper; 'strength' here is an estimate of men who would actually turn out, far below the rolls. Loyalty values are a design reconstruction of early September 1917: broadly Soviet-leaning after Kornilov but not yet willing to fight for an insurrection, with the regiments that declared for the Military-Revolutionary Committee earliest in October (Pavlovsky, Keksgolmsky) a step ahead, the Preobrazhensky and Semyonovsky (who declared neutrality in October) and the Peter and Paul garrison (won over only on 23 October) a step behind, and the cadets and the Women's Battalion (who defended the Winter Palace) on the government's side. Treat all strengths as approximate.",
     "seed_data": {
-      "root": {
-        "name": "Petrograd Military District",
-        "note": "Nominal command structure only - since Order No. 1 (March 1917), real political authority over the garrison runs through elected soldiers' committees answerable to the Soviet, not this chain of command.",
-        "children": [
-          {
-            "name": "Guards Reserve Regiments (garrison infantry)",
-            "note": "Eleven Imperial Guards reserve regiments quartered in and around the capital, ~4,500-7,500 reserve troops each. Politically uneven - most are Soviet-leaning after February, none reliably loyal to the Provisional Government alone.",
-            "children": [
-              {"name": "Volynsky Regiment", "note": "First to mutiny in February 1917; a bellwether for the garrison's mood."},
-              {"name": "Preobrazhensky Regiment", "note": "Oldest Guards regiment (founded under Peter the Great); its own mutiny in February shocked the old order."},
-              {"name": "Semyonovsky Regiment", "note": "Followed Volynsky and Preobrazhensky into mutiny in February."},
-              {"name": "Izmailovsky Regiment", "note": "Solidly Soviet-aligned by autumn."},
-              {"name": "Litovsky Regiment", "note": "Solidly Soviet-aligned by autumn."},
-              {"name": "Moskovsky Regiment", "note": "Reliable Soviet sympathies."},
-              {"name": "Pavlovsky Regiment", "note": "Among the more radical/Bolshevik-leaning regiments."},
-              {"name": "Finlyandsky Regiment", "note": "Reliable Soviet sympathies."},
-              {"name": "Keksgolmsky Regiment", "note": "Reliable Soviet sympathies."},
-              {"name": "Petrogradsky Regiment", "note": "Reliable Soviet sympathies."},
-              {"name": "Yegersky Regiment", "note": "Reliable Soviet sympathies."}
-            ]
-          },
-          {
-            "name": "Kronstadt Naval Garrison",
-            "note": "The naval fortress and its sailors, a short sail from the capital. The single most reliably radical armed force available to the Soviet - Bolshevik and Left SR sympathies run deep here.",
-            "children": []
-          },
-          {
-            "name": "Red Guards",
-            "note": "Bolshevik-organized worker militia, armed separately from the regular garrison chain of command entirely. Small compared to the garrison proper, but answers directly to Bolshevik Military Organization leadership rather than any soldiers' committee compromise.",
-            "children": []
-          }
-        ]
-      }
+      "loyalty_scale": "+3 marches for the Soviet unprompted · +2 fights for the Soviet when called · +1/0/-1 stays in barracks · -2 fights for the Provisional Government when ordered · -3 moves against the Soviet unprompted",
+      "units": [
+        {
+          "id": "red_guards",
+          "name": "Red Guards",
+          "kind": "militia",
+          "strength": 12000,
+          "readiness": 2,
+          "loyalty": 3,
+          "note": "Factory militias, rifles handed out during the Kornilov scare. Enthusiastic, badly trained, short of officers."
+        },
+        {
+          "id": "kronstadt_sailors",
+          "name": "Kronstadt sailors",
+          "kind": "naval",
+          "strength": 4000,
+          "readiness": 4,
+          "loyalty": 3,
+          "note": "Baltic Fleet sailors from the island base - the most radical armed men in Russia. A day's movement from the city."
+        },
+        {
+          "id": "pavlovsky",
+          "name": "Pavlovsky Regiment",
+          "kind": "garrison",
+          "strength": 2500,
+          "readiness": 3,
+          "loyalty": 2,
+          "note": "Its committee is solidly Bolshevik. Barracks on the Field of Mars, a few hundred meters from the Winter Palace."
+        },
+        {
+          "id": "keksgolmsky",
+          "name": "Keksgolmsky Regiment",
+          "kind": "garrison",
+          "strength": 2000,
+          "readiness": 3,
+          "loyalty": 2,
+          "note": "Radicalized, close to the Bolshevik Military Organization."
+        },
+        {
+          "id": "volynsky",
+          "name": "Volynsky Regiment",
+          "kind": "garrison",
+          "strength": 2500,
+          "readiness": 3,
+          "loyalty": 1,
+          "note": "Mutinied first in February and is proud of it. Sympathetic, but won't move without a reason."
+        },
+        {
+          "id": "litovsky",
+          "name": "Litovsky Regiment",
+          "kind": "garrison",
+          "strength": 2000,
+          "readiness": 3,
+          "loyalty": 1,
+          "note": "Joined the February rising early. Leans left; tired."
+        },
+        {
+          "id": "izmailovsky",
+          "name": "Izmailovsky Regiment",
+          "kind": "garrison",
+          "strength": 2500,
+          "readiness": 3,
+          "loyalty": 1,
+          "note": "Soviet-leaning, committee divided between Bolsheviks and SRs."
+        },
+        {
+          "id": "grenadier",
+          "name": "Grenadier Regiment",
+          "kind": "garrison",
+          "strength": 2000,
+          "readiness": 3,
+          "loyalty": 1,
+          "note": "On the Petrograd side, near the Bolshevik district committees."
+        },
+        {
+          "id": "finlyandsky",
+          "name": "Finlyandsky Regiment",
+          "kind": "garrison",
+          "strength": 2000,
+          "readiness": 3,
+          "loyalty": 1,
+          "note": "On Vasilievsky Island. Sympathetic, not committed."
+        },
+        {
+          "id": "moskovsky",
+          "name": "Moskovsky Regiment",
+          "kind": "garrison",
+          "strength": 2000,
+          "readiness": 3,
+          "loyalty": 1,
+          "note": "Vyborg side, surrounded by the most militant factories in the city."
+        },
+        {
+          "id": "egersky",
+          "name": "Egersky Regiment",
+          "kind": "garrison",
+          "strength": 1500,
+          "readiness": 3,
+          "loyalty": 0,
+          "note": "Undecided. Its officers still have some hold over it."
+        },
+        {
+          "id": "preobrazhensky",
+          "name": "Preobrazhensky Regiment",
+          "kind": "garrison",
+          "strength": 2500,
+          "readiness": 3,
+          "loyalty": 0,
+          "note": "The oldest Guards regiment. Wants no part of a fight between socialists."
+        },
+        {
+          "id": "semyonovsky",
+          "name": "Semyonovsky Regiment",
+          "kind": "garrison",
+          "strength": 2500,
+          "readiness": 3,
+          "loyalty": 0,
+          "note": "Crushed the Moscow rising in 1905 and hasn't forgotten it; neither have the workers. Neutral, watchful."
+        },
+        {
+          "id": "peter_paul",
+          "name": "Peter and Paul Fortress garrison",
+          "kind": "garrison",
+          "strength": 1500,
+          "readiness": 3,
+          "loyalty": -1,
+          "note": "Holds the fortress and its arsenal - tens of thousands of rifles - with guns facing the Winter Palace across the Neva. Wary of the Bolsheviks."
+        },
+        {
+          "id": "don_cossacks",
+          "name": "Don Cossack regiments (1st, 4th, 14th)",
+          "kind": "cossack",
+          "strength": 3000,
+          "readiness": 4,
+          "loyalty": -1,
+          "note": "Experienced cavalry. Distrust the Soviet, but bitter at Kerensky for how he treated Kornilov. Their neutrality is for sale; their loyalty isn't."
+        },
+        {
+          "id": "junkers",
+          "name": "Officer cadets (junkers)",
+          "kind": "cadet",
+          "strength": 3500,
+          "readiness": 4,
+          "loyalty": -3,
+          "note": "Students of the military schools - young, disciplined, and the government's most reliable armed men in the city."
+        },
+        {
+          "id": "womens_battalion",
+          "name": "1st Petrograd Women's Battalion",
+          "kind": "volunteer",
+          "strength": 1000,
+          "readiness": 3,
+          "loyalty": -2,
+          "note": "Volunteers raised to shame the army into fighting on. Loyal to the government, quartered outside the city at Levashovo."
+        },
+        {
+          "id": "armored_cars",
+          "name": "Armored car units",
+          "kind": "armor",
+          "strength": 400,
+          "readiness": 4,
+          "loyalty": 0,
+          "note": "A few dozen machine-gun cars. Whoever has them controls the streets for an afternoon - their committee hasn't chosen."
+        }
+      ]
     }
   },
-
   "red_army_command": {
     "label": "Workers' and Peasants' Red Army — Command Structure",
     "render_primitive": "org_tree",
     "when_relevant": "Create this only once the canon 'Trotsky becomes People's Commissar for War; founds the Red Army' beat has actually fired (see canon_timeline.md) - this is a real successor structure to petrograd_garrison, not something that should exist alongside it from the start. A real gap between the old garrison mechanic expiring and this one being created is historically honest (the old structure didn't survive intact into the new one) - don't force immediate continuity if the fiction doesn't support it.",
-    "canon_triggers": ["Trotsky becomes People's Commissar for War; founds the Red Army"],
+    "canon_triggers": [
+      "Trotsky becomes People's Commissar for War; founds the Red Army"
+    ],
     "data_shape": {
       "root": "a tree node {name, note, children: [...]}"
     },
@@ -91,9 +266,18 @@
                 "name": "Supreme Military Council",
                 "note": "Established 3 March 1918, days after Brest-Litovsk, to organize the new army's formation and defense. Chaired by Trotsky himself.",
                 "children": [
-                  {"name": "Operational Directorate", "note": "Front-facing military planning and operations."},
-                  {"name": "Organizational Directorate", "note": "Recruitment, unit formation, and the difficult work of building a real army from volunteer detachments and conscripts."},
-                  {"name": "Military Communications Directorate", "note": "Logistics, rail movement, and coordination across fronts."}
+                  {
+                    "name": "Operational Directorate",
+                    "note": "Front-facing military planning and operations."
+                  },
+                  {
+                    "name": "Organizational Directorate",
+                    "note": "Recruitment, unit formation, and the difficult work of building a real army from volunteer detachments and conscripts."
+                  },
+                  {
+                    "name": "Military Communications Directorate",
+                    "note": "Logistics, rail movement, and coordination across fronts."
+                  }
                 ]
               }
             ]
@@ -102,76 +286,139 @@
       }
     }
   },
-
   "diplomatic_position": {
     "label": "Peace Negotiations — Diplomatic Ledger",
     "render_primitive": "text",
     "when_relevant": "Create this once Brest-Litovsk negotiations become a live concern for the player (canon 'Brest-Litovsk negotiations begin' beat). This tracks the negotiating position as a running ledger, not a chart - a new development is a new entry appended via 'update', not a wholesale rewrite of the earlier ones, so the ledger reads as a real history of how the talks moved. Update it as talks progress, recess, or collapse. Once a treaty is actually signed, update it one final time with the real terms and their consequences rather than creating a new instance. Expire only if the treaty is later formally abrogated/superseded (historically, the Armistice of November 1918 voided it) - not simply because active negotiating stopped, since signed terms remain a standing fact the player has to live with.",
-    "canon_triggers": ["Brest-Litovsk negotiations begin", "Treaty of Brest-Litovsk signed"],
+    "canon_triggers": [
+      "Brest-Litovsk negotiations begin",
+      "Treaty of Brest-Litovsk signed"
+    ],
     "data_shape": {
       "entries": "array of {heading, tag, body} appended in chronological order - tag is a short date/status label (e.g. a date or 'Trotsky's strategy'), body is the actual ledger content. Prefer adding a new entry over rewriting old ones."
     },
     "sourcing_note": "Real timeline: Soviet Russia requested an immediate peace 8 November 1917; formal talks opened 22 December 1917 at Brest-Litovsk; Trotsky personally took over the Soviet delegation 9 January 1918 and pursued a deliberate 'neither war nor peace' strategy (refuse to sign, but unilaterally declare the war over) against Lenin's own preference to just accept German terms - a real, documented internal party fight, not invented drama. The strategy collapsed when Germany resumed its offensive 18 February 1918; the treaty was signed 3 March 1918 (the same day the Supreme Military Council was established - see red_army_command) on harsh terms: Russia ceded Ukraine, Poland, the Baltic provinces, Finland, and more - about a third of its population and pre-war European territory, and a majority of its coal/iron reserves and industry (britannica.com/event/treaties-of-Brest-Litovsk; history.com/articles/treaties-of-brest-litovsk). Only the negotiation-opening seed is below; the treaty's real final terms belong in a later 'update' once that canon beat fires, not in this initial seed.",
     "seed_data": {
       "entries": [
-        {"heading": "Peace negotiations open at Brest-Litovsk", "tag": "22 December 1917", "body": "Formal talks with the Central Powers began at the fortress of Brest-Litovsk, following the Soviet government's 8 November appeal for an immediate peace. German General Max Hoffmann leads the Central Powers' military delegation."},
-        {"heading": "Trotsky takes over the Soviet delegation", "tag": "9 January 1918", "body": "Trotsky, as Commissar for Foreign Affairs, personally leads the negotiations from this point - and deliberately slows them for propaganda value rather than settling quickly."},
-        {"heading": "German territorial demands", "tag": "Ongoing", "body": "Germany is demanding independence (under German influence) for Poland, the Baltic provinces, and Ukraine - effectively stripping them from Russian control. General Hoffmann pressed these terms firmly once talks resumed after Trotsky's own requested recess."},
-        {"heading": "'Neither war nor peace'", "tag": "Trotsky's strategy", "body": "Trotsky's own position, over Lenin's objections: refuse to sign these terms, but also unilaterally declare the war over and demobilize - betting that a wider European revolution makes the treaty irrelevant before Germany can enforce it. A genuinely contested call within the party, not Lenin's preference."}
+        {
+          "heading": "Peace negotiations open at Brest-Litovsk",
+          "tag": "22 December 1917",
+          "body": "Formal talks with the Central Powers began at the fortress of Brest-Litovsk, following the Soviet government's 8 November appeal for an immediate peace. German General Max Hoffmann leads the Central Powers' military delegation."
+        },
+        {
+          "heading": "Trotsky takes over the Soviet delegation",
+          "tag": "9 January 1918",
+          "body": "Trotsky, as Commissar for Foreign Affairs, personally leads the negotiations from this point - and deliberately slows them for propaganda value rather than settling quickly."
+        },
+        {
+          "heading": "German territorial demands",
+          "tag": "Ongoing",
+          "body": "Germany is demanding independence (under German influence) for Poland, the Baltic provinces, and Ukraine - effectively stripping them from Russian control. General Hoffmann pressed these terms firmly once talks resumed after Trotsky's own requested recess."
+        },
+        {
+          "heading": "'Neither war nor peace'",
+          "tag": "Trotsky's strategy",
+          "body": "Trotsky's own position, over Lenin's objections: refuse to sign these terms, but also unilaterally declare the war over and demobilize - betting that a wider European revolution makes the treaty irrelevant before Germany can enforce it. A genuinely contested call within the party, not Lenin's preference."
+        }
       ]
     }
   },
-
   "bolshevik_central_committee": {
-    "label": "Bolshevik Central Committee — Insurrection Vote",
-    "render_primitive": "org_tree",
-    "when_relevant": "Create this once the insurrection question becomes a live, specific vote the Central Committee is actually weighing - the real 10 October 1917 meeting this is modeled on, not general party politics (which party_standing already covers as a resource). This is about where NAMED individuals stand on the single specific question of timing, grouped by stance - not a seat-count chart, since the real drama here is a dozen specific people (see npcs.md for Kamenev/Zinoviev's stat blocks, written with exactly this vote in mind), not proportional blocs. Update it if a member's stance shifts on-screen, or once the actual vote is taken. Expire it once the insurrection question is settled one way or another (the vote happens, or the moment passes) - this is a snapshot of one specific decision, not a standing body to track indefinitely.",
-    "canon_triggers": ["The Central Committee vote for insurrection"],
+    "label": "Bolshevik Central Committee — The Question of Insurrection",
+    "render_primitive": "seat_chart",
+    "default_review_after_turns": 4,
+    "when_relevant": "Create this (omit data to use the seed) when the Central Committee actually meets on the question of armed insurrection - historically 10 October, after Lenin's return. Its lean runs toward 'immediate armed insurrection', not toward the player, so call_vote needs motion_alignment (+1 for a motion to rise, -1 for a motion to wait). The player votes as a member (includes_player). Update individual members' leans as they shift on-screen; expire once the question is settled.",
+    "canon_triggers": [
+      "central_committee_insurrection_vote"
+    ],
     "data_shape": {
-      "root": "a tree node {name, note, children: [...]} - group by stance (for/against/undecided), with named members as children of each stance group"
+      "body_size": "integer - members present",
+      "factions": "array of {name, seats (1 per member), lean, note} - lean -3..+3 toward immediate insurrection",
+      "lean_toward": "fixed: 'immediate armed insurrection'",
+      "includes_player": "fixed: true"
     },
-    "sourcing_note": "Real meeting, 10 October 1917 (per marxists.org and wsws.org): about a dozen of the Central Committee's 21 total members met in secret, Sverdlov in the chair (Lenin's first meeting back from hiding). The resolution for insurrection passed 10-to-2, with only Zinoviev and Kamenev voting against - a real, public rupture, not invented drama (see their own npcs.md entries, written to voice exactly this dissent credibly). Trotsky himself is recorded as abstaining, not voting for - he held the rising should wait for the Second Congress of Soviets for legitimacy, a real tactical disagreement with Lenin even though he ultimately supported insurrection in principle. Other real attendees per the same sources: Stalin, Dzerzhinsky, Kollontai, Sokolnikov, Lomov, Bubnov, Uritsky, and Iakovleva (who took the minutes).",
+    "sourcing_note": "Real meeting, 10 October 1917 (per marxists.org and wsws.org): about a dozen of the Central Committee's 21 total members met in secret, Sverdlov in the chair (Lenin's first meeting back from hiding). The resolution for insurrection passed 10-to-2, with only Zinoviev and Kamenev voting against - a real, public rupture, not invented drama (see their own npcs.md entries, written to voice exactly this dissent credibly). Trotsky himself is recorded as abstaining, not voting for - he held the rising should wait for the Second Congress of Soviets for legitimacy, a real tactical disagreement with Lenin even though he ultimately supported insurrection in principle. Other real attendees per the same sources: Stalin, Dzerzhinsky, Kollontai, Sokolnikov, Lomov, Bubnov, Uritsky, and Iakovleva (who took the minutes). 2026-10-26: converted from org_tree to seat_chart so the vote is resolved in code. Leans are design values from the recorded positions: Lenin and Dzerzhinsky the hardest for rising now, Kamenev and Zinoviev against, Stalin and Uritsky behind the resolution with less conviction. Trotsky is the player and is not seated - he votes through includes_player.",
     "seed_data": {
-      "root": {
-        "name": "Central Committee, 10 October 1917 (in session, Sverdlov chairing)",
-        "note": "About a dozen of 21 total CC members present, meeting in secret. Lenin's first session back from hiding in Finland.",
-        "children": [
-          {
-            "name": "For immediate insurrection",
-            "note": "The resolution passed 10-to-2 in the real vote this models.",
-            "children": [
-              {"name": "Lenin", "note": "Pushing hardest and most impatiently for insurrection now."},
-              {"name": "Stalin", "note": "Correct and professional, aligned with Lenin's position without leading it."},
-              {"name": "Dzerzhinsky", "note": "Firmly behind the resolution."},
-              {"name": "Kollontai", "note": "A genuine, trusted ally of the player character, aligned here too."},
-              {"name": "Sokolnikov, Lomov, Bubnov, Uritsky", "note": "The remaining real votes for the resolution."}
-            ]
-          },
-          {
-            "name": "Opposed",
-            "note": "A real, public rupture with Lenin, not a minor procedural objection.",
-            "children": [
-              {"name": "Lev Kamenev", "note": "Historically opposed the rising outright and said so publicly - the most cautious senior Bolshevik."},
-              {"name": "Grigory Zinoviev", "note": "Aligned with Kamenev's caution, reinforcing each other's position."}
-            ]
-          },
-          {
-            "name": "Abstained / procedural disagreement",
-            "note": "Not opposition to insurrection in principle, but real disagreement over timing and legitimacy.",
-            "children": [
-              {"name": "Trotsky", "note": "The player character (if voicing this scene from within it) - held that the rising should wait for the Second Congress of Soviets to convene, for legitimacy's sake, rather than move before it."}
-            ]
-          }
-        ]
-      }
+      "body_size": 11,
+      "lean_toward": "immediate armed insurrection",
+      "includes_player": true,
+      "factions": [
+        {
+          "name": "Lenin",
+          "seats": 1,
+          "lean": 3,
+          "note": "Back from Finland in disguise. Every day of delay is a crime to him."
+        },
+        {
+          "name": "Dzerzhinsky",
+          "seats": 1,
+          "lean": 3,
+          "note": "Firm, unsentimental, with Lenin."
+        },
+        {
+          "name": "Kollontai",
+          "seats": 1,
+          "lean": 3,
+          "note": "For rising, and a real ally of the player's."
+        },
+        {
+          "name": "Sverdlov",
+          "seats": 1,
+          "lean": 2,
+          "note": "In the chair. The party's organizer - for it, and already thinking about how."
+        },
+        {
+          "name": "Sokolnikov",
+          "seats": 1,
+          "lean": 2,
+          "note": "For the resolution."
+        },
+        {
+          "name": "Lomov (Oppokov)",
+          "seats": 1,
+          "lean": 2,
+          "note": "For the resolution."
+        },
+        {
+          "name": "Bubnov",
+          "seats": 1,
+          "lean": 2,
+          "note": "For the resolution."
+        },
+        {
+          "name": "Stalin",
+          "seats": 1,
+          "lean": 1,
+          "note": "Will vote with the majority. Says little about timing."
+        },
+        {
+          "name": "Uritsky",
+          "seats": 1,
+          "lean": 1,
+          "note": "For it in principle, worried about the garrison."
+        },
+        {
+          "name": "Kamenev",
+          "seats": 1,
+          "lean": -3,
+          "note": "Against. Believes a rising now will be crushed and take the party with it."
+        },
+        {
+          "name": "Zinoviev",
+          "seats": 1,
+          "lean": -3,
+          "note": "Against, with Kamenev - and ready to say so in print."
+        }
+      ]
     }
   },
-
   "military_revolutionary_committee": {
     "label": "The Military-Revolutionary Committee",
     "render_primitive": "org_tree",
     "when_relevant": "Create this once the MRC actually forms and starts operating - the body mrc_authority (see resource_schema.json) is built to track, which starts near zero specifically because this organ doesn't exist yet at campaign start. This is the real operational instrument of the insurrection itself, distinct from both the Central Committee (which decides whether to rise) and the Petrograd Soviet (whose institutional authority it draws on). Update it as it takes on real operational functions or its authority visibly extends over more of the garrison/city. Expire it once its wartime function is complete and it's formally dissolved or absorbed into ordinary Soviet government organs (historically, within a few months of October).",
-    "canon_triggers": ["The October Revolution / storming of key institutions"],
+    "canon_triggers": [
+      "The October Revolution / storming of key institutions"
+    ],
     "data_shape": {
       "root": "a tree node {name, note, children: [...]}"
     },
@@ -181,11 +428,26 @@
         "name": "Military-Revolutionary Committee of the Petrograd Soviet",
         "note": "Formally chaired by Pavel Lazimir (Left SR) - real driving authority runs through Trotsky as President of the Soviet, but the Left SR chairmanship matters for the committee's legitimacy as a Soviet body, not a purely Bolshevik one.",
         "children": [
-          {"name": "Bolshevik Party Representatives", "note": "The organizing core."},
-          {"name": "Soviet Delegates", "note": "Draws directly on the Petrograd Soviet's own institutional authority - see petrograd_soviet_composition."},
-          {"name": "Factory and Soldiers' Committees", "note": "The base-level organizing network across the garrison and the city's workplaces."},
-          {"name": "Bolshevik Military Organization (Voenka)", "note": "The party's own dedicated military-organizing apparatus within the garrison."},
-          {"name": "Red Guards", "note": "The armed worker militia - see petrograd_garrison for its place in the wider military picture."}
+          {
+            "name": "Bolshevik Party Representatives",
+            "note": "The organizing core."
+          },
+          {
+            "name": "Soviet Delegates",
+            "note": "Draws directly on the Petrograd Soviet's own institutional authority - see petrograd_soviet_composition."
+          },
+          {
+            "name": "Factory and Soldiers' Committees",
+            "note": "The base-level organizing network across the garrison and the city's workplaces."
+          },
+          {
+            "name": "Bolshevik Military Organization (Voenka)",
+            "note": "The party's own dedicated military-organizing apparatus within the garrison."
+          },
+          {
+            "name": "Red Guards",
+            "note": "The armed worker militia - see petrograd_garrison for its place in the wider military picture."
+          }
         ]
       }
     }

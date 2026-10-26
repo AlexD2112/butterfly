@@ -1,3 +1,56 @@
+# Hard mechanics + Petrograd rolled back to 4 September 1917 (2026-10-26)
+
+**Why.** A review of the game found that the code owned dice and clamping but almost no
+consequences. The 21 mechanics were display-only (the AI wrote the data, nothing read it), checks
+were pass/fail, resources never interacted, the date never advanced, canon_timeline.md's
+"prerequisites the code checks" were never checked, and no armed confrontation was resolved in
+code - in a setting whose whole climax is one. This pass makes the numbers decide things, with
+Petrograd as the focus.
+
+**Shared (every setting):**
+- Degrees of success in `core.roll_check`: critical / strong / success / success at a cost /
+  failure / critical failure, by margin. `success_at_cost` counts as success for liabilities and
+  council signals. `request_check` takes an optional `at_stake` resource the app moves by degree.
+- Breaking an active commitment costs each bound party's trust (-2) and adds an enmity pip.
+- `mechanics.py` validates every tracker per primitive, rate-limits lean/loyalty to one step per
+  update, caps seat swings and strength growth, keeps fixed chart properties fixed, and uses the
+  catalog seed when create omits data (`seed_data_hint` existed but was never called, so the
+  researched seeds had never actually been used). New primitive: `forces`.
+- `operations.py`: `call_vote`, `sway_unit`, `resolve_confrontation` (see red_admiral rules §12).
+- `engine.run_turn`'s tool handling moved into `handle_tool_call`; new `allow_time_advance` param
+  (multiplayer passes False - the server's clock belongs to scheduler.py).
+- Prompt: mechanics are rendered compactly instead of as raw JSON, and in settings with
+  dynamics.json the world/calendar/canon move out of the state dump into a CLOCK section. Net prompt
+  growth for a fresh Petrograd game is ~+10k characters (~2.5k tokens) per call versus before - worth
+  watching against the $0.10 budget.
+
+**Petrograd:**
+- Starts 4 September 1917 (Julian), Trotsky released from Kresty on bail, no Soviet office,
+  personal safety low, July charges open. Opening scene, canon timeline, NPCs (adds Dan, Chkheidze,
+  Podvoisky, Antonov-Ovseenko), factions and resources rewritten for that date.
+- `dynamics.json`: four world tracks (government stability, bread, war exhaustion, threat from the
+  right) with daily drift; thresholds (bread riots, government paralysis, Kornilovite plot, Lenin's
+  resignation letter, an arrest attempt the app rolls when safety < 18, Kerensky striking first from
+  22 Oct); locked dates (Democratic Conference, third coalition, Pre-Parliament, Lenin's return, the
+  garrison transfer order) and gated contingent beats (presidium no-confidence vote → chairmanship →
+  MRC; CC insurrection vote; October requires vote + MRC + derived garrison loyalty ≥ 72 + government
+  stability ≤ 30).
+- The Soviet plenum (seat chart, ~1,000 delegates reconstructed around the 9 September tally) and
+  an 18-unit order of battle are seeded into the starting state. `garrison_loyalty` is now derived
+  from the garrison regiments. The Central Committee is a seat chart of named members with its own
+  axis ("immediate armed insurrection"); seeded leans reproduce the real 10-2 vote.
+- `world_state_schema.json` deleted - it was an unused duplicate of resource_schema.json.
+
+**Old saves:** `dynamics.ensure_initialized` adds world tracks and missing canon entries without
+overwriting anything; old org_tree garrison instances keep validating as org_trees. A pre-existing
+Petrograd save (started 25 Sept) will see locked events up to its date fire on its first
+`days_elapsed`.
+
+**Not done:** multiplayer servers don't get world drift (their date comes from scheduler ticks, and
+mechanics are per-character there); Britannia/Rome/Crusades have no dynamics.json yet - the same
+format would give Edington, Antioch and Caesar's consulship their own clocks. Tuning numbers
+(drift rates, vote weights, confrontation constants) are design values, untested against real play.
+
 # Full hosting migration off the local machine, phase 1: code + Render config (2026-09-09)
 
 The real migration this whole session's "off my computer" work was building toward - executing now,

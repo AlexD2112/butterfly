@@ -1,28 +1,32 @@
-# Opening Scene — September 25, 1917
+# Opening Scene — September 4, 1917
 
-The Smolny Institute, once a school for daughters of the nobility, now hums at all hours with the
-business of the Petrograd Soviet. Tonight the corridors are louder than usual.
+The gate of the Kresty prison swings open onto the Vyborg side, and the September air smells of
+the river and coal smoke. Six weeks in a cell on the July charges - incitement, and the slander that
+you and Lenin are paid by Berlin - and they are letting you walk out on bail. Not because the
+charges have gone away. Because the government no longer has the nerve to hold you.
 
-You have just been elected Chairman of the Petrograd Soviet - a body that, eight months ago,
-would not have trusted you with a seat, let alone the gavel. The vote was not close. Kerensky's
-government grows weaker by the week; the Kornilov affair last month, when generals moved against
-the capital and the Soviet's own workers and soldiers organized the defense that stopped them,
-has left the Provisional Government looking like it survives on the Soviet's forbearance rather
-than its own strength.
+Last week General Kornilov marched on the capital to "restore order," and Kerensky, who had been
+flirting with him, found himself begging the Soviet to save the revolution. The workers saved it.
+Railwaymen sent Kornilov's trains the wrong way; agitators talked his Cossacks out of fighting;
+the factories armed Red Guards with rifles the government itself handed over. The general is
+under arrest. So is the government's authority, more or less.
 
-Lenin is still in Finland, in hiding, writing furious letters that arrive by courier arguing the
-moment for insurrection is now, or soon. Kamenev and Zinoviev think he is moving too fast and say
-so, to anyone who will listen. Stalin watches and says little. You have just inherited real
-institutional power at the exact moment the party is about to tear itself apart over what to do
-with it.
+On August 31, for the first time, the Petrograd Soviet passed a Bolshevik resolution. The
+Menshevik and SR presidium - Chkheidze, Tsereteli, Dan, the men who have run the Soviet since
+February - still sits at the head table, insisting nothing has changed. Lenin is in Finland, in
+hiding, writing letters. Kamenev leads the Bolshevik fraction and wants to use the new majority
+carefully. The Second Congress of Soviets is weeks away.
 
-Natalia is waiting for you outside the chamber, having heard the vote went your way before you
-even reached her.
+Natalia is waiting at the gate with a coat over her arm. Behind her, a knot of workers from the
+Vyborg district has come to see you out - and one of them is holding a note from the Smolny: the
+Soviet meets tonight.
 
 **Where do you begin?**
 
-*(GM note: this is the scene-zero hook, not a fixed script. Let the player's first move set the
-tone - a private moment with Natalia, an immediate confrontation with the scale of the job, a
-letter to Lenin, a conversation with a skeptical Menshevik delegate on the way out. Nothing here
-should be treated as requiring a check; the first check should emerge naturally from whatever the
-player chooses to do.)*
+*(GM note: scene zero, not a script. Let the player's first move set the tone - Natalia and the
+boys, the workers at the gate, straight to Smolny, a letter to Lenin, a word with Kamenev about
+what the fraction is planning. The first arc is the Soviet itself: the presidium is beatable
+(call_vote on the plenum chart, canon_event presidium_no_confidence) and the chair after it. The
+clock runs from here - the Democratic Conference on the 14th, the Pre-Parliament and Lenin's return
+in early October, the Congress of Soviets on the 25th. Nothing in this scene requires a check; the
+first should come from whatever the player chooses to do.)*
