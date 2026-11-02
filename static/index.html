@@ -141,7 +141,7 @@
      1fr column (and the whole page) wider than the viewport to fit the header's content instead of
      letting it wrap - a real bug, not a hypothetical: confirmed via a real narrower-viewport check
      (1024px) that without this the header forced 1115px of horizontal scroll. */
-  #app { display: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: 100vh; }
+  #app { display: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; height: 100vh; height: 100dvh; }
   #app.active { display: grid; }
   header { grid-column: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; row-gap: 8px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
@@ -181,11 +181,147 @@
 
   #log { grid-column: 1; min-width: 0; overflow-y: auto; padding: 32px 24px 100px; line-height: 1.6;
     display: flex; flex-direction: column; align-items: center; }
-  .turn { width: 100%; max-width: var(--content-width); min-width: 0; margin-bottom: 26px; }
-  .turn.user { color: var(--accent-2); font-family: var(--font-ui); font-size: 12.5px;
+  .turn { width: 100%; max-width: var(--content-width); min-width: 0; margin-bottom: 30px; }
+  /* 2026-11-02 game-screen pass. These used to be `.turn.user` / `.turn.narration`, which never
+     matched anything (the classes sit on children of .turn), so narration rendered as one unstyled
+     blob with its paragraph breaks collapsed. */
+  .turn .user { color: var(--accent-2); font-family: var(--font-ui); font-size: 12.5px;
     letter-spacing: 0.3px; text-transform: uppercase; margin-bottom: 8px; opacity: 0.85; }
-  .turn.narration { font-family: var(--font-serif); font-size: 16.5px; line-height: 1.75;
-    white-space: pre-wrap; overflow-wrap: break-word; }
+  .turn .narration { font-family: var(--font-serif); font-size: 17.5px; line-height: 1.72; overflow-wrap: break-word; }
+  .turn .narration p { margin: 0 0 0.85em; }
+  .turn .narration p:last-child { margin-bottom: 0; }
+  .turn .narration .dlg { color: #f1e6c8; }
+  .turn .narration p.speech { padding-left: 12px; border-left: 2px solid rgba(176,141,79,0.35); }
+  .turn .narration .w { opacity: 0; animation: fp-word .28s ease forwards; }
+  .turn .narration.revealed .w { animation: none; opacity: 1; }
+  @keyframes fp-word { from { opacity: 0; filter: blur(2px); } to { opacity: 1; filter: none; } }
+  .turn .player { font-family: var(--font-ui); font-size: 14px; color: var(--accent-2); margin: 0 0 12px;
+    display: flex; gap: 8px; align-items: baseline; }
+  .turn .player .tag { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; flex: none; }
+  .turn .player.say .said { font-family: var(--font-serif); font-size: 16px; font-style: italic; color: #e9dcc0; }
+  .system-note { font-family: var(--font-ui); font-size: 12.5px; color: var(--muted); border: 1px dashed var(--border);
+    border-radius: 6px; padding: 10px 12px; }
+
+  /* outcome cards - what the rules decided, shown before the prose that narrates it */
+  .outcomes { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+  .oc { display: flex; gap: 12px; align-items: center; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px; font-family: var(--font-ui); font-size: 12.5px; }
+  .oc .oc-body { min-width: 0; flex: 1; }
+  .oc .oc-title { font-weight: 600; font-size: 13px; letter-spacing: 0.2px; }
+  .oc .oc-sub { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+  .oc .oc-desc { color: var(--text); opacity: 0.8; font-size: 12px; margin-top: 2px; }
+  .die { flex: none; width: 38px; height: 38px; display: grid; place-items: center; font-weight: 700; font-size: 15px;
+    clip-path: polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%); background: var(--border); color: var(--text); }
+  .oc.deg-critical-success .die, .oc.deg-strong-success .die, .oc.deg-success .die { background: #4f6b3c; }
+  .oc.deg-critical-success .die { background: #7a9b5f; color: #0e1512; }
+  .oc.deg-success-at-cost .die { background: #7d6431; }
+  .oc.deg-failure .die { background: #6e3324; }
+  .oc.deg-critical-failure .die { background: var(--bad); color: #fff; }
+  .oc.deg-critical-success .oc-title, .oc.deg-strong-success .oc-title, .oc.deg-success .oc-title { color: var(--ok); }
+  .oc.deg-success-at-cost .oc-title { color: var(--accent-2); }
+  .oc.deg-failure .oc-title, .oc.deg-critical-failure .oc-title { color: #d0745c; }
+  @media (prefers-reduced-motion: no-preference) {
+    .oc.fresh .die { animation: fp-roll .6s cubic-bezier(.2,.8,.3,1.2) both; }
+    @keyframes fp-roll { from { transform: rotate(-200deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
+  .oc .oc-icon { flex: none; width: 38px; text-align: center; font-size: 18px; color: var(--accent-2); }
+  .tally { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--border); margin: 6px 0 3px; }
+  .tally .yes { background: var(--ok); } .tally .no { background: var(--bad); } .tally .ab { background: #59645a; }
+  .oc.oc-dispatch { display: block; background: #1d2318; border-color: #4a4630; }
+  .oc-dispatch .oc-kicker { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent-2); margin-bottom: 3px; }
+  .oc-dispatch .oc-text { font-family: var(--font-serif); font-size: 15px; line-height: 1.55; }
+  .time-pass { font-family: var(--font-ui); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+    display: flex; align-items: center; gap: 10px; margin: 2px 0; }
+  .time-pass::before, .time-pass::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-family: var(--font-ui); font-size: 11.5px; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--border); background: var(--panel); }
+  .chip.up { color: var(--ok); border-color: #3d5232; } .chip.down { color: #d0745c; border-color: #5a3024; }
+  .chip.gold { color: var(--accent-2); border-color: #5a4a2c; }
+
+  /* suggested next moves */
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; }
+  .suggestion { font-family: var(--font-ui); font-size: 13px; text-align: left; background: transparent; color: var(--text);
+    border: 1px solid #4a4630; border-radius: 999px; padding: 7px 14px; }
+  .suggestion::before { content: '›  '; color: var(--accent-2); }
+  .suggestion:hover:not(:disabled) { background: #232a1e; border-color: var(--accent-2); }
+  @media (prefers-reduced-motion: no-preference) {
+    .suggestion { animation: fp-settle .35s ease both; }
+    .suggestion:nth-child(2) { animation-delay: .06s; } .suggestion:nth-child(3) { animation-delay: .12s; } .suggestion:nth-child(4) { animation-delay: .18s; }
+  }
+
+  /* the game master is writing... */
+  .gm-typing { display: flex; align-items: center; gap: 10px; font-family: var(--font-serif); font-style: italic;
+    font-size: 15.5px; color: var(--muted); padding: 6px 0; }
+  .gm-typing .dots { display: inline-flex; gap: 5px; }
+  .gm-typing .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); animation: fp-bounce 1.2s ease-in-out infinite; }
+  .gm-typing .dot:nth-child(2) { animation-delay: .15s; } .gm-typing .dot:nth-child(3) { animation-delay: .3s; }
+  @keyframes fp-bounce { 0%, 70%, 100% { transform: translateY(0); opacity: .35; } 35% { transform: translateY(-5px); opacity: 1; } }
+  .gm-typing .elapsed { font-family: var(--font-ui); font-style: normal; font-size: 11px; opacity: .7; }
+  @media (prefers-reduced-motion: reduce) { .gm-typing .dot { animation: none; opacity: .6; } }
+
+  /* top status bar: date, countdown, the numbers that matter */
+  #hud { grid-column: 1; min-width: 0; display: none; justify-content: center; background: #121b16;
+    border-bottom: 1px solid var(--border); padding: 8px 20px; font-family: var(--font-ui); }
+  #hud.on { display: flex; }
+  .hud-inner { width: 100%; max-width: 980px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; }
+  .hud-date { font-family: var(--font-display); font-size: 17px; font-weight: 600; color: var(--text); white-space: nowrap; }
+  .hud-date small { font-family: var(--font-ui); font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-left: 4px; }
+  .hud-count { font-size: 11.5px; color: var(--accent-2); white-space: nowrap; }
+  .hud-meters { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-left: auto; }
+  .hud-meter { min-width: 92px; font-size: 10.5px; color: var(--muted); }
+  .hud-meter .row { display: flex; justify-content: space-between; gap: 6px; }
+  .hud-meter .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  .hud-meter .bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 3px; overflow: hidden; }
+  .hud-meter .bar i { display: block; height: 100%; background: var(--accent); transition: width .6s ease; }
+  .hud-meter.low .bar i { background: var(--bad); } .hud-meter.low .val { color: #d0745c; }
+  .hud-meter.flash .val { animation: fp-flash 1.2s ease; }
+  @keyframes fp-flash { 0% { color: var(--accent-2); } 100% { color: inherit; } }
+  @media (max-width: 640px) { .hud-meters { margin-left: 0; } .hud-meter { min-width: 76px; } }
+
+  /* map (2026-11-02) */
+  #map-backdrop { position: fixed; inset: 0; background: rgba(8, 10, 9, 0.7); z-index: 70; display: none; }
+  #map-backdrop.open { display: block; }
+  #map-panel { position: fixed; inset: 4vh 4vw; z-index: 71; display: none; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  #map-panel.open { display: flex; }
+  .map-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border); font-family: var(--font-ui); font-size: 12px; color: var(--muted); }
+  .map-head h3 { margin: 0; font-family: var(--font-display); font-size: 18px; color: var(--accent-2); font-weight: 600; }
+  .map-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+  .map-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  #map-canvas { flex: 1; background: #0b0f0d; }
+  .leaflet-container { font-family: var(--font-ui); }
+  /* Leaflet's own stylesheet loads after this one, so these need the extra specificity to win. */
+  #map-canvas .leaflet-popup-content-wrapper, #map-canvas .leaflet-popup-tip { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  #map-canvas .leaflet-popup-content { margin: 10px 12px; font-size: 12.5px; line-height: 1.45; }
+  #map-canvas .leaflet-popup-content b { color: var(--accent-2); }
+  #map-canvas .leaflet-tooltip.map-label { background: transparent; border: none; box-shadow: none; color: #d8cfb3; font-family: var(--font-display);
+    font-size: 13px; font-weight: 600; text-shadow: 0 0 3px #000, 0 0 6px #000; padding: 0; }
+  #map-canvas .leaflet-tooltip.map-label::before { display: none; }
+  #map-canvas .leaflet-control-attribution { background: rgba(14,21,18,.8); color: var(--muted); }
+  #map-canvas .leaflet-control-attribution a { color: var(--accent-2); }
+
+  #model-select { max-width: 210px; text-overflow: ellipsis; }
+  @media (max-width: 640px) {
+    header { padding: 8px 12px; }
+    header h1 { font-size: 15px; }
+    header .controls { gap: 6px; font-size: 12px; }
+    header .controls label[for=model-select] { display: none; }
+    #model-select { max-width: 130px; padding: 5px 6px; font-size: 12px; }
+    header .controls button { padding: 5px 8px; font-size: 12px; }
+    #header-budget { flex-basis: 100%; }
+    #hud { padding: 6px 12px; }
+    .hud-inner { gap: 4px 12px; }
+    .hud-meters { flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: none; }
+    #log { padding: 20px 14px 80px; }
+    .turn .narration { font-size: 16.5px; }
+    #inputbar { padding: 10px 12px; }
+  }
+  /* input: Do / Say */
+  .mode-toggle { display: flex; flex-direction: column; gap: 4px; }
+  .mode-toggle button { padding: 3px 9px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  .mode-toggle button.active { color: #0e1512; background: var(--accent-2); border-color: var(--accent-2); }
   /* A message/action sits here from the instant it's sent until the real response lands - closes
      the "did that actually go through" gap during a slow AI call, rather than only a small status
      line at the bottom of the screen (see NOTES.md). */
@@ -364,7 +500,7 @@
     border-top: 1px solid var(--border); }
   .inputbar-inner { display: flex; gap: 8px; width: 100%; max-width: var(--content-width); }
   #inputbox { flex: 1; resize: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 4px; padding: 10px 12px; font-family: var(--font-ui); font-size: 14px; height: 46px; }
+    border-radius: 4px; padding: 10px 12px; font-family: var(--font-serif); font-size: 16px; height: 52px; max-height: 160px; line-height: 1.45; }
   #inputbox:focus, select:focus, button:focus { outline: none; border-color: var(--accent-2); }
   #status { font-family: var(--font-ui); font-size: 12px; color: var(--muted); padding: 4px 20px; }
 
@@ -529,6 +665,7 @@
       <div class="opt-desc">Choose a setting and a character.</div>
     </button>
   </div>
+  <div class="login-hint" id="sp-login-hint" hidden>You're not logged in, so this is the shared guest profile. Games you played with Discord are under your Discord login - <a href="/auth/discord/login">log in</a> to see them.</div>
   <div class="menu-options" id="sp-games-list" style="margin-top:12px;"></div>
 </div>
 
@@ -677,18 +814,33 @@
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
-      <span title="Every turn is reviewed by a panel of judges - see Turn Log below for what they found.">Council Mode: always on</span>
-      <button id="sheet-toggle-btn" title="Character sheet">Character Sheet <span class="dot"></span></button>
-      <button id="mech-toggle-btn" title="Mechanics">Mechanics</button>
+      <button id="sheet-toggle-btn" title="Character sheet">Sheet <span class="dot"></span></button>
+      <button id="mech-toggle-btn" title="Trackers: the Soviet, the armed forces, and other structures">Trackers</button>
+      <button id="map-toggle-btn" title="Map" hidden>Map</button>
     </div>
   </header>
+  <div id="hud"></div>
   <div id="log"></div>
   <div id="inputbar">
     <div class="inputbar-inner">
-      <textarea id="inputbox" placeholder="What does your character do or say?"></textarea>
+      <div class="mode-toggle" role="group" aria-label="Input mode">
+        <button type="button" data-mode="do" class="active" title="Describe what you do">Do</button>
+        <button type="button" data-mode="say" title="Say something out loud, in character">Say</button>
+      </div>
+      <textarea id="inputbox" placeholder="What do you do?" rows="1"></textarea>
       <button id="send-btn">Send</button>
     </div>
   </div>
+</div>
+
+<div id="map-backdrop"></div>
+<div id="map-panel" role="dialog" aria-label="Map">
+  <div class="map-head">
+    <h3 id="map-title">Petrograd</h3>
+    <div class="map-legend"><span><i style="background:#7a9b5f"></i>fights for you</span><span><i style="background:#8a9c86"></i>stays in barracks</span><span><i style="background:#b5482f"></i>fights against you</span><span>Barracks positions approximate</span></div>
+    <button id="map-close" title="Close (Esc)">&times;</button>
+  </div>
+  <div id="map-canvas"></div>
 </div>
 
 <!-- Screen 7: multiplayer in-subspace chat -->
@@ -919,6 +1071,8 @@ async function loadSpGamesScreen() {
     const by = (SETTINGS.find(s => s.key === b.setting_key) || {}).sort_year ?? 0;
     return ay - by;
   });
+  const hint = document.getElementById('sp-login-hint');
+  if (hint) hint.hidden = !(CURRENT_USER && CURRENT_USER.is_local);
   const el = document.getElementById('sp-games-list');
   el.innerHTML = games.length === 0 ? '<div class="mp-empty">No games yet — start one above.</div>' : games.map(c => `
     <button class="menu-option" data-resume="${c.id}">
@@ -947,9 +1101,17 @@ async function loadCharacterScreen() {
   const res = await fetch(`/api/characters/${SELECTED_SETTING.key}`);
   const data = await res.json();
 
-  let html = `<button class="menu-option" data-premade="1">
-    <div class="opt-title">+ Play as ${escapeHtml(data.premade_name)}</div>
-    <div class="opt-desc">Start a new playthrough as the setting's signature character.</div>
+  // Existing games in this setting come first (2026-11-02): starting a "new" premade used to be the
+  // obvious path back into a setting, and it silently made a fresh character every time - which
+  // looked like the old game's history had vanished.
+  const existing = [...(data.characters || [])].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  let html = existing.map(c => `<button class="menu-option menu-option-continue" data-resume="${c.id}">
+    <div class="opt-title">Continue: ${escapeHtml(c.name)}</div>
+    <div class="opt-desc">${gameSubtitle(c)}</div>
+  </button>`).join('');
+  html += `<button class="menu-option" data-premade="1">
+    <div class="opt-title">+ ${existing.length ? 'New game as' : 'Play as'} ${escapeHtml(data.premade_name)}</div>
+    <div class="opt-desc">Start a new playthrough as the setting's signature character${existing.length ? ' (your saved games above are kept)' : ''}.</div>
   </button>`;
   html += `<button class="menu-option" id="create-custom-btn">
     <div class="opt-title">+ Create Custom Character</div>
@@ -959,6 +1121,9 @@ async function loadCharacterScreen() {
   document.getElementById('character-options').innerHTML = html;
 
   document.querySelector('#character-options [data-premade]').addEventListener('click', createPremadeAndLaunch);
+  document.querySelectorAll('#character-options [data-resume]').forEach(btn => {
+    btn.addEventListener('click', () => launchGame(parseInt(btn.dataset.resume, 10)));
+  });
   document.getElementById('create-custom-btn').addEventListener('click', openCreationForm);
   wireHistoricalFigureOption('hf');
 }
@@ -1477,6 +1642,82 @@ function renderMechPanel(state) {
   mechPanelEl.innerHTML = `<div id="mech-panel-header"><h3 style="margin:0">Mechanics</h3></div>${cards}`;
 }
 
+// ---------------- map (2026-11-02) ----------------
+// Leaflet, loaded on first open, over an unlabeled modern basemap (the 1917 street plan is mostly
+// intact). Landmarks come from settings/<key>/map.json; units are drawn from the live order of
+// battle, colored by loyalty and sized by strength.
+let MAP_SETTING = null, MAP_DATA = null, MAP_OBJ = null, MAP_LAYER = null, LAST_STATE = null;
+async function setupMapButton(settingKey) {
+  const btn = document.getElementById('map-toggle-btn');
+  MAP_SETTING = settingKey; MAP_DATA = null;
+  btn.hidden = true;
+  try {
+    const res = await fetch(`/api/settings/${settingKey}/map`);
+    if (res.ok) { MAP_DATA = await res.json(); btn.hidden = false; }
+  } catch (e) { /* no map */ }
+}
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = '/static/vendor/leaflet/leaflet.css';  // Leaflet 1.9.4, vendored (BSD-2, see LICENSE there)
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = '/static/vendor/leaflet/leaflet.js';
+    js.onload = resolve; js.onerror = reject;
+    document.head.appendChild(js);
+  });
+}
+function loyaltyColor(l) { return l >= 2 ? '#7a9b5f' : l <= -2 ? '#b5482f' : '#8a9c86'; }
+function drawMapUnits() {
+  if (!MAP_OBJ || !MAP_DATA) return;
+  if (MAP_LAYER) MAP_LAYER.remove();
+  MAP_LAYER = L.layerGroup().addTo(MAP_OBJ);
+  (MAP_DATA.landmarks || []).forEach(lm => {
+    const m = L.circleMarker([lm.lat, lm.lng], { radius: lm.kind === 'bridge' ? 3 : 5, color: '#b08d4f', weight: 1.5, fillColor: '#e0c98f', fillOpacity: 0.9 })
+      .bindPopup(`<b>${escapeHtml(lm.name)}</b><br>${escapeHtml(lm.note || '')}`);
+    const left = lm.label === 'left';
+    if (lm.kind !== 'bridge') m.bindTooltip(escapeHtml(lm.name), { permanent: true, direction: left ? 'left' : 'right', className: 'map-label', offset: [left ? -6 : 6, 0] });
+    m.addTo(MAP_LAYER);
+  });
+  const forces = Object.values((LAST_STATE && LAST_STATE.mechanics) || {}).filter(m => m.render_primitive === 'forces');
+  forces.forEach(f => (f.data.units || []).forEach(u => {
+    const pos = (MAP_DATA.units || {})[u.id];
+    if (!pos) return;
+    const word = u.loyalty >= 2 ? 'Fights for you' : u.loyalty <= -2 ? 'Fights against you' : 'Stays in barracks';
+    L.circleMarker([pos.lat, pos.lng], { radius: 5 + Math.sqrt(u.strength || 0) / 14, color: loyaltyColor(u.loyalty), weight: 2,
+      fillColor: loyaltyColor(u.loyalty), fillOpacity: 0.35 })
+      .bindPopup(`<b>${escapeHtml(u.name)}</b><br>${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5<br>${word} (loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty})<br><span style="color:var(--muted)">${escapeHtml(pos.where || '')} (approx.)</span>`)
+      .addTo(MAP_LAYER);
+  }));
+}
+async function openMap() {
+  if (!MAP_DATA) return;
+  document.getElementById('map-backdrop').classList.add('open');
+  document.getElementById('map-panel').classList.add('open');
+  try { await loadLeaflet(); } catch (e) {
+    document.getElementById('map-canvas').textContent = "Couldn't load the map library.";
+    return;
+  }
+  if (!MAP_OBJ) {
+    MAP_OBJ = L.map('map-canvas', { zoomControl: true, attributionControl: true }).setView(MAP_DATA.center, MAP_DATA.zoom);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18, subdomains: 'abcd',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }).addTo(MAP_OBJ);
+  }
+  setTimeout(() => { MAP_OBJ.invalidateSize(); drawMapUnits(); }, 50);
+}
+function closeMap() {
+  document.getElementById('map-backdrop').classList.remove('open');
+  document.getElementById('map-panel').classList.remove('open');
+}
+document.getElementById('map-toggle-btn').addEventListener('click', openMap);
+document.getElementById('map-close').addEventListener('click', closeMap);
+document.getElementById('map-backdrop').addEventListener('click', closeMap);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMap(); });
+
 function setStatus(text) { statusEl.textContent = text; }
 function attrMod(score) { return Math.floor((score - 10) / 2); }
 function fmtMod(m) { return m >= 0 ? `+${m}` : `${m}`; }
@@ -1598,6 +1839,33 @@ function renderSidebar(state) {
 
   const levelUpBtn = document.getElementById('level-up-banner-btn');
   if (levelUpBtn) levelUpBtn.addEventListener('click', toggleLevelUpPicker);
+  renderHud(state);
+}
+
+// Top status bar (2026-11-02): today's date, the next date that matters, and the handful of numbers
+// a setting marks as the ones to watch (dynamics.json "hud"; first four resources otherwise).
+let HUD_LAST = {};
+function renderHud(state) {
+  LAST_STATE = state;
+  const hud = document.getElementById('hud');
+  if (!hud || !state || !state.character) return;
+  const keys = (state.hud && state.hud.length) ? state.hud : Object.keys(state.resources || {}).slice(0, 4);
+  const meters = keys.map(k => {
+    const isWorld = k.startsWith('world.');
+    const v = isWorld ? (state.world || {})[k.slice(6)] : (state.resources || {})[k];
+    if (typeof v !== 'number') return '';
+    const changed = HUD_LAST[k] !== undefined && HUD_LAST[k] !== v;
+    HUD_LAST[k] = v;
+    return `<div class="hud-meter${v < 25 ? ' low' : ''}${changed ? ' flash' : ''}" title="${escapeHtml(pcLabel(v))}">
+      <div class="row"><span>${escapeHtml(prettyKey(k))}</span><span class="val">${Math.round(v)}</span></div>
+      <div class="bar"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div></div>`;
+  }).join('');
+  const next = ((state.calendar || {}).upcoming || [])[0];
+  const style = (state.calendar || {}).style;
+  const count = next ? `<span class="hud-count">${escapeHtml(next.label)} ${next.days_until === 0 ? 'today' : `in ${next.days_until} day${next.days_until === 1 ? '' : 's'}`}</span>` : '';
+  hud.innerHTML = `<div class="hud-inner"><span class="hud-date">${escapeHtml(prettyDate(state.date))}${style && /julian/i.test(style) ? '<small>O.S.</small>' : ''}</span>${count}<div class="hud-meters">${meters}</div></div>`;
+  hud.classList.add('on');
+  if (document.getElementById('map-panel').classList.contains('open')) drawMapUnits();
 }
 
 // ---------------- level-up picker: click the sidebar banner instead of describing it in chat ----------------
@@ -1863,31 +2131,218 @@ function renderMechanics(debugEvents) {
   return `<details class="mechanics"><summary>Turn Log (${debugEvents.length})</summary>${lines}</details>`;
 }
 
-function appendTurn(userText, narration, debugEvents) {
-  const div = document.createElement('div');
-  div.className = 'turn';
-  div.innerHTML = (userText ? `<div class="user">&gt; ${escapeHtml(userText)}</div>` : '') +
-    `<div class="narration">${escapeHtml(narration)}</div>${renderMechanics(debugEvents)}`;
-  logEl.appendChild(div);
-  logEl.scrollTop = logEl.scrollHeight;
+// ---------------- the game log (2026-11-02 game-screen pass) ----------------
+// A turn renders as: the player's move -> outcome cards (dice, votes, clashes, dispatches, the clock,
+// what changed) -> the narration, revealed word by word -> suggested next moves. The raw Turn Log
+// stays available underneath for anyone who wants every number.
+const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DEGREE_LABEL = {
+  critical_success: 'Critical success', strong_success: 'Strong success', success: 'Success',
+  success_at_cost: 'Success, at a cost', failure: 'Failure', critical_failure: 'Critical failure',
+};
+const LOYALTY_WORDS = { 3: 'marches for you', 2: 'fights for you', 1: 'leans your way', 0: 'neutral',
+  '-1': 'uneasy', '-2': 'would fight you', '-3': 'hostile' };
+const OUTCOME_WORDS = {
+  no_fight: 'Nobody would fight', uncontested_success: 'Taken without a fight', uncontested_failure: 'Your side refused to move',
+  decisive_victory: 'Decisive victory', victory: 'Victory', stalemate: 'Stalemate', repulsed: 'Beaten back', routed: 'Routed',
+};
+
+function prettyKey(k) { return String(k || '').replace(/^world\./, '').replace(/_/g, ' '); }
+function capFirst(t) { t = String(t || ''); return t.charAt(0).toUpperCase() + t.slice(1); }
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function prettyDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!m) return iso || '';
+  return `${parseInt(m[3], 10)} ${MONTHS[parseInt(m[2], 10) - 1]} ${m[1]}`;
 }
 
-// Shown the instant a turn is sent, removed once the real response (success or error) lands -
-// closes the "did that actually go through" gap during a slow AI call. appendTurn's own error
-// branches already render a real, permanent [Error: ...] entry, so this is purely the in-flight
-// state, never a final one.
+function formatNarration(text) {
+  const paras = String(text || '').trim().split(/\n\s*\n/);
+  return paras.map(p => {
+    let html = escapeHtml(p.trim()).replace(/\n/g, '<br>');
+    html = html.replace(/"([^"<]{1,800})"/g, '<span class="dlg">"$1"</span>');
+    const speech = /^\s*"/.test(p);
+    return `<p${speech ? ' class="speech"' : ''}>${html}</p>`;
+  }).join('');
+}
+
+function renderPlayerLine(text) {
+  const m = /^I say:\s*"([\s\S]*)"\s*$/.exec(text || '');
+  if (m) return `<div class="player say"><span class="tag">Say</span><span class="said">"${escapeHtml(m[1])}"</span></div>`;
+  return `<div class="player do"><span class="tag">Do</span><span>${escapeHtml(text)}</span></div>`;
+}
+
+function renderOutcomeCards(debugEvents, fresh) {
+  const cards = [];
+  const net = {};          // key -> net change this turn, for the "what changed" chips
+  const chipsExtra = [];
+  const seenMessages = new Set();
+  const dispatch = (kicker, text) => {
+    if (!text || seenMessages.has(text)) return;
+    seenMessages.add(text);
+    cards.push(`<div class="oc oc-dispatch"><div class="oc-kicker">${escapeHtml(kicker)}</div><div class="oc-text">${escapeHtml(text)}</div></div>`);
+  };
+  (debugEvents || []).forEach(ev => {
+    if (ev.type === 'check') {
+      const deg = ev.degree || '';
+      const skill = ev.skill ? ` · ${prettyKey(ev.skill)}` : '';
+      cards.push(`<div class="oc deg-${deg.replace(/_/g, '-')}${fresh ? ' fresh' : ''}">
+        <div class="die" title="d20">${ev.roll ?? '?'}</div>
+        <div class="oc-body"><div class="oc-title">${DEGREE_LABEL[deg] || capFirst(prettyKey(deg))}</div>
+        <div class="oc-sub">${capFirst(ev.attribute || '')}${skill} · ${ev.roll} ${fmtMod(ev.modifier || 0)} = ${ev.total} vs ${ev.dc}${ev.at_stake ? ` · risking ${prettyKey(ev.at_stake)}` : ''}</div>
+        ${ev.description ? `<div class="oc-desc">${escapeHtml(ev.description)}</div>` : ''}</div></div>`);
+    }
+    if (ev.type === 'operation' && ev.result && !ev.result.error) {
+      const r = ev.result;
+      if (ev.operation === 'call_vote') {
+        const total = Math.max(1, (r.yes || 0) + (r.no || 0) + (r.abstain || 0));
+        cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body">
+          <div class="oc-title">${escapeHtml(r.motion || 'Vote')} — ${r.passed ? 'carried' : 'defeated'}</div>
+          <div class="tally"><span class="yes" style="width:${100 * r.yes / total}%"></span><span class="no" style="width:${100 * r.no / total}%"></span><span class="ab" style="width:${100 * r.abstain / total}%"></span></div>
+          <div class="oc-sub">${r.yes} for · ${r.no} against · ${r.abstain} abstained · ${escapeHtml(r.body || '')}</div></div></div>`);
+      } else if (ev.operation === 'sway_unit') {
+        cards.push(`<div class="oc"><div class="oc-icon">&#9873;</div><div class="oc-body">
+          <div class="oc-title">${escapeHtml(r.unit)}: ${LOYALTY_WORDS[r.loyalty_after] || r.loyalty_after}</div>
+          <div class="oc-sub">was ${LOYALTY_WORDS[r.loyalty_before] || r.loyalty_before}</div></div></div>`);
+      } else if (ev.operation === 'resolve_confrontation') {
+        const lost = (r.casualties || []).reduce((n, c) => n + (c.losses || 0), 0);
+        const lines = [];
+        if ((r.took_the_field || {}).player && r.took_the_field.player.length) lines.push(`With you: ${r.took_the_field.player.map(escapeHtml).join(', ')}`);
+        if ((r.took_the_field || {}).opposing && r.took_the_field.opposing.length) lines.push(`Against you: ${r.took_the_field.opposing.map(escapeHtml).join(', ')}`);
+        if ((r.refused_to_fight || []).length) lines.push(`Stayed in barracks: ${r.refused_to_fight.map(x => escapeHtml(x.unit)).join(', ')}`);
+        if ((r.melted_away || []).length) lines.push(`Melted away: ${r.melted_away.map(escapeHtml).join(', ')}`);
+        if (lost) lines.push(`About ${lost.toLocaleString()} killed or wounded`);
+        cards.push(`<div class="oc"><div class="oc-icon">&#9876;</div><div class="oc-body">
+          <div class="oc-title">${escapeHtml(r.objective || 'Clash')} — ${OUTCOME_WORDS[r.player_outcome] || prettyKey(r.player_outcome)}</div>
+          ${lines.map(l => `<div class="oc-sub">${l}</div>`).join('')}</div></div>`);
+      }
+    }
+    (ev.changes || []).forEach(c => {
+      if (c.kind === 'time') cards.push(`<div class="time-pass">${c.days} day${c.days === 1 ? '' : 's'} pass · ${escapeHtml(prettyDate(c.after))}</div>`);
+      if (c.kind === 'threshold') {
+        dispatch('Dispatch', c.message);
+        if (c.check) cards.push(`<div class="oc deg-${(c.check.degree || '').replace(/_/g, '-')}"><div class="die">${c.check.roll}</div><div class="oc-body"><div class="oc-title">${DEGREE_LABEL[c.check.degree] || ''}</div><div class="oc-sub">${escapeHtml(c.check.description || '')} · ${c.check.roll} ${fmtMod(c.check.modifier || 0)} = ${c.check.total} vs ${c.check.dc}</div></div></div>`);
+      }
+      if (c.kind === 'canon_event' && c.message) dispatch('History', c.message);
+      if ((c.kind === 'resource' || c.kind === 'world') && typeof c.before === 'number' && c.after !== c.before) {
+        const key = (c.kind === 'world' ? 'world.' : '') + c.key;
+        net[key] = (net[key] || 0) + (c.after - c.before);
+      }
+      if (c.kind === 'level_up') chipsExtra.push(`<span class="chip gold">Level ${c.new_level}!</span>`);
+      if (c.kind === 'liability_gained') chipsExtra.push(`<span class="chip down">New liability: ${escapeHtml(c.name)}</span>`);
+      if (c.kind === 'relationship' && c.after !== c.before) {
+        const d = c.after - c.before;
+        chipsExtra.push(`<span class="chip ${d > 0 ? 'up' : 'down'}">${escapeHtml(prettyKey(c.key))} ${d > 0 ? 'trusts you more' : 'trusts you less'}</span>`);
+      }
+      if ((c.kind === 'enmity' || c.kind === 'enmity_auto') && c.after > c.before) chipsExtra.push(`<span class="chip down">${escapeHtml(prettyKey(c.key))}: rivalry deepens</span>`);
+    });
+  });
+  const chips = Object.entries(net).filter(([, d]) => d !== 0).map(([k, d]) =>
+    `<span class="chip ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${Math.abs(d)} ${escapeHtml(prettyKey(k))}</span>`);
+  const allChips = chips.concat(chipsExtra);
+  if (allChips.length) cards.push(`<div class="chips">${allChips.join('')}</div>`);
+  return cards.length ? `<div class="outcomes">${cards.join('')}</div>` : '';
+}
+
+function revealWords(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  const total = nodes.reduce((n, t) => n + (t.textContent.match(/\S+/g) || []).length, 0);
+  const step = Math.min(32, 2400 / Math.max(1, total));
+  let i = 0;
+  nodes.forEach(node => {
+    const frag = document.createDocumentFragment();
+    node.textContent.split(/(\s+)/).forEach(tok => {
+      if (!tok) return;
+      if (/^\s+$/.test(tok)) { frag.appendChild(document.createTextNode(tok)); return; }
+      const span = document.createElement('span');
+      span.className = 'w';
+      span.style.animationDelay = `${Math.round(i++ * step)}ms`;
+      span.textContent = tok;
+      frag.appendChild(span);
+    });
+    node.replaceWith(frag);
+  });
+  const finish = () => el.classList.add('revealed');
+  el.addEventListener('click', finish, { once: true });
+  setTimeout(finish, i * step + 400);
+}
+
+function clearSuggestions() {
+  logEl.querySelectorAll('.suggestions').forEach(n => n.remove());
+}
+
+function renderSuggestions(turnEl, debugEvents) {
+  const ev = (debugEvents || []).filter(e => e.type === 'suggestions').pop();
+  if (!ev || !(ev.options || []).length) return;
+  const box = document.createElement('div');
+  box.className = 'suggestions';
+  ev.options.forEach(opt => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'suggestion';
+    b.textContent = opt;
+    b.addEventListener('click', () => { if (!sendBtn.disabled) { setInputMode('do'); sendTurn(opt); } });
+    box.appendChild(b);
+  });
+  const details = turnEl.querySelector('details.mechanics');
+  if (details) turnEl.insertBefore(box, details); else turnEl.appendChild(box);
+}
+
+function scrollToTurn(div) {
+  const tall = div.offsetHeight > logEl.clientHeight * 0.8;
+  if (tall) logEl.scrollTo({ top: div.offsetTop - 16, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
+  else logEl.scrollTo({ top: logEl.scrollHeight, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
+}
+
+function appendTurn(userText, narration, debugEvents, opts = {}) {
+  clearSuggestions();
+  const div = document.createElement('div');
+  div.className = 'turn';
+  div.innerHTML = (userText ? renderPlayerLine(userText) : '') +
+    renderOutcomeCards(debugEvents, !opts.instant) +
+    `<div class="narration">${formatNarration(narration)}</div>` +
+    renderMechanics((debugEvents || []).filter(e => e.type !== 'suggestions'));
+  logEl.appendChild(div);
+  if (!opts.instant && !REDUCED_MOTION) revealWords(div.querySelector('.narration'));
+  if (!opts.noSuggestions) renderSuggestions(div, debugEvents);
+  if (opts.instant) logEl.scrollTop = logEl.scrollHeight; else scrollToTurn(div);
+  return div;
+}
+
+function appendSystemNote(text) {
+  const div = document.createElement('div');
+  div.className = 'turn system-note';
+  div.textContent = text;
+  logEl.appendChild(div);
+}
+
+// Shown the instant a turn is sent, removed once the real response (success or error) lands.
+const PENDING_TIMERS = {};
 function appendPendingTurn(userText) {
+  clearSuggestions();
   const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const div = document.createElement('div');
-  div.className = 'turn turn-pending';
+  div.className = 'turn';
   div.id = id;
-  div.innerHTML = `<div class="user">&gt; ${escapeHtml(userText)}</div>` +
-    `<div class="pending-status"><span class="pending-dot"></span><span class="pending-dot"></span><span class="pending-dot"></span>Sent — resolving…</div>`;
+  div.innerHTML = renderPlayerLine(userText) +
+    `<div class="gm-typing" role="status" aria-live="polite"><span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span><span class="label">The game master is writing</span><span class="elapsed"></span></div>`;
   logEl.appendChild(div);
-  logEl.scrollTop = logEl.scrollHeight;
+  logEl.scrollTo({ top: logEl.scrollHeight, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
+  const started = Date.now();
+  PENDING_TIMERS[id] = setInterval(() => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    const el = div.querySelector('.elapsed');
+    if (el && secs >= 6) el.textContent = `${secs}s`;
+    const label = div.querySelector('.label');
+    if (label && secs >= 25) label.textContent = 'Still writing - a big moment takes longer';
+  }, 1000);
   return id;
 }
 function removePendingTurn(id) {
+  clearInterval(PENDING_TIMERS[id]);
+  delete PENDING_TIMERS[id];
   const el = document.getElementById(id);
   if (el) el.remove();
 }
@@ -1920,6 +2375,12 @@ async function loadCharacterState(isNew) {
   const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/state`);
   const data = await res.json();
   SHEET_CHARACTER_ID = CURRENT_CHARACTER_ID;
+  HUD_LAST = {};
+  // Resuming from "Your Games" never sets SELECTED_SETTING, so the header used to show a stale or
+  // generic title - take it from the game itself.
+  const setting = SETTINGS.find(x => x.key === data.setting_key);
+  if (setting) document.getElementById('game-header').textContent = `Forking Paths — ${setting.label}`;
+  setupMapButton(data.setting_key);
   renderSidebar(data.state);
   renderMechPanel(data.state);
   if (isNew) {
@@ -1931,21 +2392,47 @@ async function loadCharacterState(isNew) {
     // Replay everything recorded so far, oldest first, so a resumed character shows its actual
     // history instead of a blank log with just a status line - db.get_turns already had everything
     // needed for this (it's what view_transcript.py has used all along); this just reuses it.
-    const turnsRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/turns`);
-    const turnsData = await turnsRes.json();
-    (turnsData.turns || []).forEach(t => {
+    let turns = [];
+    try {
+      const turnsRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/turns`);
+      turns = (await turnsRes.json()).turns || [];
+    } catch (e) {
+      appendSystemNote(`Couldn't load this game's history (${e}). Your progress is saved - reload to try again.`);
+    }
+    turns.forEach((t, i) => {
       let debugEvents = [];
       try { debugEvents = t.debug_events_json ? JSON.parse(t.debug_events_json) : []; } catch (e) { debugEvents = []; }
-      appendTurn(t.player_input, t.narration, debugEvents);
+      appendTurn(t.player_input, t.narration, debugEvents, { instant: true, noSuggestions: i < turns.length - 1 });
     });
+    if (turns.length === 0 && data.state.turn_number > 0) {
+      appendSystemNote('This game has progress saved but no recorded history (it may predate history recording). The game master still has the campaign summary.');
+    }
     setStatus(`Resumed at turn ${data.state.turn_number}, ${data.state.date}.`);
   }
 }
 
-async function sendTurn() {
-  const text = inputBox.value.trim();
-  if (!text || !CURRENT_CHARACTER_ID) return;
+let INPUT_MODE = 'do';
+function setInputMode(mode) {
+  INPUT_MODE = mode;
+  document.querySelectorAll('#inputbar .mode-toggle button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  inputBox.placeholder = mode === 'say' ? 'What do you say?' : 'What do you do?';
+}
+document.querySelectorAll('#inputbar .mode-toggle button').forEach(b =>
+  b.addEventListener('click', () => { setInputMode(b.dataset.mode); inputBox.focus(); }));
+function autoGrowInput() {
+  inputBox.style.height = 'auto';
+  inputBox.style.height = `${Math.min(160, Math.max(52, inputBox.scrollHeight))}px`;
+}
+inputBox.addEventListener('input', autoGrowInput);
+
+async function sendTurn(presetText) {
+  let text = (typeof presetText === 'string' ? presetText : inputBox.value).trim();
+  if (!text || !CURRENT_CHARACTER_ID || sendBtn.disabled) return;
+  if (typeof presetText !== 'string' && INPUT_MODE === 'say' && !/^I say:/i.test(text)) {
+    text = `I say: "${text.replace(/^"|"$/g, '')}"`;
+  }
   inputBox.value = '';
+  autoGrowInput();
   sendBtn.disabled = true;
   const pendingId = appendPendingTurn(text);
   setStatus('Resolving…');
@@ -1958,20 +2445,20 @@ async function sendTurn() {
     const data = await res.json();
     removePendingTurn(pendingId);
     if (res.status === 403 && data.discord_login_required) {
-      appendTurn(text, `[Log in with Discord to send turns — see the start menu or landing page.]`, []);
+      appendTurn(text, `[Log in with Discord to send turns — see the start menu or landing page.]`, [], { instant: true });
       setStatus('Discord login required.');
       renderBudget(null);
     } else if (res.status === 503 && data.local_model_offline) {
-      appendTurn(text, `[The local model is currently offline — pick a different model above and try again.]`, []);
+      appendTurn(text, `[The local model is currently offline — pick a different model above and try again.]`, [], { instant: true });
       setStatus('Local model offline.');
       inputBox.value = text;  // give the input back rather than losing what they typed
       loadModels();  // refresh so the now-known-offline option shows disabled immediately
     } else if (res.status === 402) {
-      appendTurn(text, `[Out of budget — this account can't send further turns.]`, []);
+      appendTurn(text, `[Out of budget — this account can't send further turns.]`, [], { instant: true });
       setStatus('Out of budget.');
       renderBudget(data.budget);
     } else if (data.error) {
-      appendTurn(text, `[Error: ${data.error}]`, []);
+      appendTurn(text, `[Error: ${data.error}]`, [], { instant: true });
       setStatus('Error — see message above.');
     } else {
       appendTurn(text, data.narration, data.debug_events);
@@ -1985,16 +2472,18 @@ async function sendTurn() {
     }
   } catch (e) {
     removePendingTurn(pendingId);
-    appendTurn(text, `[Request failed: ${e}]`, []);
+    appendTurn(text, `[Request failed: ${e}]`, [], { instant: true });
     setStatus('Request failed.');
   }
   sendBtn.disabled = false;
   inputBox.focus();
 }
 
-sendBtn.addEventListener('click', sendTurn);
+sendBtn.addEventListener('click', () => sendTurn());
 inputBox.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTurn(); }
+  // Tab flips Do/Say when the box is empty - quick to reach without the mouse.
+  if (e.key === 'Tab' && !inputBox.value) { e.preventDefault(); setInputMode(INPUT_MODE === 'do' ? 'say' : 'do'); }
 });
 
 // ==================== multiplayer ====================

@@ -3,6 +3,8 @@
 
   "calendar": {"style": "Julian (Old Style)", "max_days_per_update": 7},
 
+  "hud": ["soviet_authority", "party_standing", "garrison_loyalty", "personal_safety", "world.government_stability"],
+
   "milestones": [
     {"label": "Democratic Conference opens", "date": "1917-09-14"},
     {"label": "Pre-Parliament opens", "date": "1917-10-07"},

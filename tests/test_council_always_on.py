@@ -33,7 +33,10 @@ class TestCouncilAlwaysOn(unittest.TestCase):
     """Council Mode was a per-campaign opt-in toggle through 2026-08-20 early that night, then
     became mandatory on every turn per a direction change later the same night (see NOTES.md) -
     the old POST /api/character/<id>/council_mode route and its state["council_mode"] flag are gone.
-    These confirm the new unconditional behavior."""
+    These confirm the new unconditional behavior.
+
+    2026-11-02: council became opt-in again, via the COUNCIL_MODE env var (server.COUNCIL_MODE) -
+    these tests now run with it switched on, plus one test for the new default."""
 
     def setUp(self):
         self._tmpdir = TemporaryDirectory()
@@ -70,7 +73,8 @@ class TestCouncilAlwaysOn(unittest.TestCase):
             return real_run_turn(*args, **kwargs)
 
         with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")), \
-             patch.object(engine, "run_turn", side_effect=spy_run_turn):
+             patch.object(engine, "run_turn", side_effect=spy_run_turn), \
+             patch.object(server, "COUNCIL_MODE", True):
             res = self.client.post(
                 f"/api/character/{character_id}/turn",
                 json={"input": "I look around.", "model_key": "luna"},
@@ -79,9 +83,13 @@ class TestCouncilAlwaysOn(unittest.TestCase):
         self.assertTrue(captured.get("council_mode"))
         self.assertEqual(captured.get("model_key"), "luna")
 
+    def test_council_is_off_by_default(self):
+        self.assertFalse(server.COUNCIL_MODE)
+
     def test_a_council_debug_event_is_always_appended(self):
         character_id = self._create_character()
-        with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")):
+        with patch.object(providers, "get_provider", return_value=(FakeProvider(), "gpt-5.6-luna")), \
+             patch.object(server, "COUNCIL_MODE", True):
             res = self.client.post(
                 f"/api/character/{character_id}/turn",
                 json={"input": "I look around.", "model_key": "luna"},

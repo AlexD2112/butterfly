@@ -1,3 +1,35 @@
+# Game feel, GM voice, and the missing-history bug (2026-11-02)
+
+**Missing history.** Three separate causes, all fixed:
+- Logins were browser-session cookies. Closing a (phone) browser dropped a Discord-logged-in player
+  onto the shared guest profile, whose games list doesn't have their games. Sessions now last 30
+  days (`PERMANENT_SESSION_LIFETIME`, `session.permanent`), old sessions are upgraded on next visit,
+  and the games screen says so when you're on the guest profile.
+- The GM's memory was an in-memory conversation per process: every deploy, restart or model switch
+  wiped it. It now rebuilds from the saved transcript each turn (`engine.rebuild_conversation`,
+  last `MEMORY_TURNS`=8 turns verbatim plus a one-line "rules resolved" note each; older turns as
+  bounded summaries in the prompt). This also stops the unbounded growth (every tool call forever)
+  that made long games slower and pricier. Multiplayer actions still use the in-memory thread.
+- "Play as Trotsky" always made a new character. The character screen now lists existing games in
+  that setting first as "Continue".
+- Also: `campaign_log_summary` is no longer dumped whole into every prompt.
+
+**Voice.** `council.VOICE_GUIDANCE` rewritten from the humanizer skill (github.com/blader/humanizer,
+built on Wikipedia's "Signs of AI writing") plus common GM/roleplay prompt practice: people talk,
+never write the player's lines, every reply changes something, end on a pull forward, no mechanics
+in prose, no AI tells. `engine.scrub_narration` strips closing "What do you do?" lines, markdown and
+curly quotes. **Council Mode is now opt-in (`COUNCIL_MODE=1`)** - it was 7-11 model calls per turn and
+its chairman synthesis was a big source of committee-sounding prose.
+
+**Game screen.** Narration paragraphs actually render now (the `.turn.narration` selectors never
+matched). Outcome cards before the prose (dice, votes, appeals, clashes, dispatches, days passing,
+what changed); word-by-word reveal (click to skip); "the game master is writing" indicator with
+elapsed time; Do/Say input (Tab toggles); `suggest_actions` tool gives 2-4 clickable next moves
+(single-player only; a suggestions-only reply ends the tool loop without another call); top status
+bar with date, next milestone and the setting's `hud` numbers; Map panel (vendored Leaflet 1.9.4
+over CARTO's unlabeled dark basemap, landmarks and barracks from `settings/<key>/map.json`, units
+colored by live loyalty - barracks positions approximate).
+
 # Hard mechanics + Petrograd rolled back to 4 September 1917 (2026-10-26)
 
 **Why.** A review of the game found that the code owned dice and clamping but almost no

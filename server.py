@@ -15,6 +15,7 @@ identities are NOT merged automatically; characters stay with whichever account 
 """
 
 import json
+import datetime
 import os
 import queue
 import secrets
@@ -28,6 +29,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory, sessio
 load_dotenv(Path(__file__).parent / ".env")
 
 import db
+import dynamics
 import discord_oauth
 import discord_webhook
 import engine
@@ -78,14 +80,25 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 # server.py` local dev over http://127.0.0.1 still works: Chrome/Firefox both treat 127.0.0.1 as a
 # secure context and send Secure cookies over plain HTTP to it specifically. Override with
 # SESSION_COOKIE_SECURE=0 if you ever need to test against a non-localhost plain-HTTP address.
+# Logins last 30 days (2026-11-02). Flask's default session cookie dies when the browser closes,
+# which silently dropped a Discord-logged-in player back onto the shared local profile - whose games
+# list doesn't contain their games - every time a phone browser was closed. That looked exactly like
+# "my history is missing."
+app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(days=30)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "1") == "1"
 
-# Per-character, per-provider conversation threads - see providers.py's docstring for why these
-# aren't translated between providers. Keyed by (character_id, provider_key); character ownership
-# is re-checked on every request via db.get_character(), so this cache can't leak across users.
+# Multiplayer actions still keep an in-memory thread per (character, provider). Single-player no
+# longer does (2026-11-02): see _single_player_conversation.
 _conversations = {}
+
+# Council Mode (council.py) is opt-in as of 2026-11-02: set COUNCIL_MODE=1 to turn it back on. It ran
+# every turn - a router, a second candidate, 3-6 judges, a chairman and a voice editor, 7-11 model
+# calls before the player saw anything - and the chairman's synthesis of several drafts was itself
+# a big part of why narration read as committee-written. One well-prompted pass is faster, cheaper
+# and sounds more like a person.
+COUNCIL_MODE = os.environ.get("COUNCIL_MODE", "0") == "1"
 
 
 def _conversation_for(character_id, provider_key, provider):
@@ -93,6 +106,17 @@ def _conversation_for(character_id, provider_key, provider):
     if key not in _conversations:
         _conversations[key] = provider.new_conversation()
     return _conversations[key]
+
+
+def _single_player_conversation(character_id, provider):
+    """The GM's memory of recent play, rebuilt from the saved transcript on every turn.
+
+    It used to be an in-memory thread that lived only as long as the server process - every deploy,
+    restart or model switch wiped it, so a resumed game's GM had forgotten everything but a few
+    400-character summaries. It also grew without bound (every tool call and result, forever), so
+    long games got steadily slower and pricier. Rebuilding from db.get_turns fixes both: the window is
+    the last engine.MEMORY_TURNS turns, verbatim, plus a one-line record of what the rules decided."""
+    return engine.rebuild_conversation(provider, db.get_turns(character_id))
 
 
 # Serializes turns per-account so two concurrent requests for the same user (a double-click, two
@@ -116,6 +140,8 @@ def current_user():
     if user_id:
         user = db.get_user_by_id(user_id)
         if user:
+            if not session.permanent:
+                session.permanent = True  # upgrade sessions created before the 30-day change
             return user
     user = db.get_or_create_local_user()
     session["user_id"] = user["id"]
@@ -199,6 +225,7 @@ def auth_discord_callback():
     except discord_oauth.DiscordOAuthError as e:
         return redirect(f"/?auth_error={quote(str(e))}")
     user = db.get_or_create_discord_user(identity["id"], identity["username"], identity["avatar_url"])
+    session.permanent = True
     session["user_id"] = user["id"]
     session.pop("oauth_state", None)
     return redirect("/")
@@ -272,6 +299,21 @@ def api_character_creation_schema(system_key):
             "liabilities": system.LIABILITY_CATALOG,
         }
     )
+
+
+@app.route("/api/settings/<setting_key>/map")
+def api_setting_map(setting_key):
+    """Map overlay for the game screen (2026-11-02) - landmarks and unit positions from
+    settings/<key>/map.json. 404 for settings without one; the Map button only appears when this
+    exists."""
+    if setting_key not in engine.SETTING_REGISTRY:
+        return jsonify({"error": f"Unknown setting: {setting_key}"}), 404
+    path = engine.setting_dir(setting_key) / "map.json"
+    if not path.exists():
+        return jsonify({"error": "No map for this setting."}), 404
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.pop("_comment", None)
+    return jsonify(data)
 
 
 @app.route("/api/characters/<setting_key>")
@@ -447,7 +489,14 @@ def api_character_state(character_id):
     row = db.get_character(character_id, user["id"])
     if row is None:
         return jsonify({"error": "Character not found."}), 404
-    return jsonify({"state": engine.build_state_digest(row["state"]), "setting_key": row["setting_key"], "system_key": row["system_key"]})
+    # Fill in the clock/world for display before the first turn has run (a brand-new game, or a save
+    # from before dynamics.json existed) - display only, nothing is saved here.
+    state = row["state"]
+    dyn = dynamics.load(row["setting_key"])
+    if dyn:
+        dynamics.ensure_initialized(state, dyn)
+        dynamics.update_calendar(state, dyn)
+    return jsonify({"state": engine.build_state_digest(state), "setting_key": row["setting_key"], "system_key": row["system_key"]})
 
 
 @app.route("/api/character/<int:character_id>/level_up_options")
@@ -615,7 +664,7 @@ def api_character_turn(character_id):
 
         state = row["state"]
         provider_key = providers.MODEL_REGISTRY[model_key]["provider"]
-        conversation = _conversation_for(character_id, provider_key, provider)
+        conversation = _single_player_conversation(character_id, provider)
 
         # usage_sink accumulates one entry per API call made during this turn (a single turn can make
         # several, via the request_check/propose_state_update tool loop). budget_ok recomputes spend
@@ -640,7 +689,7 @@ def api_character_turn(character_id):
             narration, debug_events = engine.run_turn(
                 provider, model, state, row["setting_key"], row["system_key"], conversation, user_input,
                 usage_sink=usage_sink, budget_ok=budget_ok,
-                council_mode=True, model_key=model_key,
+                council_mode=COUNCIL_MODE, model_key=model_key, suggestions=True,
             )
         except providers.ProviderError as e:
             # Can come from the main generation call OR from anywhere inside Council Mode (which

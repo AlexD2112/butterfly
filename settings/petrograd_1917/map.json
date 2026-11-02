@@ -1,0 +1,204 @@
+{
+  "_comment": "Map overlay for the game screen's Map panel (2026-11-02). The base layer is a modern unlabeled map (CARTO 'dark_nolabels', built on OpenStreetMap data): central St Petersburg's river, canal and street plan is largely unchanged since 1917, and leaving modern labels off avoids anachronistic names. Landmarks and barracks are placed by hand. Landmark positions are reliable; barracks positions are approximate (regimental quarters moved and sprawled, and several reserve battalions were spread over more than one site) - good enough to show which side of the river a regiment sits on, not for navigation.",
+  "center": [
+    59.943,
+    30.335
+  ],
+  "zoom": 13,
+  "landmarks": [
+    {
+      "name": "Smolny Institute",
+      "lat": 59.9488,
+      "lng": 30.3958,
+      "note": "Seat of the Petrograd Soviet and its Executive Committee."
+    },
+    {
+      "name": "Winter Palace",
+      "lat": 59.9399,
+      "lng": 30.3146,
+      "note": "Seat of the Provisional Government."
+    },
+    {
+      "name": "Peter and Paul Fortress",
+      "lat": 59.95,
+      "lng": 30.3167,
+      "note": "Arsenal and guns across the Neva from the Winter Palace."
+    },
+    {
+      "name": "Kresty Prison",
+      "lat": 59.9531,
+      "lng": 30.3876,
+      "note": "Where the campaign begins."
+    },
+    {
+      "name": "Mariinsky Palace",
+      "lat": 59.9313,
+      "lng": 30.3094,
+      "note": "The Pre-Parliament meets here from 7 October."
+    },
+    {
+      "name": "Tauride Palace",
+      "lat": 59.9475,
+      "lng": 30.376,
+      "note": "The old Duma; the Soviet's first home in February."
+    },
+    {
+      "name": "Finland Station",
+      "lat": 59.9557,
+      "lng": 30.3561,
+      "note": "Trains to Finland - and the way Lenin comes back."
+    },
+    {
+      "name": "Central Telephone Exchange",
+      "lat": 59.9353,
+      "lng": 30.3141,
+      "note": "Whoever holds it can cut the government off.",
+      "label": "left"
+    },
+    {
+      "name": "Central Telegraph",
+      "lat": 59.9318,
+      "lng": 30.301,
+      "note": "Petrograd's link to the front and the provinces.",
+      "label": "left"
+    },
+    {
+      "name": "Nevsky Prospekt",
+      "lat": 59.9343,
+      "lng": 30.33,
+      "note": "The city's main avenue; banks, cafes, crowds, demonstrations."
+    },
+    {
+      "name": "Nikolaevsky Bridge",
+      "lat": 59.9349,
+      "lng": 30.2898,
+      "note": "Links the center to Vasilievsky Island.",
+      "kind": "bridge"
+    },
+    {
+      "name": "Palace Bridge",
+      "lat": 59.9413,
+      "lng": 30.3088,
+      "note": "From the Winter Palace to Vasilievsky Island.",
+      "kind": "bridge"
+    },
+    {
+      "name": "Troitsky Bridge",
+      "lat": 59.9486,
+      "lng": 30.327,
+      "note": "To the Petrograd side and the fortress.",
+      "kind": "bridge"
+    },
+    {
+      "name": "Liteyny Bridge",
+      "lat": 59.9517,
+      "lng": 30.349,
+      "note": "To the Vyborg side and its factories.",
+      "kind": "bridge"
+    },
+    {
+      "name": "Putilov Works",
+      "lat": 59.879,
+      "lng": 30.259,
+      "note": "The city's biggest factory; tens of thousands of workers."
+    },
+    {
+      "name": "Kronstadt",
+      "lat": 59.993,
+      "lng": 29.768,
+      "note": "Island naval base of the Baltic Fleet, about 30 km west."
+    }
+  ],
+  "units": {
+    "red_guards": {
+      "lat": 59.962,
+      "lng": 30.346,
+      "where": "Vyborg side factory districts"
+    },
+    "kronstadt_sailors": {
+      "lat": 59.988,
+      "lng": 29.78,
+      "where": "Kronstadt"
+    },
+    "pavlovsky": {
+      "lat": 59.9437,
+      "lng": 30.3317,
+      "where": "Field of Mars"
+    },
+    "keksgolmsky": {
+      "lat": 59.929,
+      "lng": 30.293,
+      "where": "Admiralty side, west of the center"
+    },
+    "volynsky": {
+      "lat": 59.9425,
+      "lng": 30.37,
+      "where": "Liteyny district"
+    },
+    "litovsky": {
+      "lat": 59.9468,
+      "lng": 30.362,
+      "where": "Liteyny district"
+    },
+    "preobrazhensky": {
+      "lat": 59.944,
+      "lng": 30.354,
+      "where": "Kirochnaya Street"
+    },
+    "izmailovsky": {
+      "lat": 59.912,
+      "lng": 30.3055,
+      "where": "Izmailovsky Prospekt"
+    },
+    "semyonovsky": {
+      "lat": 59.9195,
+      "lng": 30.329,
+      "where": "Semyonovsky parade ground"
+    },
+    "egersky": {
+      "lat": 59.916,
+      "lng": 30.342,
+      "where": "south of the center"
+    },
+    "grenadier": {
+      "lat": 59.97,
+      "lng": 30.315,
+      "where": "Petrograd side"
+    },
+    "moskovsky": {
+      "lat": 59.96,
+      "lng": 30.333,
+      "where": "Vyborg side"
+    },
+    "finlyandsky": {
+      "lat": 59.937,
+      "lng": 30.265,
+      "where": "Vasilievsky Island"
+    },
+    "peter_paul": {
+      "lat": 59.9507,
+      "lng": 30.3185,
+      "where": "Peter and Paul Fortress"
+    },
+    "don_cossacks": {
+      "lat": 59.91,
+      "lng": 30.353,
+      "where": "south of the center"
+    },
+    "junkers": {
+      "lat": 59.9615,
+      "lng": 30.297,
+      "where": "military schools, Petrograd side"
+    },
+    "womens_battalion": {
+      "lat": 60.106,
+      "lng": 30.201,
+      "where": "Levashovo, north of the city"
+    },
+    "armored_cars": {
+      "lat": 59.9378,
+      "lng": 30.3383,
+      "where": "Mikhailovsky Manege"
+    }
+  }
+}
