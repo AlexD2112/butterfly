@@ -21,10 +21,14 @@ to the production entry point (waitress imports `server:app` directly - see
 local-site-tunnel/start_local_site.ps1), which touches the deployment startup path and hasn't been
 done here.
 """
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# No real Wikidata lookups from tests (geodata.py) - tests that need them fake the HTTP layer.
+os.environ.setdefault("GEOCODE", "0")
 
 import db
 

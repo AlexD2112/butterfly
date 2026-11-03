@@ -1,3 +1,21 @@
+# Map: verified positions, viability gate, historic-plan pipeline (2026-11-02, later)
+
+- `geodata.py`: map positions are looked up on Wikidata by the server (search terms per place in
+  `map.json`), accepted only if the label contains a name stem, it's inside the setting's bbox, and
+  it's within `max_m` of a rough estimate. Unverified places aren't drawn and are listed under the
+  map. Results cached in `geocache.json` next to the DB (Render's persistent disk); misses retried
+  weekly; a network failure caches nothing. First /map request starts the lookups in a background
+  thread. `GEOCODE=0` disables lookups (the test runner sets it).
+- Viability: the Map button only appears when lookups are done, >=75% of landmarks and >=50% of
+  units verified, and there's a base layer. Base layers: `historic` (only if its tiles exist and
+  `fit.json` passes) -> `terrain` (OpenTopoMap, the default otherwise) -> unlabeled streets.
+- `tools/georeference_scan.py`: scan + control-point CSV -> polynomial fit -> refuses if RMS error
+  > 35 m -> XYZ tiles in `static/maptiles/<setting>/` with SOURCE.txt and fit.json. Tested on a
+  synthetic rotated scan (3.9 m RMS; noisy points correctly refused). No real scan yet - needs a
+  public-domain 1914-ish plan supplied and ~12-15 control points picked on it.
+- Couldn't run the real Wikidata lookups from the dev sandbox (network-restricted), so whether each
+  search term hits is unverified until the server runs them; the map stays hidden until enough do.
+
 # Game feel, GM voice, and the missing-history bug (2026-11-02)
 
 **Missing history.** Three separate causes, all fixed:

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import db
 import engine
+import geodata
 import providers
 import server
 
@@ -120,11 +121,12 @@ class TestServerMemoryAndLogin(unittest.TestCase):
         self.assertEqual(sugg[0]["options"], ["Tell Kamenev no", "Go to Smolny"])
         self.assertIn("suggest_actions", {s["name"] for s in provider.specs[0]})
 
-    def test_map_endpoint(self):
-        data = self.client.get("/api/settings/petrograd_1917/map").get_json()
-        self.assertIn("landmarks", data)
-        units = engine.load_json("petrograd_1917", "mechanics_catalog.json")["petrograd_garrison"]["seed_data"]["units"]
-        self.assertEqual(set(data["units"]), {u["id"] for u in units})  # every seeded unit is placed
+    def test_map_endpoint_hides_the_map_until_places_verify(self):
+        with patch.object(geodata, "cache_path", return_value=Path(self._tmpdir.name) / "geo.json"):
+            data = self.client.get("/api/settings/petrograd_1917/map").get_json()
+        self.assertFalse(data["viable"])
+        self.assertTrue(data["resolving"])
+        self.assertEqual(data["landmarks"], [])
         self.assertEqual(self.client.get("/api/settings/rome_59_bce/map").status_code, 404)
 
     def test_state_route_includes_the_clock_for_a_new_game(self):

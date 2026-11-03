@@ -291,6 +291,8 @@
   .map-legend { display: flex; gap: 12px; flex-wrap: wrap; }
   .map-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
   #map-canvas { flex: 1; background: #0b0f0d; }
+  #map-unplaced { font-family: var(--font-ui); font-size: 11px; color: var(--muted); padding: 6px 14px; border-top: 1px solid var(--border); }
+  #map-canvas .leaflet-control-layers { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
   .leaflet-container { font-family: var(--font-ui); }
   /* Leaflet's own stylesheet loads after this one, so these need the extra specificity to win. */
   #map-canvas .leaflet-popup-content-wrapper, #map-canvas .leaflet-popup-tip { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
@@ -837,10 +839,11 @@
 <div id="map-panel" role="dialog" aria-label="Map">
   <div class="map-head">
     <h3 id="map-title">Petrograd</h3>
-    <div class="map-legend"><span><i style="background:#7a9b5f"></i>fights for you</span><span><i style="background:#8a9c86"></i>stays in barracks</span><span><i style="background:#b5482f"></i>fights against you</span><span>Barracks positions approximate</span></div>
+    <div class="map-legend"><span><i style="background:#7a9b5f"></i>fights for you</span><span><i style="background:#8a9c86"></i>stays in barracks</span><span><i style="background:#b5482f"></i>fights against you</span></div>
     <button id="map-close" title="Close (Esc)">&times;</button>
   </div>
   <div id="map-canvas"></div>
+  <div id="map-unplaced"></div>
 </div>
 
 <!-- Screen 7: multiplayer in-subspace chat -->
@@ -1646,14 +1649,20 @@ function renderMechPanel(state) {
 // Leaflet, loaded on first open, over an unlabeled modern basemap (the 1917 street plan is mostly
 // intact). Landmarks come from settings/<key>/map.json; units are drawn from the live order of
 // battle, colored by loyalty and sized by strength.
-let MAP_SETTING = null, MAP_DATA = null, MAP_OBJ = null, MAP_LAYER = null, LAST_STATE = null;
+let MAP_SETTING = null, MAP_DATA = null, MAP_OBJ = null, MAP_LAYER = null, MAP_BASE = null, LAST_STATE = null, MAP_POLL = null;
+// Only offered when the server says the map is viable: enough places verified against Wikidata
+// and a base layer to draw them on (see geodata.py). While lookups are still running, check back.
 async function setupMapButton(settingKey) {
   const btn = document.getElementById('map-toggle-btn');
   MAP_SETTING = settingKey; MAP_DATA = null;
   btn.hidden = true;
+  clearTimeout(MAP_POLL);
   try {
     const res = await fetch(`/api/settings/${settingKey}/map`);
-    if (res.ok) { MAP_DATA = await res.json(); btn.hidden = false; }
+    const data = res.ok ? await res.json() : null;
+    if (MAP_SETTING !== settingKey || !data) return;
+    if (data.viable) { MAP_DATA = data; btn.hidden = false; if (MAP_OBJ) { MAP_OBJ.remove(); MAP_OBJ = null; } }
+    else if (data.resolving) MAP_POLL = setTimeout(() => setupMapButton(settingKey), 15000);
   } catch (e) { /* no map */ }
 }
 function loadLeaflet() {
@@ -1670,13 +1679,16 @@ function loadLeaflet() {
   });
 }
 function loyaltyColor(l) { return l >= 2 ? '#7a9b5f' : l <= -2 ? '#b5482f' : '#8a9c86'; }
+function sourceNote(p) {
+  return p.qid ? `<br><a href="https://www.wikidata.org/wiki/${encodeURIComponent(p.qid)}" target="_blank" rel="noopener">location: Wikidata ${escapeHtml(p.qid)}</a>` : '';
+}
 function drawMapUnits() {
   if (!MAP_OBJ || !MAP_DATA) return;
   if (MAP_LAYER) MAP_LAYER.remove();
   MAP_LAYER = L.layerGroup().addTo(MAP_OBJ);
   (MAP_DATA.landmarks || []).forEach(lm => {
     const m = L.circleMarker([lm.lat, lm.lng], { radius: lm.kind === 'bridge' ? 3 : 5, color: '#b08d4f', weight: 1.5, fillColor: '#e0c98f', fillOpacity: 0.9 })
-      .bindPopup(`<b>${escapeHtml(lm.name)}</b><br>${escapeHtml(lm.note || '')}`);
+      .bindPopup(`<b>${escapeHtml(lm.name)}</b><br>${escapeHtml(lm.note || '')}${sourceNote(lm)}`);
     const left = lm.label === 'left';
     if (lm.kind !== 'bridge') m.bindTooltip(escapeHtml(lm.name), { permanent: true, direction: left ? 'left' : 'right', className: 'map-label', offset: [left ? -6 : 6, 0] });
     m.addTo(MAP_LAYER);
@@ -1688,7 +1700,7 @@ function drawMapUnits() {
     const word = u.loyalty >= 2 ? 'Fights for you' : u.loyalty <= -2 ? 'Fights against you' : 'Stays in barracks';
     L.circleMarker([pos.lat, pos.lng], { radius: 5 + Math.sqrt(u.strength || 0) / 14, color: loyaltyColor(u.loyalty), weight: 2,
       fillColor: loyaltyColor(u.loyalty), fillOpacity: 0.35 })
-      .bindPopup(`<b>${escapeHtml(u.name)}</b><br>${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5<br>${word} (loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty})<br><span style="color:var(--muted)">${escapeHtml(pos.where || '')} (approx.)</span>`)
+      .bindPopup(`<b>${escapeHtml(u.name)}</b><br>${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5<br>${word} (loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty})<br><span style="color:var(--muted)">${escapeHtml(pos.where || '')}</span>${sourceNote(pos)}`)
       .addTo(MAP_LAYER);
   }));
 }
@@ -1702,11 +1714,17 @@ async function openMap() {
   }
   if (!MAP_OBJ) {
     MAP_OBJ = L.map('map-canvas', { zoomControl: true, attributionControl: true }).setView(MAP_DATA.center, MAP_DATA.zoom);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-      maxZoom: 18, subdomains: 'abcd',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(MAP_OBJ);
+    const bases = {};
+    (MAP_DATA.layers || []).forEach(l => {
+      bases[l.name] = L.tileLayer(l.url, { maxZoom: l.maxZoom || 18, minZoom: l.minZoom || 0,
+        subdomains: l.subdomains || 'abc', attribution: l.attribution || '' });
+      if (l.id === MAP_DATA.default_layer) bases[l.name].addTo(MAP_OBJ);
+    });
+    if (Object.keys(bases).length > 1) L.control.layers(bases, null, { position: 'topright' }).addTo(MAP_OBJ);
   }
+  const unplaced = MAP_DATA.unplaced || [];
+  document.getElementById('map-unplaced').textContent = unplaced.length
+    ? `Not shown (location couldn't be verified): ${unplaced.join(', ')}` : 'Every location verified against Wikidata';
   setTimeout(() => { MAP_OBJ.invalidateSize(); drawMapUnits(); }, 50);
 }
 function closeMap() {

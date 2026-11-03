@@ -30,6 +30,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 import db
 import dynamics
+import geodata
 import discord_oauth
 import discord_webhook
 import engine
@@ -99,6 +100,9 @@ _conversations = {}
 # a big part of why narration read as committee-written. One well-prompted pass is faster, cheaper
 # and sounds more like a person.
 COUNCIL_MODE = os.environ.get("COUNCIL_MODE", "0") == "1"
+
+# Map place lookups (geodata.py) hit Wikidata from the server. GEOCODE=0 turns them off (tests do).
+GEOCODE_ENABLED = os.environ.get("GEOCODE", "1") == "1"
 
 
 def _conversation_for(character_id, provider_key, provider):
@@ -303,17 +307,19 @@ def api_character_creation_schema(system_key):
 
 @app.route("/api/settings/<setting_key>/map")
 def api_setting_map(setting_key):
-    """Map overlay for the game screen (2026-11-02) - landmarks and unit positions from
-    settings/<key>/map.json. 404 for settings without one; the Map button only appears when this
-    exists."""
+    """The game screen's map (2026-11-02): only places whose positions geodata.py verified against
+    Wikidata, the available base layers, and `viable` - whether the map is good enough to offer at
+    all. The first request for a setting starts the lookups in the background; until they finish,
+    `resolving` is true and the frontend keeps the Map button hidden and checks back."""
     if setting_key not in engine.SETTING_REGISTRY:
         return jsonify({"error": f"Unknown setting: {setting_key}"}), 404
-    path = engine.setting_dir(setting_key) / "map.json"
-    if not path.exists():
-        return jsonify({"error": "No map for this setting."}), 404
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data.pop("_comment", None)
-    return jsonify(data)
+    data = geodata.setting_map_data(engine.setting_dir(setting_key))
+    if data is None:
+        return jsonify({"viable": False, "reason": "No map for this setting."}), 404
+    status = geodata.map_status(setting_key, data)
+    if status["resolving"] and GEOCODE_ENABLED:
+        geodata.start_background_resolve(setting_key, data)
+    return jsonify(status)
 
 
 @app.route("/api/characters/<setting_key>")
