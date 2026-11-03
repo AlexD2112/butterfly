@@ -724,7 +724,10 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=Non
             if spec["name"] == "request_check":
                 spec["parameters"]["properties"]["opposed_by"] = {
                     "type": "string",
-                    "description": "When target_npc has a sheet: the skill or attribute they resist with (default: the same skill the player uses). 'none' if they aren't actively resisting. The application sets the DC from their sheet."}
+                    "description": "When target_npc has a sheet: the skill or attribute they resist with (default: the same skill the player uses, or their Resolve when being talked round). 'none' if they aren't actively resisting. The application sets the DC from their sheet."}
+                spec["parameters"]["properties"]["ask"] = {
+                    "type": "string", "enum": ["minor", "significant", "major"],
+                    "description": "When target_npc has a sheet: how much the player is asking of them. minor: a favour, information, a hearing. significant: a real commitment - a vote, a meeting, a risk. major: changing sides, an alliance, turning on their own people. Raises the DC; a major ask is never won by one roll."}
         specs.append(npc_sheets_mod.CREATE_SPEC)
     for spec in specs:
         if spec["name"] != "propose_state_update":
@@ -819,7 +822,7 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         if setting_key and inp.get("target_npc"):
             # an NPC with a sheet sets the DC (2026-11-03) - the GM's number is only a fallback
             sheet_dc, dc_source = npc_sheets_mod.opposed_dc(state, setting_key, system, inp["target_npc"], inp["attribute"],
-                                                  inp.get("skill"), inp.get("opposed_by"))
+                                                  inp.get("skill"), inp.get("opposed_by"), inp.get("ask"))
             if sheet_dc is not None:
                 inp["dc"] = sheet_dc
             npc_sheets_mod.record_encounter(state, setting_key, inp["target_npc"])
@@ -828,6 +831,9 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         )
         if dc_source:
             result["dc_source"] = dc_source
+            if inp.get("ask") == "major":
+                result["gm_instruction"] = (npc_sheets_mod.ASK_STEPS.get(result["degree"], "") +
+                                            " A major ask is a negotiation: play it over several exchanges.")
         auto_changes = system.apply_auto_liability_effects(state, result)
         stake_changes = _apply_at_stake(state, resource_schema, dyn, inp.get("at_stake"), result["degree"], "at stake in check")
         follow = _post_change_bookkeeping(state, dyn, resource_schema, system) if stake_changes else []

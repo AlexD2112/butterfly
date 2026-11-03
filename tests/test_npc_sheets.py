@@ -137,5 +137,24 @@ class TestEndpoint(unittest.TestCase):
         self.assertTrue(self.client.get(f"/api/character/{self.cid}/npc/nobody").get_json()["no_sheet"])
 
 
+class TestAsks(unittest.TestCase):
+    def test_being_talked_round_meets_their_resolve_and_the_size_of_the_ask(self):
+        state = fresh_petrograd()
+        dc, why = npcs.opposed_dc(state, "petrograd_1917", SYSTEM, "spiridonova", "presence", "personal_persuasion")
+        self.assertEqual(dc, 14)  # Resolve 18 (+4) beats her Presence-based persuasion (+2)
+        self.assertIn("resolve", why)
+        dc, why = npcs.opposed_dc(state, "petrograd_1917", SYSTEM, "spiridonova", "presence", "personal_persuasion", ask="major")
+        self.assertEqual(dc, 20)
+        self.assertIn("major ask", why)
+        dc, _ = npcs.opposed_dc(state, "petrograd_1917", SYSTEM, "dan", "oration", "debate_and_public_argument")
+        self.assertEqual(dc, 16)  # his debate (+6) is better than his Resolve (+1)
+
+    def test_a_major_ask_is_never_won_in_one_roll(self):
+        state = fresh_petrograd()
+        _, _, result = run(state, "request_check", {"attribute": "presence", "skill": "personal_persuasion", "dc": 10,
+                                                    "target_npc": "spiridonova", "ask": "major", "description": "Win the Left SRs"})
+        self.assertIn("several exchanges", result["gm_instruction"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -310,5 +310,35 @@ class TestAdminBudget(unittest.TestCase):
         self.assertEqual(db.get_budget_status(other["id"])["budget_usd"], db.DEFAULT_BUDGET_USD)
 
 
+class TestResendAfterUpdate(TestWriteTheScene):
+    def play(self, text="I thank the workers."):
+        provider = RecordingProvider([tools_turn(CHECK, text="You speak."), text_turn("They cheer.")])
+        with patch.object(providers, "get_provider", return_value=(provider, "m")):
+            return self.client.post(f"/api/character/{self.cid}/turn", json={"input": text, "model_key": "luna"}).get_json()
+
+    def test_not_offered_on_the_same_build(self):
+        self.play()
+        data = self.client.get(f"/api/character/{self.cid}/turns").get_json()
+        self.assertFalse(data["resend_available"])
+        self.assertNotIn("state_before_json", data["turns"][0])
+        self.assertEqual(self.client.post(f"/api/character/{self.cid}/resend_last").status_code, 400)
+
+    def test_after_an_update_the_last_turn_is_undone_exactly(self):
+        before = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
+        self.play("first move")
+        self.play("second move")
+        mid = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
+        with patch.object(server, "APP_VERSION", "newer-build"):
+            self.assertTrue(self.client.get(f"/api/character/{self.cid}/turns").get_json()["resend_available"])
+            res = self.client.post(f"/api/character/{self.cid}/resend_last").get_json()
+            self.assertEqual(res["input"], "second move")
+            after = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
+            self.assertEqual(after["turn_number"], mid["turn_number"] - 1)
+            self.assertEqual(len(db.get_turns(self.cid)), 1)
+            # only the latest turn keeps a snapshot, so a second resend isn't possible
+            self.assertFalse(self.client.get(f"/api/character/{self.cid}/turns").get_json()["resend_available"])
+        self.assertEqual(before["turn_number"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

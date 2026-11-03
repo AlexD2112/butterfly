@@ -350,6 +350,7 @@
   .redo-scene { margin-top: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent, #b8954a); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .redo-scene:disabled { opacity: .5; cursor: default; }
   .redo-note { color: var(--muted); font-size: .9em; }
+  .resend-bar { margin-top: 8px; font-family: var(--font-ui); font-size: 13px; }
   #map-canvas .map-you { width: 14px; height: 14px; background: #f0d48a; border: 2px solid #1a1408; transform: rotate(45deg); box-shadow: 0 0 0 2px #f0d48a66, 0 0 10px #000; }
   #map-canvas .leaflet-control-attribution { background: rgba(14,21,18,.8); color: var(--muted); }
   #map-canvas .leaflet-control-attribution a { color: var(--accent-2); }
@@ -2730,7 +2731,32 @@ async function redoScene(box) {
   }
 }
 
+// Resend after an update (2026-11-03): the latest turn, if it was played before the game was last
+// updated, can be undone (state and rolls back to before it) and sent again on the new version.
+function addResendButton(div) {
+  const bar = document.createElement('div');
+  bar.className = 'resend-bar';
+  bar.innerHTML = `<button type="button" class="redo-scene">Resend this move</button><span class="redo-note"> The game has been updated since. Undoes this turn, rolls included, and plays it again.</span>`;
+  div.appendChild(bar);
+  bar.querySelector('button').addEventListener('click', async () => {
+    const btn = bar.querySelector('button');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/resend_last`, { method: 'POST' });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      div.remove();
+      await sendTurn(data.input);
+    } catch (e) {
+      btn.disabled = false;
+      bar.insertAdjacentHTML('beforeend', `<p class="clamped">${escapeHtml(String(e.message || e))}</p>`);
+    }
+  });
+}
+
 function appendTurn(userText, narration, debugEvents, opts = {}) {
+  document.querySelectorAll('.resend-bar').forEach(b => b.remove());
   clearSuggestions();
   document.querySelectorAll('.redo-scene').forEach(b => b.closest('.narration') && b.remove());
   const div = document.createElement('div');
@@ -2831,9 +2857,12 @@ async function loadCharacterState(isNew) {
     // history instead of a blank log with just a status line - db.get_turns already had everything
     // needed for this (it's what view_transcript.py has used all along); this just reuses it.
     let turns = [];
+    let resendAvailable = false;
     try {
       const turnsRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/turns`);
-      turns = (await turnsRes.json()).turns || [];
+      const turnsData = await turnsRes.json();
+      turns = turnsData.turns || [];
+      resendAvailable = !!turnsData.resend_available;
     } catch (e) {
       appendSystemNote(`Couldn't load this game's history (${e}). Your progress is saved - reload to try again.`);
     }
@@ -2847,7 +2876,8 @@ async function loadCharacterState(isNew) {
     turns.forEach((t, i) => {
       let debugEvents = [];
       try { debugEvents = t.debug_events_json ? JSON.parse(t.debug_events_json) : []; } catch (e) { debugEvents = []; }
-      appendTurn(t.player_input, t.narration, debugEvents, { instant: true, noSuggestions: i < turns.length - 1, canRedo: i === turns.length - 1 });
+      const div = appendTurn(t.player_input, t.narration, debugEvents, { instant: true, noSuggestions: i < turns.length - 1, canRedo: i === turns.length - 1 });
+      if (resendAvailable && i === turns.length - 1) addResendButton(div);
     });
     if (turns.length === 0 && data.state.turn_number > 0) {
       appendSystemNote('This game has progress saved but no recorded history (it may predate history recording). The game master still has the campaign summary.');

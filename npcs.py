@@ -78,9 +78,25 @@ def modifier(sheet, skill_or_attr, system):
     return score_mod(attr) + tier * sheet.get("proficiency", 2)
 
 
-def opposed_dc(state, setting_key, system, target, player_attribute, player_skill, opposed_by=None):
+# How much is being asked of them (2026-11-03). A favour costs nothing extra; changing sides costs a lot.
+ASK_DC = {"minor": 0, "significant": 3, "major": 6}
+SOCIAL_ATTRS = ("presence", "oration")
+ASK_STEPS = {
+    # what each degree means when the ask is major - one roll moves someone, it doesn't buy them
+    "critical_success": "They agree in principle - but they will want the terms in writing, and something in return.",
+    "strong_success": "They move a real step: they say what they'd need to agree, and mean it. They have not agreed yet.",
+    "success": "They'll hear the offer: the door is open, nothing is promised. They ask what exactly is on the table.",
+    "success_at_cost": "They'll keep talking, but they've noticed what you want and raise their price.",
+    "failure": "They don't move, and say why. The conversation can go on, but this line of argument is spent.",
+    "critical_failure": "They take offence or suspect a trap; they're further away than when you started.",
+}
+
+
+def opposed_dc(state, setting_key, system, target, player_attribute, player_skill, opposed_by=None, ask=None):
     """(dc, explanation) for a check aimed at an NPC with a sheet, else (None, None).
-    opposed_by: the skill/attribute that resists ('none' = not opposed: the GM's DC stands)."""
+    opposed_by: the skill/attribute that resists ('none' = not opposed: the GM's DC stands).
+    Talking someone round is resisted by the better of the same skill or their Resolve - a stubborn
+    person is hard to persuade however charming you are. ask raises the DC with what's asked of them."""
     if not target or opposed_by == "none":
         return None, None
     key = resolve(state, setting_key, target)
@@ -92,8 +108,19 @@ def opposed_dc(state, setting_key, system, target, player_attribute, player_skil
     if mod is None:
         resist = player_attribute
         mod = modifier(sheet, resist, system)
-    dc = max(5, min(30, 10 + mod))
-    return dc, f"{sheet['name']} resists with {resist.replace('_', ' ')} ({mod:+d}): DC {dc}"
+    if not opposed_by:
+        skill_attr = player_attribute if player_attribute in ATTRS else None
+        if player_skill:
+            skill_attr = next((a for a, sk in system.SKILLS.items() if player_skill in sk), skill_attr)
+        will = modifier(sheet, "resolve", system)
+        if skill_attr in SOCIAL_ATTRS and will > mod:
+            resist, mod = "resolve", will
+    extra = ASK_DC.get(ask or "minor", 0)
+    dc = max(5, min(30, 10 + mod + extra))
+    why = f"{sheet['name']} resists with {resist.replace('_', ' ')} ({mod:+d})"
+    if extra:
+        why += f", {ask} ask (+{extra})"
+    return dc, f"{why}: DC {dc}"
 
 
 # ---------------------------------------------------------------- what the player can see
@@ -245,8 +272,10 @@ def prompt_section(state, setting_key):
     if not sheets:
         return ""
     lines = ["NPC SHEETS (the application sets the DC of any request_check whose target_npc has a sheet: 10 + their",
-             "modifier in the resisting skill - by default the skill the player uses; pass opposed_by to name another,",
-             "e.g. deception against reading_hidden_agendas, or 'none' when they aren't actively resisting. New",
+             "modifier in the resisting skill - by default the skill the player uses, or their Resolve if that's higher",
+             "when being talked round; pass opposed_by to name another, e.g. deception against reading_hidden_agendas,",
+             "or 'none' when they aren't actively resisting. Pass ask: minor (a favour, information), significant (a",
+             "real commitment, a vote), or major (changing sides, an alliance, betraying their own people). New",
              "important figures: create_npc_sheet.)"]
     lines += [compact(k, s) for k, s in sheets.items()]
     return "\n".join(lines)

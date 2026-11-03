@@ -422,6 +422,10 @@ def init_db():
     for col_sql in [
         "ALTER TABLE turns ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE turns ADD COLUMN flag_reason TEXT",
+        # resend after an update (2026-11-03): which build played the turn, and the state just
+        # before it (kept on the latest turn only) so the turn can be undone and replayed
+        "ALTER TABLE turns ADD COLUMN app_version TEXT",
+        "ALTER TABLE turns ADD COLUMN state_before_json TEXT",
     ]:
         try:
             conn.execute(col_sql)
@@ -1663,7 +1667,8 @@ def record_usage(user_id, character_id, provider, model, input_tokens, output_to
     conn.close()
 
 
-def record_turn(character_id, turn_number, player_input, narration, model_key, debug_events):
+def record_turn(character_id, turn_number, player_input, narration, model_key, debug_events, app_version=None,
+                state_before=None):
     """Saves one turn's full, untruncated record - see the `turns` table's comment in init_db() for
     why this exists. debug_events is stored as JSON exactly as engine.run_turn produced it (dice
     rolls, state changes, canon events, and the Council Mode log if it ran) - the same data the
@@ -1674,11 +1679,22 @@ def record_turn(character_id, turn_number, player_input, narration, model_key, d
     conn = get_db()
     char_row = conn.execute("SELECT game_id FROM characters WHERE id = ?", (character_id,)).fetchone()
     game_id = char_row["game_id"] if char_row else None
+    if state_before is not None:  # only the latest turn can be undone, so only it keeps a snapshot
+        conn.execute("UPDATE turns SET state_before_json = NULL WHERE character_id = ? AND state_before_json IS NOT NULL",
+                     (character_id,))
     conn.execute(
         "INSERT INTO turns (character_id, turn_number, player_input, narration, model_key, "
-        "debug_events_json, game_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (character_id, turn_number, player_input, narration, model_key, json.dumps(debug_events), game_id, time.time()),
+        "debug_events_json, game_id, created_at, app_version, state_before_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (character_id, turn_number, player_input, narration, model_key, json.dumps(debug_events), game_id, time.time(),
+         app_version, json.dumps(state_before) if state_before is not None else None),
     )
+    conn.commit()
+    conn.close()
+
+
+def delete_turn(turn_id):
+    conn = get_db()
+    conn.execute("DELETE FROM turns WHERE id = ?", (turn_id,))
     conn.commit()
     conn.close()
 

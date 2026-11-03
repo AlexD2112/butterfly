@@ -15,6 +15,7 @@ identities are NOT merged automatically; characters stay with whichever account 
 """
 
 import json
+import copy
 import datetime
 import os
 import queue
@@ -189,6 +190,28 @@ def api_me():
 # functionality carries real security stakes yet. This IS checked into source control - if this repo
 # is ever public, treat the code as public knowledge too, not a real access control.
 ADMIN_UNLOCK_CODE = "ElfbertWasRight"
+
+
+def _app_version():
+    """Which build is running (2026-11-03): Render's commit id, or locally a hash of the code. A turn
+    played on an older build can be resent once the game has been updated."""
+    commit = os.environ.get("RENDER_GIT_COMMIT", "").strip()
+    if commit:
+        return commit[:12]
+    import hashlib
+    root = Path(__file__).resolve().parent
+    h = hashlib.sha1()
+    for f in sorted(list(root.glob("*.py")) + list(root.glob("systems/**/*.py")) + [root / "static" / "index.html"]):
+        h.update(f.read_bytes())
+    return "local-" + h.hexdigest()[:10]
+
+
+APP_VERSION = _app_version()
+
+
+def _resend_available(turns):
+    last = turns[-1] if turns else None
+    return bool(last and last.get("state_before_json") and (last.get("app_version") or "") != APP_VERSION)
 
 
 @app.route("/api/admin/unlock", methods=["POST"])
@@ -682,7 +705,30 @@ def api_character_turns(character_id):
     row = db.get_character(character_id, user["id"])
     if row is None:
         return jsonify({"error": "Character not found."}), 404
-    return jsonify({"turns": db.get_turns(character_id)})
+    turns = db.get_turns(character_id)
+    resend = _resend_available(turns)
+    for t in turns:
+        t.pop("state_before_json", None)  # big, and nothing the page needs
+    return jsonify({"turns": turns, "resend_available": resend})
+
+
+@app.route("/api/character/<int:character_id>/resend_last", methods=["POST"])
+def api_character_resend_last(character_id):
+    """Undo the latest turn so it can be sent again (2026-11-03) - allowed once per update: only when
+    the turn was played on an older build than the one running now. Puts the state back exactly as it
+    was before that turn (rolls included) and removes the turn; the page then sends the same input
+    as a normal turn. What that turn cost stays spent."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    turns = db.get_turns(character_id)
+    if not _resend_available(turns):
+        return jsonify({"error": "Only the latest turn can be resent, and only after the game has been updated."}), 400
+    last = turns[-1]
+    db.save_character_state(character_id, user["id"], json.loads(last["state_before_json"]))
+    db.delete_turn(last["id"])
+    return jsonify({"input": last["player_input"]})
 
 
 @app.route("/api/character/<int:character_id>/npc/<key>")
@@ -853,6 +899,7 @@ def api_character_turn(character_id):
         # the same way campaign_log_summary's own entries do) - this is the turn number actually
         # being played this call, for db.record_turn below.
         turn_number_played = state.get("turn_number")
+        state_before = copy.deepcopy(state)  # kept with the turn, so it can be resent after an update
 
         try:
             # Council Mode runs on every turn as of 2026-08-20 - no longer a per-campaign opt-in
@@ -890,7 +937,8 @@ def api_character_turn(character_id):
 
         # Full transcript, saved alongside the state - see db.py's `turns` table comment for why
         # this exists (previously narration/debug_events were discarded after this one response).
-        db.record_turn(character_id, turn_number_played, user_input, narration, model_key, debug_events)
+        db.record_turn(character_id, turn_number_played, user_input, narration, model_key, debug_events,
+                       app_version=APP_VERSION, state_before=state_before)
         db.save_character_state(character_id, user["id"], state)
         return jsonify(
             {
