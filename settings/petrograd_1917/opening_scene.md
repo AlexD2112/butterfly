@@ -1,32 +1,25 @@
-# Opening Scene — September 4, 1917
+The guard counts your things out onto the table: a watch, eleven rubles forty kopecks, a pencil
+stub, a bundle of letters someone has plainly read. He makes you sign for them. Then the gate.
 
-The gate of the Kresty prison swings open onto the Vyborg side, and the September air smells of
-the river and coal smoke. Six weeks in a cell on the July charges - incitement, and the slander that
-you and Lenin are paid by Berlin - and they are letting you walk out on bail. Not because the
-charges have gone away. Because the government no longer has the nerve to hold you.
+Outside, the Vyborg side is grey and smells of the river. Thirty or forty men from the Arsenal and
+the Nobel works have been waiting since the shift change, caps in their hands. When they see you a
+cheer goes up, ragged and loud, and the sentry on the wall leans over to look.
 
-Last week General Kornilov marched on the capital to "restore order," and Kerensky, who had been
-flirting with him, found himself begging the Soviet to save the revolution. The workers saved it.
-Railwaymen sent Kornilov's trains the wrong way; agitators talked his Cossacks out of fighting;
-the factories armed Red Guards with rifles the government itself handed over. The general is
-under arrest. So is the government's authority, more or less.
+Natalia pushes through them with your coat over her arm. "You're thinner," she says. Then, lower:
+"The boys wanted to come. I said no. Kamenev has telephoned twice."
 
-On August 31, for the first time, the Petrograd Soviet passed a Bolshevik resolution. The
-Menshevik and SR presidium - Chkheidze, Tsereteli, Dan, the men who have run the Soviet since
-February - still sits at the head table, insisting nothing has changed. Lenin is in Finland, in
-hiding, writing letters. Kamenev leads the Bolshevik fraction and wants to use the new majority
-carefully. The Second Congress of Soviets is weeks away.
+A young man in a sailor's jumper shoves in beside her, out of breath. "Comrade Trotsky. From the
+Smolny." He holds out a folded note in Kamenev's tidy hand:
 
-Natalia is waiting at the gate with a coat over her arm. Behind her, a knot of workers from the
-Vyborg district has come to see you out - and one of them is holding a note from the Smolny: the
-Soviet meets tonight.
+"Soviet in session tonight. Our resolution of the 31st passed, but Chkheidze's people mean to bury
+it in committee. Come straight here. Say nothing to the papers."
 
-**Where do you begin?**
-
-*(GM note: scene zero, not a script. Let the player's first move set the tone - Natalia and the
-boys, the workers at the gate, straight to Smolny, a letter to Lenin, a word with Kamenev about
-what the fraction is planning. The first arc is the Soviet itself: the presidium is beatable
-(call_vote on the plenum chart, canon_event presidium_no_confidence) and the chair after it. The
-clock runs from here - the Democratic Conference on the 14th, the Pre-Parliament and Lenin's return
-in early October, the Congress of Soviets on the 25th. Nothing in this scene requires a check; the
-first should come from whatever the player chooses to do.)*
+Behind you the gate bangs shut. The charges are still on the books; the bail is a loan, not a
+pardon. Upriver, the Smolny's windows are already lit.
+<!-- gm -->
+Scene zero. The player has just walked out of Kresty on bail (4 September, Julian). Let the first
+move set the tone: Natalia and the boys, the workers at the gate, straight to the Smolny, a letter
+to Lenin in Finland, a word with Kamenev. The first arc is the Soviet itself: the Menshevik-SR
+presidium is beatable (call_vote on the plenum chart, canon_event presidium_no_confidence, not
+before the 5th) and the chair after it. Nothing here needs a check; the first should come from
+whatever the player chooses to do.

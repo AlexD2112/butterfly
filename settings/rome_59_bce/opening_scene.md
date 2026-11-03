@@ -1,20 +1,20 @@
-The Forum is loud before dawn, which is how you know it will be a difficult day. You are Gaius
-Julius Caesar, Consul of Rome, and your colleague Bibulus has once again announced that he is
-"watching the skies" - a religious technicality dressed up as piety, deployed for the sole purpose
-of declaring your legislation invalid before it can even be voted on. It is a small, petty weapon,
-and it is working.
+Your lictors clear a path through the Forum with their rods, but the crowd at the Rostra doesn't
+part so much as turn to look. Half of them are Pompey's veterans, in for the land bill. They have
+been standing here since dawn.
 
-Pompey's messengers arrived this morning with warm words about the coming wedding - Julia to
-Pompey, an alliance sealed in blood as well as politics. Crassus, characteristically, sent a
-different kind of message: a ledger, and a reminder of exactly how much this consulship has cost
-him to arrange, and how much you still owe.
+Publius Vatinius catches your elbow at the foot of the steps, ink on his fingers, grinning. "Bibulus
+has posted another notice. Nailed it to his own door this time, he won't come out of the house.
+He's watching the skies." He says it the way you would say a man was watching his neighbor's wife.
+"Every vote we take is void, he says. The augurs are pretending they haven't read it."
 
-Cato was in the Senate house again yesterday, speaking for three hours on nothing in particular,
-which is to say speaking against you without once using your name. Clodius, meanwhile, has been
-seen in altogether too many places at once, doing altogether too many things you did not
-specifically ask him to do.
+Up on the Rostra, Cato has already started. There is a water clock beside him and he has the look of
+a man who means to be standing there at sunset.
 
-Your year as consul is half politics, half theater, and entirely a rehearsal for something larger
-you can already feel taking shape, even if you can't yet say what it will look like.
+A slave in Crassus's livery is waiting with a sealed tablet. Pompey's freedman is waiting with a
+smile and news about Julia. Neither will wait long.
 
-What do you do first?
+Behind you, the veterans start to chant your name.
+<!-- gm -->
+Scene zero of Caesar's consulship. Bibulus is obstructing by "watching the skies" from his house;
+Cato is talking out the day; Crassus wants his money's worth; Pompey wants the land bill and the
+marriage alliance with Julia. Let the player's first move set the tone; nothing here needs a check.

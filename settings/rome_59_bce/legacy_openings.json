@@ -1,0 +1,9 @@
+{
+  "_comment": "Opening scenes older games were shown, before openings were saved with each game (2026-11-03). engine.opening_for_existing picks the first entry whose 'until' (unix seconds) is after the character's created_at; null means 'anything older than the saved-opening change'.",
+  "openings": [
+    {
+      "until": null,
+      "text": "The Forum is loud before dawn, which is how you know it will be a difficult day. You are Gaius\nJulius Caesar, Consul of Rome, and your colleague Bibulus has once again announced that he is\n\"watching the skies\" - a religious technicality dressed up as piety, deployed for the sole purpose\nof declaring your legislation invalid before it can even be voted on. It is a small, petty weapon,\nand it is working.\n\nPompey's messengers arrived this morning with warm words about the coming wedding - Julia to\nPompey, an alliance sealed in blood as well as politics. Crassus, characteristically, sent a\ndifferent kind of message: a ledger, and a reminder of exactly how much this consulship has cost\nhim to arrange, and how much you still owe.\n\nCato was in the Senate house again yesterday, speaking for three hours on nothing in particular,\nwhich is to say speaking against you without once using your name. Clodius, meanwhile, has been\nseen in altogether too many places at once, doing altogether too many things you did not\nspecifically ask him to do.\n\nYour year as consul is half politics, half theater, and entirely a rehearsal for something larger\nyou can already feel taking shape, even if you can't yet say what it will look like.\n"
+    }
+  ]
+}

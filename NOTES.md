@@ -1,3 +1,18 @@
+# Openings saved with each game, rewritten openings, deleting games (2026-11-03)
+
+- Why the opening vanished: it was never a recorded turn - only opening_scene.md, shown once for a
+  new game - so reopening a game replayed only the turns. It's now saved in the state at creation
+  (`opening_text`, plus a GM-only `opening_gm_note`), shown first on resume, and given to the GM as
+  the first exchange while the game is still inside the memory window (it never saw it before).
+  Games made before this get the version that was live when they were created
+  (`settings/<key>/legacy_openings.json`, picked by created_at).
+- All four openings rewritten in the new voice, and each setting now has `opening_scene_other.md`
+  for custom/historical characters (the old ones addressed every character as the flagship -
+  "You are Alfred..."). GM notes moved below a `<!-- gm -->` line; they used to be shown to players.
+- Delete: `DELETE /api/character/<id>` (single-player only, owner only). Turns, the character and
+  its game row go; usage_events rows are kept with character_id NULL so deleting never refunds
+  budget. Two-step Delete button on the games list and on a setting's Continue list.
+
 # Map: verified positions, viability gate, historic-plan pipeline (2026-11-02, later)
 
 - `geodata.py`: map positions are looked up on Wikidata by the server (search terms per place in

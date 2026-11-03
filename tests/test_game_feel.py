@@ -105,8 +105,9 @@ class TestServerMemoryAndLogin(unittest.TestCase):
         with patch.object(providers, "get_provider", return_value=(provider2, "m")):
             self.client.post(f"/api/character/{self.cid}/turn", json={"input": "I go to Natalia.", "model_key": "luna"})
         sent = provider2.conversations[0]
-        self.assertEqual(sent[0]["content"], "I thank the workers.")
-        self.assertIn("The workers cheer.", sent[1]["content"])
+        contents = [m["content"] for m in sent]
+        i = contents.index("I thank the workers.")  # after the opening scene (2026-11-03)
+        self.assertIn("The workers cheer.", contents[i + 1])
         self.assertEqual(sent[-1]["content"], "I go to Natalia.")
 
     def test_suggestions_are_returned_and_close_the_turn(self):
