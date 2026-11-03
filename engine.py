@@ -354,6 +354,52 @@ NARRATE_FIRST = (
 )
 
 
+MISSING_NARRATION = "(The game master didn't write this scene. The result above stands - carry on from it, or ask what happened.)"
+
+
+def narration_missing(narration):
+    return not (narration or "").strip() or narration.strip() == MISSING_NARRATION
+
+
+def _outcome_brief(debug_events):
+    """What the application already decided in a turn, in full enough detail to narrate from."""
+    lines = []
+    for ev in debug_events or []:
+        t = ev.get("type")
+        if t == "check":
+            skill = f" / {ev['skill']}" if ev.get("skill") else ""
+            lines.append(f"- {ev.get('description') or 'Check'}: {ev.get('attribute')}{skill}, rolled {ev.get('roll')} "
+                         f"total {ev.get('total')} vs DC {ev.get('dc')} = {str(ev.get('degree', '')).replace('_', ' ')}."
+                         + (f" {ev['gm_instruction']}" if ev.get("gm_instruction") else ""))
+        elif t == "operation":
+            res = ev.get("result") or {}
+            lines.append(f"- {ev.get('operation')}: {json.dumps({k: v for k, v in res.items() if k in ('motion', 'passed', 'yes', 'no', 'player_outcome', 'unit', 'after', 'gm_instruction', 'absent')}, ensure_ascii=False)}")
+    summary = summarize_outcomes(debug_events)
+    if summary:
+        lines.append(f"- Changes: {summary}")
+    return "\n".join(lines) or "- (no rolls)"
+
+
+def narrate_resolved_turn(provider, model, state, setting_key, system_key, conversation, player_input, debug_events,
+                          usage_sink=None):
+    """Writes the scene for a turn whose rolls and changes already happened but whose narration never
+    did. One call, tools off, nothing in state changes: the outcome is given, not re-rolled."""
+    system_prompt = build_system_prompt(state, setting_key, system_key)
+    provider.append_user_message(conversation, (
+        f"{player_input}\n\n[From the application: this move was already resolved - do not roll again "
+        f"or change anything. The player saw these results but no scene:\n{_outcome_brief(debug_events)}\n"
+        "Write the scene now, in prose, honoring each result's degree.]"))
+    tool_specs = build_tool_specs(get_system(system_key), mechanics.load_catalog(setting_key),
+                                  dynamics.load(setting_key), True, geo=geography.load(setting_key))
+    try:
+        result = provider.call(model, system_prompt, tool_specs, conversation, no_tools=True)
+    except TypeError:
+        result = provider.call(model, system_prompt, [], conversation)
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    return scrub_narration("\n".join(result.text_parts).strip())
+
+
 def _needs_narration(outcome_unnarrated, text_parts):
     """True when the turn would end with a result nobody narrated, or with no text at all."""
     return outcome_unnarrated or not "".join(text_parts).strip()
@@ -477,6 +523,9 @@ def rebuild_conversation(provider, turns, memory_turns=MEMORY_TURNS, opening=Non
     for t in (turns or [])[-memory_turns:]:
         player = (t.get("player_input") or "").strip()
         narration = (t.get("narration") or "").strip()
+        if narration == MISSING_NARRATION:
+            # don't show the model a turn where "the GM" wrote nothing - it copies the pattern
+            narration = "[This turn's scene was never written; only the rules outcome below is known.]"
         if not player or not narration:
             continue
         try:
@@ -584,10 +633,6 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
             break
 
         if not turn_result.tool_calls:
-            if _needs_narration(outcome_unnarrated, text_parts) and not nudged:
-                provider.append_user_message(conversation, NARRATE_NUDGE)
-                nudged = True
-                continue
             break
 
         results = []
@@ -615,8 +660,25 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
         if all(tc["name"] == "suggest_actions" for tc in turn_result.tool_calls):
             if _needs_narration(outcome_unnarrated, text_parts) and not nudged:
                 nudged = True
-                continue
+                continue  # its tool result told the model to write the scene; give it the chance
             break
+
+    # Still no scene: one last call with tools switched off, so the only thing the model CAN do is
+    # write (2026-11-03 - a nudge the model could answer with more tool calls wasn't enough).
+    if _needs_narration(outcome_unnarrated, text_parts) and (budget_ok is None or budget_ok()):
+        provider.append_user_message(conversation, NARRATE_NUDGE)
+        try:
+            final = provider.call(model, system_prompt, tool_specs, conversation, no_tools=True)
+        except TypeError:  # a provider without the no_tools switch
+            final = provider.call(model, system_prompt, tool_specs, conversation)
+        provider.append_assistant_turn(conversation, final)
+        if usage_sink is not None and final.usage is not None:
+            usage_sink.append(final.usage)
+        text_parts.extend(final.text_parts)
+        if final.tool_calls:  # shouldn't happen with tools off; answer them so the history stays valid
+            provider.append_tool_results(conversation, final, [{"id": tc["id"], "content": "Ignored: write the scene."} for tc in final.tool_calls])
+        debug_events.append({"type": "gm_retry", "reason": "no narration after the outcome; asked again with tools off",
+                             "wrote": bool("".join(final.text_parts).strip())})
 
     if dyn:
         closing = dynamics.end_of_turn(state, dyn, resource_schema, system)
@@ -624,6 +686,8 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
             debug_events.append({"type": "world", "reasoning": "End of turn: the world moves.", "changes": closing})
 
     narration = scrub_narration("\n".join(text_parts).strip())
+    if not narration and any(e.get("type") in ("check", "operation") for e in debug_events):
+        narration = MISSING_NARRATION
 
     if council_mode and model_key and model_key not in council.SKIP_COUNCIL_FOR_MODEL_KEYS:
         # Runs on every turn as of 2026-08-20 - no gate here anymore, the router inside run_council

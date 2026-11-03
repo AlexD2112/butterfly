@@ -118,7 +118,7 @@ def build_tool_specs(feat_catalog):
                         "type": "integer",
                         "description": "8 routine, 12 meaningful challenge, 15 hard, 18 very hard, 22 extraordinary.",
                     },
-                    "description": {"type": "string", "description": "What is being attempted, in-fiction."},
+                    "description": {"type": "string", "description": "A short label for the attempt, 3-10 words, e.g. 'Seek the chair's recognition'. This is NOT the narration: the player sees it as a caption on the dice. After the result comes back you still write the scene."},
                     "target_npc": {
                         "type": ["string", "null"],
                         "description": "Key of the NPC this check is directed at/against, if any (used for enmity tracking).",

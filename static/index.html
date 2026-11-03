@@ -325,6 +325,9 @@
   #map-canvas .leaflet-tooltip.map-label { background: transparent; border: none; box-shadow: none; color: #d8cfb3; font-family: var(--font-display);
     font-size: 13px; font-weight: 600; text-shadow: 0 0 3px #000, 0 0 6px #000; padding: 0; }
   #map-canvas .leaflet-tooltip.map-label::before { display: none; }
+  .redo-scene { margin-top: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent, #b8954a); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  .redo-scene:disabled { opacity: .5; cursor: default; }
+  .redo-note { color: var(--muted); font-size: .9em; }
   #map-canvas .map-you { width: 14px; height: 14px; background: #f0d48a; border: 2px solid #1a1408; transform: rotate(45deg); box-shadow: 0 0 0 2px #f0d48a66, 0 0 10px #000; }
   #map-canvas .leaflet-control-attribution { background: rgba(14,21,18,.8); color: var(--muted); }
   #map-canvas .leaflet-control-attribution a { color: var(--accent-2); }
@@ -2432,6 +2435,9 @@ function renderMechanics(debugEvents) {
       const lines = extras.concat((ev.changes || []).map(renderChangeLine));
       return `<div class="line world-event">${label}${ev.reasoning ? ` — ${escapeHtml(ev.reasoning)}` : ''}<br>${lines.join('<br>')}</div>`;
     }
+    if (ev.type === 'gm_retry') {
+      return `<div class="line">GM RETRY — no scene was written after the result; asked again with tools off (${ev.wrote ? 'it wrote one' : 'still nothing'})</div>`;
+    }
     if (ev.type === 'council') {
       const judgesSelected = (ev.judges_selected || []).join(', ');
       const routerNote = ev.router_reasoning ? ` — ${escapeHtml(ev.router_reasoning)}` : '';
@@ -2618,8 +2624,40 @@ function scrollToTurn(div) {
   else logEl.scrollTo({ top: logEl.scrollHeight, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
 }
 
+// "Write the scene" (2026-11-03): offered only on the latest turn, and only when the game master
+// resolved it (rolls, changes) but wrote no scene. It keeps the rolls; it only asks for the prose.
+const MISSING_NARRATION = "(The game master didn't write this scene. The result above stands - carry on from it, or ask what happened.)";
+function narrationMissing(n) { return !(n || '').trim() || (n || '').trim() === MISSING_NARRATION; }
+function addRedoButton(div) {
+  document.querySelectorAll('.redo-scene').forEach(b => b.remove());
+  const box = div.querySelector('.narration');
+  box.innerHTML = `<p class="clamped">The game master didn't write this scene.</p><button type="button" class="redo-scene">Write the scene</button><span class="redo-note"> Keeps the rolls as they are.</span>`;
+  box.querySelector('.redo-scene').addEventListener('click', () => redoScene(box));
+}
+async function redoScene(box) {
+  const btn = box.querySelector('.redo-scene');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  box.insertAdjacentHTML('beforeend', `<div class="gm-typing"><span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span><span class="label">The game master is writing</span></div>`);
+  try {
+    const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/narrate_last`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_key: modelSelect.value }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    box.innerHTML = formatNarration(data.narration);
+    if (!REDUCED_MOTION) revealWords(box);
+    if (data.budget) renderBudget(data.budget);
+  } catch (e) {
+    const t = box.querySelector('.gm-typing'); if (t) t.remove();
+    btn.disabled = false;
+    box.insertAdjacentHTML('beforeend', `<p class="clamped">${escapeHtml(String(e.message || e))}</p>`);
+  }
+}
+
 function appendTurn(userText, narration, debugEvents, opts = {}) {
   clearSuggestions();
+  document.querySelectorAll('.redo-scene').forEach(b => b.closest('.narration') && b.remove());
   const div = document.createElement('div');
   div.className = 'turn';
   div.innerHTML = (userText ? renderPlayerLine(userText) : '') +
@@ -2627,7 +2665,9 @@ function appendTurn(userText, narration, debugEvents, opts = {}) {
     `<div class="narration">${formatNarration(narration)}</div>` +
     renderMechanics((debugEvents || []).filter(e => e.type !== 'suggestions'));
   logEl.appendChild(div);
-  if (!opts.instant && !REDUCED_MOTION) revealWords(div.querySelector('.narration'));
+  const canRedo = opts.canRedo && userText && narrationMissing(narration) && (debugEvents || []).some(e => e.type === 'check' || e.type === 'operation');
+  if (canRedo) addRedoButton(div);
+  else if (!opts.instant && !REDUCED_MOTION) revealWords(div.querySelector('.narration'));
   if (!opts.noSuggestions) renderSuggestions(div, debugEvents);
   if (opts.instant) logEl.scrollTop = logEl.scrollHeight; else scrollToTurn(div);
   return div;
@@ -2732,7 +2772,7 @@ async function loadCharacterState(isNew) {
     turns.forEach((t, i) => {
       let debugEvents = [];
       try { debugEvents = t.debug_events_json ? JSON.parse(t.debug_events_json) : []; } catch (e) { debugEvents = []; }
-      appendTurn(t.player_input, t.narration, debugEvents, { instant: true, noSuggestions: i < turns.length - 1 });
+      appendTurn(t.player_input, t.narration, debugEvents, { instant: true, noSuggestions: i < turns.length - 1, canRedo: i === turns.length - 1 });
     });
     if (turns.length === 0 && data.state.turn_number > 0) {
       appendSystemNote('This game has progress saved but no recorded history (it may predate history recording). The game master still has the campaign summary.');
@@ -2791,7 +2831,7 @@ async function sendTurn(presetText) {
       appendTurn(text, `[Error: ${data.error}]`, [], { instant: true });
       setStatus('Error — see message above.');
     } else {
-      appendTurn(text, data.narration, data.debug_events);
+      appendTurn(text, data.narration, data.debug_events, { canRedo: true });
       renderSidebar(data.state);
       renderMechPanel(data.state);
       renderBudget(data.budget);

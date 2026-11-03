@@ -27,7 +27,8 @@ class RecordingProvider:
     def append_user_message(self, conversation, text):
         conversation.append({"role": "user", "content": text})
 
-    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None, no_tools=False):
+        self.no_tools = getattr(self, "no_tools", []) + [no_tools]
         self.conversations.append([dict(m) if isinstance(m, dict) else m for m in conversation])
         self.specs.append(tool_specs)
         result = self.script[min(self.calls, len(self.script) - 1)]
@@ -214,9 +215,78 @@ class TestNarrationGuard(unittest.TestCase):
         self.assertEqual(provider.calls, 3)
         self.assertIn("recognizes you", narration)
 
+    def test_the_last_try_has_tools_switched_off(self):
+        # the second report: the model kept answering with tools, never prose
+        provider, narration, events = self.run_script([
+            tools_turn(CHECK),
+            tools_turn(("propose_state_update", {"reasoning": "xp"}), SUGGEST),
+            tools_turn(SUGGEST),
+            tools_turn(SUGGEST),
+            text_turn("Dan rises. 'The comrade is generous,' he says, and the room laughs."),
+        ])
+        self.assertEqual(provider.no_tools, [False, False, False, False, True])
+        self.assertIn("the room laughs", narration)
+        self.assertTrue(any(e["type"] == "gm_retry" and e["wrote"] for e in events))
+
     def test_the_gm_is_only_sent_back_once(self):
         provider, narration, _ = self.run_script([tools_turn(CHECK), text_turn(""), text_turn(""), text_turn("never")])
         self.assertEqual(provider.calls, 3)
+        self.assertEqual(narration, engine.MISSING_NARRATION)
+
+
+class TestWriteTheScene(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = TemporaryDirectory()
+        self._orig_db_file = db.DB_FILE
+        db.DB_FILE = Path(self._tmpdir.name) / "t.db"
+        db.init_db()
+        server.app.config["TESTING"] = True
+        self.client = server.app.test_client()
+        user = db.get_or_create_discord_user("9", "P", None)
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = user["id"]
+        self.cid = self.client.post("/api/characters", json={"type": "premade", "setting_key": "petrograd_1917"}).get_json()["character_id"]
+
+    def tearDown(self):
+        db.DB_FILE = self._orig_db_file
+        self._tmpdir.cleanup()
+
+    def play_blank_turn(self):
+        provider = RecordingProvider([tools_turn(CHECK), text_turn(""), text_turn("")])
+        with patch.object(providers, "get_provider", return_value=(provider, "m")):
+            return self.client.post(f"/api/character/{self.cid}/turn", json={"input": "I seek the chair.", "model_key": "luna"}).get_json()
+
+    def test_a_missing_scene_can_be_written_without_rerolling(self):
+        data = self.play_blank_turn()
+        self.assertEqual(data["narration"], engine.MISSING_NARRATION)
+        state_before = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
+        provider = RecordingProvider([text_turn("Chkheidze rings the bell and gives you the floor.")])
+        with patch.object(providers, "get_provider", return_value=(provider, "m")):
+            res = self.client.post(f"/api/character/{self.cid}/narrate_last", json={"model_key": "luna"}).get_json()
+        self.assertIn("gives you the floor", res["narration"])
+        self.assertEqual(provider.no_tools, [True])
+        sent = provider.conversations[0][-1]["content"]
+        self.assertIn("do not roll again", sent)
+        self.assertIn("presence / negotiation", sent)
+        turns = db.get_turns(self.cid)
+        self.assertEqual(len(turns), 1)
+        self.assertIn("gives you the floor", turns[0]["narration"])
+        state_after = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
+        self.assertEqual(state_before["resources"], state_after["resources"])
+        self.assertEqual(state_before["turn_number"], state_after["turn_number"])
+
+    def test_only_when_the_scene_is_missing(self):
+        provider = RecordingProvider([text_turn("The workers cheer.")])
+        with patch.object(providers, "get_provider", return_value=(provider, "m")):
+            self.client.post(f"/api/character/{self.cid}/turn", json={"input": "I wave.", "model_key": "luna"})
+        res = self.client.post(f"/api/character/{self.cid}/narrate_last", json={"model_key": "luna"})
+        self.assertEqual(res.status_code, 400)
+
+    def test_a_blank_turn_does_not_teach_the_gm_to_skip_scenes(self):
+        self.play_blank_turn()
+        conv = engine.rebuild_conversation(RecordingProvider([]), db.get_turns(self.cid))
+        self.assertNotIn(engine.MISSING_NARRATION, conv[1]["content"])
+        self.assertIn("never written", conv[1]["content"])
 
 
 if __name__ == "__main__":
