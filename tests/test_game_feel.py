@@ -159,5 +159,65 @@ class TestScrub(unittest.TestCase):
         self.assertNotIn("suggest_actions", {s["name"] for s in provider.specs[0]})
 
 
+def tools_turn(*calls, text=""):
+    return providers.TurnResult(text_parts=[text] if text else [], tool_calls=[
+        {"id": f"t{i}", "name": n, "input": x} for i, (n, x) in enumerate(calls)], usage=None)
+
+
+CHECK = ("request_check", {"attribute": "presence", "skill": "negotiation", "dc": 15, "description": "Seek the chair's recognition"})
+SUGGEST = ("suggest_actions", {"options": ["Address Chkheidze", "Ask Kamenev to second you"]})
+
+
+class TestNarrationGuard(unittest.TestCase):
+    def run_script(self, script):
+        provider = RecordingProvider(script)
+        state = engine.load_premade_character_state("petrograd_1917")
+        narration, events = engine.run_turn(provider, "m", state, "petrograd_1917", "red_admiral", [], "x", suggestions=True)
+        return provider, narration, events
+
+    def test_a_roll_with_no_scene_sends_the_gm_back_once(self):
+        # the reported failure: roll, then state update + suggestions with no text, then nothing
+        provider, narration, events = self.run_script([
+            tools_turn(CHECK),
+            tools_turn(("propose_state_update", {"reasoning": "xp", "xp_award": 20}), SUGGEST),
+            text_turn(""),
+            text_turn("Chkheidze looks at you over his spectacles and rings the bell. The floor is yours."),
+        ])
+        self.assertIn("The floor is yours", narration)
+        self.assertEqual(provider.calls, 4)
+        self.assertIn(engine.NARRATE_NUDGE, [m["content"] for m in provider.conversations[3] if isinstance(m["content"], str)])
+
+    def test_suggestions_before_the_scene_are_bounced(self):
+        provider, narration, events = self.run_script([
+            tools_turn(CHECK),
+            tools_turn(SUGGEST),
+            text_turn("Dan half rises, then sits again. Chkheidze nods to you."),
+        ])
+        self.assertIn("Chkheidze nods", narration)
+        self.assertIn(engine.NARRATE_FIRST, provider.conversations[2][-1]["content"])
+        self.assertTrue(any(e["type"] == "suggestions" for e in events))
+
+    def test_a_normal_turn_costs_no_extra_call(self):
+        provider, narration, _ = self.run_script([
+            tools_turn(CHECK, text="You push through the door."),
+            tools_turn(SUGGEST, text="Chkheidze gives you the floor."),
+        ])
+        self.assertEqual(provider.calls, 2)
+        self.assertIn("gives you the floor", narration)
+
+    def test_text_before_the_roll_does_not_count_as_narrating_it(self):
+        provider, narration, _ = self.run_script([
+            tools_turn(CHECK, text="You catch Kamenev's sleeve."),
+            text_turn(""),
+            text_turn("The chair recognizes you."),
+        ])
+        self.assertEqual(provider.calls, 3)
+        self.assertIn("recognizes you", narration)
+
+    def test_the_gm_is_only_sent_back_once(self):
+        provider, narration, _ = self.run_script([tools_turn(CHECK), text_turn(""), text_turn(""), text_turn("never")])
+        self.assertEqual(provider.calls, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

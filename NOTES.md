@@ -1,3 +1,14 @@
+# Narration guard (2026-11-03)
+
+- Reported: a turn showed the roll, +2 soviet authority and +20 XP, but no scene - only the check's
+  one-line description. The model's last responses were tool calls / empty, and the loop ended on
+  "no tool calls" without checking any narration had been written.
+- run_turn now tracks whether a result from request_check / call_vote / sway_unit /
+  resolve_confrontation has gone back to the model without any text after it. If the turn would end
+  in that state (or with no text at all), the model gets one extra message telling it to write the
+  scene; suggest_actions called before the scene is answered "not shown yet: write the scene first".
+  At most one extra call per turn; normal turns cost nothing extra.
+
 # Bridge ends snapped to OpenStreetMap (2026-11-03)
 
 - My hand-estimated bridge ends were off by up to a few hundred metres, and the Okhtinsky Bridge was
