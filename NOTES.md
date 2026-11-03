@@ -1,3 +1,16 @@
+# Last two units placed; more map layers; Russia and world views (2026-11-03)
+
+- Keksgolmsky: ru.wikipedia ("Казармы лейб-гвардии Конного полка") says the Keksgolm regiment was
+  in house No. 4 before 1917 - Yakubovicha St 4, OSM relation/1101406. Litovsky: a 27 Feb 1917
+  report places it "in its barracks on Kirochnaya Street" - pinned at street precision (dashed).
+  All 34 places now pinned.
+- Layers (Esri, no key, each muted by a CSS filter): dark (default), parchment, satellite,
+  terrain, physical. CARTO / OpenTopoMap are gone.
+- Views: Petrograd / Russia & the front / World buttons. Below zoom 10 the city markers give way to
+  approximate region-level places (Helsingfors, Mogilev, Riga, Kiev, Novocherkassk, the capitals...)
+  and a sketched September 1917 front line (`regions` in map.json). At world zoom only the big
+  capitals keep permanent labels.
+
 # Map positions pinned by hand; Esri base maps (2026-11-03, via the user's Chrome)
 
 - Ran the lookups in the user's browser (Wikidata search + geosearch + SPARQL over every
