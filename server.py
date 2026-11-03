@@ -684,6 +684,62 @@ def api_character_turns(character_id):
     return jsonify({"turns": db.get_turns(character_id)})
 
 
+@app.route("/api/character/<int:character_id>/narrate_last", methods=["POST"])
+def api_character_narrate_last(character_id):
+    """'Write the scene' (2026-11-03): only for the latest turn, and only when it has no narration.
+    The turn's rolls and state changes are kept exactly as they were; this just asks the GM for the
+    prose it never wrote."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    if user["is_local"]:
+        return jsonify({"error": "Log in with Discord to send AI turns.", "discord_login_required": True}), 403
+    turns = db.get_turns(character_id)
+    if not turns or not engine.narration_missing(turns[-1].get("narration")):
+        return jsonify({"error": "Only the latest turn, and only when its scene is missing, can be rewritten."}), 400
+    lock = _turn_lock_for(user["id"])
+    if not lock.acquire(blocking=False):
+        return jsonify({"error": "Another turn is already in progress for this account."}), 429
+    try:
+        budget_before = db.get_budget_status(user["id"])
+        if budget_before["remaining_usd"] <= 0:
+            return jsonify({"error": "Out of usage budget for this account.", "budget": budget_before}), 402
+        body = request.get_json(silent=True) or {}
+        model_key = body.get("model_key") or turns[-1].get("model_key") or providers.DEFAULT_MODEL_KEY
+        if model_key not in providers.MODEL_REGISTRY:
+            return jsonify({"error": f"Unknown model key: {model_key}"}), 400
+        try:
+            provider, model = providers.get_provider(model_key)
+        except providers.ProviderError as e:
+            return jsonify({"error": str(e)}), 400
+        last = turns[-1]
+        conversation = engine.rebuild_conversation(
+            provider, turns[:-1], opening=engine.opening_for_existing(row["setting_key"], row["state"], row.get("created_at")),
+            opening_note=row["state"].get("opening_gm_note"))
+        try:
+            events = json.loads(last.get("debug_events_json") or "[]")
+        except (TypeError, ValueError):
+            events = []
+        usage_sink = []
+        try:
+            narration = engine.narrate_resolved_turn(provider, model, row["state"], row["setting_key"], row["system_key"],
+                                                     conversation, last.get("player_input") or "", events, usage_sink=usage_sink)
+        except Exception as e:
+            return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
+        finally:
+            for usage in usage_sink:
+                db.record_usage(user["id"], character_id, usage["provider"], usage["model"], usage["input_tokens"],
+                                usage["output_tokens"], usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0),
+                                pricing.estimate_cost_usd(usage))
+        if not narration:
+            return jsonify({"error": "The game master still wrote nothing. Try again, or pick another model."}), 502
+        db.update_turn_narration(last["id"], narration)
+        return jsonify({"narration": narration, "budget": db.get_budget_status(user["id"])})
+    finally:
+        lock.release()
+
+
 @app.route("/api/character/<int:character_id>/turn", methods=["POST"])
 def api_character_turn(character_id):
     user = current_user()

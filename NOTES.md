@@ -9,6 +9,13 @@
   write. The Turn Log shows "GM RETRY" when that happens. If even that returns nothing, the turn
   says so in place of an empty scene instead of showing nothing.
 - request_check's description is now described to the model as a 3-10 word caption, not narration.
+- "Write the scene" button: shown on the latest turn only, and only when it was resolved (a roll or
+  an operation) but has no scene. POST /api/character/<id>/narrate_last makes one call with tools
+  off, given the recorded results in full ("do not roll again"), and replaces only that turn's
+  narration. State, rolls and the turn count are untouched. A turn left without a scene shows in
+  the GM's rebuilt memory as "[scene never written]" plus its outcome, so the model doesn't learn
+  to skip scenes from it.
+
 
 # Narration guard (2026-11-03)
 

@@ -1678,6 +1678,15 @@ def record_turn(character_id, turn_number, player_input, narration, model_key, d
     conn.close()
 
 
+def update_turn_narration(turn_id, narration):
+    """Replaces one turn's narration and nothing else (2026-11-03: 'write the scene' for a turn the
+    GM resolved but never narrated - its rolls and changes stay exactly as recorded)."""
+    conn = get_db()
+    conn.execute("UPDATE turns SET narration = ? WHERE id = ?", (narration, turn_id))
+    conn.commit()
+    conn.close()
+
+
 def get_turns(character_id):
     """Every recorded turn for one character, oldest first - used by view_transcript.py."""
     conn = get_db()
