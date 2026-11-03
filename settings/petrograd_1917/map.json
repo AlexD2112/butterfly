@@ -1,0 +1,529 @@
+{
+  "_comment": "Map for the game screen (2026-11-02). Positions are NOT typed in: geodata.py looks each place up on Wikidata by its search terms and only accepts a result whose label contains must_contain, that sits inside bbox, and that lies within max_m metres of the rough lat/lng estimate given here (the estimate is only an anchor for that check - it is never drawn). Places that can't be verified are left off the map, and the Map button only appears once enough places verify (geodata.VIABILITY_*). Layers: 'historic' is a georeferenced period street plan, used only if its tiles exist under static/ (build them with tools/georeference_scan.py); otherwise the map opens on terrain (OpenTopoMap), with an unlabeled modern street layer as a third option - central Petrograd's rivers, canals and street plan are largely unchanged since 1917.",
+  "center": [
+    59.943,
+    30.335
+  ],
+  "zoom": 13,
+  "bbox": [
+    59.75,
+    29.6,
+    60.15,
+    30.6
+  ],
+  "layers": [
+    {
+      "id": "historic",
+      "name": "1914 street plan",
+      "local_tiles": "maptiles/petrograd_1917",
+      "url": "/static/maptiles/petrograd_1917/{z}/{x}/{y}.png",
+      "attribution": "Historic plan: see static/maptiles/petrograd_1917/SOURCE.txt",
+      "maxZoom": 17,
+      "minZoom": 11
+    },
+    {
+      "id": "terrain",
+      "name": "Terrain",
+      "url": "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+      "subdomains": "abc",
+      "attribution": "Map data &copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors, SRTM | Style &copy; <a href=\"https://opentopomap.org\">OpenTopoMap</a> (CC-BY-SA)",
+      "maxZoom": 17
+    },
+    {
+      "id": "streets",
+      "name": "Streets (no modern labels)",
+      "url": "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+      "subdomains": "abcd",
+      "attribution": "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
+      "maxZoom": 18
+    }
+  ],
+  "default_layer": "historic",
+  "landmarks": [
+    {
+      "id": "smolny_institute",
+      "name": "Smolny Institute",
+      "note": "Seat of the Petrograd Soviet and its Executive Committee.",
+      "search": [
+        "Смольный институт",
+        "Smolny Institute"
+      ],
+      "must_contain": [
+        "смольн",
+        "smolny"
+      ],
+      "lat": 59.9488,
+      "lng": 30.3958
+    },
+    {
+      "id": "winter_palace",
+      "name": "Winter Palace",
+      "note": "Seat of the Provisional Government.",
+      "search": [
+        "Зимний дворец",
+        "Winter Palace"
+      ],
+      "must_contain": [
+        "зимн",
+        "winter palace"
+      ],
+      "lat": 59.9399,
+      "lng": 30.3146
+    },
+    {
+      "id": "peter_and_paul_fortress",
+      "name": "Peter and Paul Fortress",
+      "note": "Arsenal and guns across the Neva from the Winter Palace.",
+      "search": [
+        "Петропавловская крепость",
+        "Peter and Paul Fortress"
+      ],
+      "must_contain": [
+        "петропавловск",
+        "peter and paul"
+      ],
+      "lat": 59.95,
+      "lng": 30.3167
+    },
+    {
+      "id": "kresty_prison",
+      "name": "Kresty Prison",
+      "note": "Where the campaign begins.",
+      "search": [
+        "Кресты",
+        "Kresty"
+      ],
+      "must_contain": [
+        "крест",
+        "kresty"
+      ],
+      "lat": 59.9531,
+      "lng": 30.3876
+    },
+    {
+      "id": "mariinsky_palace",
+      "name": "Mariinsky Palace",
+      "note": "The Pre-Parliament meets here from 7 October.",
+      "search": [
+        "Мариинский дворец",
+        "Mariinsky Palace"
+      ],
+      "must_contain": [
+        "мариинск",
+        "mariinsky"
+      ],
+      "lat": 59.9313,
+      "lng": 30.3094
+    },
+    {
+      "id": "tauride_palace",
+      "name": "Tauride Palace",
+      "note": "The old Duma; the Soviet's first home in February.",
+      "search": [
+        "Таврический дворец",
+        "Tauride Palace"
+      ],
+      "must_contain": [
+        "тавричес",
+        "tauride"
+      ],
+      "lat": 59.9475,
+      "lng": 30.376
+    },
+    {
+      "id": "finland_station",
+      "name": "Finland Station",
+      "note": "Trains to Finland - and the way Lenin comes back.",
+      "search": [
+        "Финляндский вокзал",
+        "Finlyandsky railway station"
+      ],
+      "must_contain": [
+        "финлянд",
+        "finland"
+      ],
+      "lat": 59.9557,
+      "lng": 30.3561
+    },
+    {
+      "id": "central_telephone_exchange",
+      "name": "Central Telephone Exchange",
+      "note": "Whoever holds it can cut the government off.",
+      "search": [
+        "Центральная телефонная станция",
+        "Центральная городская телефонная станция"
+      ],
+      "must_contain": [
+        "телефон",
+        "telephone"
+      ],
+      "lat": 59.9353,
+      "lng": 30.3141,
+      "label": "left"
+    },
+    {
+      "id": "central_telegraph",
+      "name": "Central Telegraph",
+      "note": "Petrograd's link to the front and the provinces.",
+      "search": [
+        "Центральный телеграф",
+        "Главный почтамт"
+      ],
+      "must_contain": [
+        "почтамт",
+        "telegraph"
+      ],
+      "lat": 59.9318,
+      "lng": 30.301,
+      "label": "left"
+    },
+    {
+      "id": "nevsky_prospekt",
+      "name": "Nevsky Prospekt",
+      "note": "The city's main avenue; banks, cafes, crowds, demonstrations.",
+      "search": [
+        "Невский проспект",
+        "Nevsky Prospect"
+      ],
+      "must_contain": [
+        "невск",
+        "nevsky"
+      ],
+      "lat": 59.9343,
+      "lng": 30.33,
+      "max_m": 2500
+    },
+    {
+      "id": "nikolaevsky_bridge",
+      "name": "Nikolaevsky Bridge",
+      "note": "Links the center to Vasilievsky Island.",
+      "search": [
+        "Благовещенский мост",
+        "Blagoveshchensky Bridge"
+      ],
+      "must_contain": [
+        "благовещенск",
+        "blagoveshchensky"
+      ],
+      "lat": 59.9349,
+      "lng": 30.2898,
+      "kind": "bridge"
+    },
+    {
+      "id": "palace_bridge",
+      "name": "Palace Bridge",
+      "note": "From the Winter Palace to Vasilievsky Island.",
+      "search": [
+        "Дворцовый мост",
+        "Palace Bridge"
+      ],
+      "must_contain": [
+        "дворцов",
+        "palace bridge"
+      ],
+      "lat": 59.9413,
+      "lng": 30.3088,
+      "kind": "bridge"
+    },
+    {
+      "id": "troitsky_bridge",
+      "name": "Troitsky Bridge",
+      "note": "To the Petrograd side and the fortress.",
+      "search": [
+        "Троицкий мост",
+        "Trinity Bridge"
+      ],
+      "must_contain": [
+        "троицк",
+        "trinity"
+      ],
+      "lat": 59.9486,
+      "lng": 30.327,
+      "kind": "bridge"
+    },
+    {
+      "id": "liteyny_bridge",
+      "name": "Liteyny Bridge",
+      "note": "To the Vyborg side and its factories.",
+      "search": [
+        "Литейный мост",
+        "Liteyny Bridge"
+      ],
+      "must_contain": [
+        "литейн",
+        "liteyny"
+      ],
+      "lat": 59.9517,
+      "lng": 30.349,
+      "kind": "bridge"
+    },
+    {
+      "id": "putilov_works",
+      "name": "Putilov Works",
+      "note": "The city's biggest factory; tens of thousands of workers.",
+      "search": [
+        "Кировский завод",
+        "Kirov Plant"
+      ],
+      "must_contain": [
+        "киров",
+        "kirov"
+      ],
+      "lat": 59.879,
+      "lng": 30.259,
+      "max_m": 4000
+    },
+    {
+      "id": "kronstadt",
+      "name": "Kronstadt",
+      "note": "Island naval base of the Baltic Fleet, about 30 km west.",
+      "search": [
+        "Кронштадт",
+        "Kronstadt"
+      ],
+      "must_contain": [
+        "кронштадт",
+        "kronstadt"
+      ],
+      "lat": 59.993,
+      "lng": 29.768,
+      "max_m": 4000
+    }
+  ],
+  "units": {
+    "red_guards": {
+      "name": "Red Guards",
+      "where": "Vyborg side factory districts",
+      "search": [
+        "Выборгская сторона"
+      ],
+      "must_contain": [
+        "выборгск"
+      ],
+      "lat": 59.962,
+      "lng": 30.346
+    },
+    "kronstadt_sailors": {
+      "name": "Kronstadt sailors",
+      "where": "Kronstadt",
+      "search": [
+        "Кронштадт"
+      ],
+      "must_contain": [
+        "кронштадт"
+      ],
+      "lat": 59.988,
+      "lng": 29.78,
+      "max_m": 6000
+    },
+    "pavlovsky": {
+      "name": "Pavlovsky Regiment",
+      "where": "Field of Mars",
+      "search": [
+        "Казармы лейб-гвардии Павловского полка",
+        "Казармы Павловского полка"
+      ],
+      "must_contain": [
+        "павловск"
+      ],
+      "lat": 59.9437,
+      "lng": 30.3317
+    },
+    "keksgolmsky": {
+      "name": "Keksgolmsky Regiment",
+      "where": "Admiralty side, west of the center",
+      "search": [
+        "Казармы лейб-гвардии Кексгольмского полка",
+        "Казармы Кексгольмского полка"
+      ],
+      "must_contain": [
+        "кексгольм"
+      ],
+      "lat": 59.929,
+      "lng": 30.293
+    },
+    "volynsky": {
+      "name": "Volynsky Regiment",
+      "where": "Liteyny district",
+      "search": [
+        "Казармы лейб-гвардии Волынского полка",
+        "Казармы Волынского полка"
+      ],
+      "must_contain": [
+        "волынск"
+      ],
+      "lat": 59.9425,
+      "lng": 30.37
+    },
+    "litovsky": {
+      "name": "Litovsky Regiment",
+      "where": "Liteyny district",
+      "search": [
+        "Казармы лейб-гвардии Литовского полка",
+        "Казармы Литовского полка"
+      ],
+      "must_contain": [
+        "литовск"
+      ],
+      "lat": 59.9468,
+      "lng": 30.362
+    },
+    "preobrazhensky": {
+      "name": "Preobrazhensky Regiment",
+      "where": "Kirochnaya Street",
+      "search": [
+        "Казармы лейб-гвардии Преображенского полка",
+        "Казармы Преображенского полка"
+      ],
+      "must_contain": [
+        "преображенск"
+      ],
+      "lat": 59.944,
+      "lng": 30.354
+    },
+    "izmailovsky": {
+      "name": "Izmailovsky Regiment",
+      "where": "Izmailovsky Prospekt",
+      "search": [
+        "Казармы лейб-гвардии Измайловского полка",
+        "Казармы Измайловского полка"
+      ],
+      "must_contain": [
+        "измайловск"
+      ],
+      "lat": 59.912,
+      "lng": 30.3055
+    },
+    "semyonovsky": {
+      "name": "Semyonovsky Regiment",
+      "where": "Semyonovsky parade ground",
+      "search": [
+        "Казармы лейб-гвардии Семёновского полка",
+        "Казармы Семёновского полка",
+        "Казармы лейб-гвардии Семеновского полка",
+        "Казармы Семеновского полка"
+      ],
+      "must_contain": [
+        "семе"
+      ],
+      "lat": 59.9195,
+      "lng": 30.329
+    },
+    "egersky": {
+      "name": "Egersky Regiment",
+      "where": "south of the center",
+      "search": [
+        "Казармы лейб-гвардии Егерского полка",
+        "Казармы Егерского полка"
+      ],
+      "must_contain": [
+        "егерск"
+      ],
+      "lat": 59.916,
+      "lng": 30.342
+    },
+    "grenadier": {
+      "name": "Grenadier Regiment",
+      "where": "Petrograd side",
+      "search": [
+        "Казармы лейб-гвардии Гренадерского полка",
+        "Казармы Гренадерского полка"
+      ],
+      "must_contain": [
+        "гренадер"
+      ],
+      "lat": 59.97,
+      "lng": 30.315
+    },
+    "moskovsky": {
+      "name": "Moskovsky Regiment",
+      "where": "Vyborg side",
+      "search": [
+        "Казармы лейб-гвардии Московского полка",
+        "Казармы Московского полка"
+      ],
+      "must_contain": [
+        "московск"
+      ],
+      "lat": 59.96,
+      "lng": 30.333
+    },
+    "finlyandsky": {
+      "name": "Finlyandsky Regiment",
+      "where": "Vasilievsky Island",
+      "search": [
+        "Казармы лейб-гвардии Финляндского полка",
+        "Казармы Финляндского полка"
+      ],
+      "must_contain": [
+        "финлянд"
+      ],
+      "lat": 59.937,
+      "lng": 30.265
+    },
+    "peter_paul": {
+      "name": "Peter and Paul Fortress garrison",
+      "where": "Peter and Paul Fortress",
+      "search": [
+        "Петропавловская крепость"
+      ],
+      "must_contain": [
+        "петропавловск"
+      ],
+      "lat": 59.9507,
+      "lng": 30.3185
+    },
+    "don_cossacks": {
+      "name": "Don Cossack regiments (1st, 4th, 14th)",
+      "where": "south of the center",
+      "search": [
+        "Казармы лейб-гвардии Казачьего полка",
+        "Казармы Донского казачьего полка"
+      ],
+      "must_contain": [
+        "казач"
+      ],
+      "lat": 59.91,
+      "lng": 30.353
+    },
+    "junkers": {
+      "name": "Officer cadets (junkers)",
+      "where": "military schools, Petrograd side",
+      "search": [
+        "Владимирское военное училище",
+        "Павловское военное училище"
+      ],
+      "must_contain": [
+        "училищ"
+      ],
+      "lat": 59.9615,
+      "lng": 30.297
+    },
+    "womens_battalion": {
+      "name": "1st Petrograd Women's Battalion",
+      "where": "Levashovo, north of the city",
+      "search": [
+        "Левашово"
+      ],
+      "must_contain": [
+        "левашов"
+      ],
+      "lat": 60.106,
+      "lng": 30.201,
+      "max_m": 6000
+    },
+    "armored_cars": {
+      "name": "Armored car units",
+      "where": "Mikhailovsky Manege",
+      "search": [
+        "Михайловский манеж",
+        "Манеж Михайловского замка"
+      ],
+      "must_contain": [
+        "манеж"
+      ],
+      "lat": 59.9378,
+      "lng": 30.3383
+    }
+  }
+}

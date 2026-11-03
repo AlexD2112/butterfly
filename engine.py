@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 
 import copy
+import re
 
 import council
 import dynamics
@@ -184,6 +185,10 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     # Sections rendered elsewhere in this prompt are dropped from the raw state dump (2026-10-26) so
     # the same facts aren't paid for twice every turn: mechanics (compact rendering below), and - for
     # settings with dynamics.json - the world, the calendar and the canon beats (THE CLOCK section).
+    # The campaign log is rendered as its own bounded section below instead of dumped whole - it grew
+    # by ~400 characters every turn forever, inside every single call's prompt.
+    digest.pop("campaign_log_summary", None)
+    earlier_section = _earlier_campaign_section(state)
     if mechanics.load_catalog(setting_key):
         digest.pop("mechanics", None)
     if dynamics.load(setting_key):
@@ -267,11 +272,11 @@ the system's curated catalogs (by id) - never invent one.
 
 # CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
 {json.dumps(digest, indent=2)}
-{mechanics_section}{operations_section}{dynamics_section}
+{mechanics_section}{operations_section}{dynamics_section}{earlier_section}
 {scene_section}
 
-Narrate in second person, present tense, evocative but not overwrought. Keep responses to a few
-paragraphs. Never resolve an uncertain action without calling request_check first. Checks come back
+Narrate in second person, present tense. Never resolve an uncertain action without calling
+request_check first. Checks come back
 with one of six degrees (critical_success, strong_success, success, success_at_cost, failure,
 critical_failure) and a gm_instruction - honor the degree: a success_at_cost really does cost
 something, a strong success really does go better than asked. When a check plainly risks or builds
@@ -281,7 +286,147 @@ level-up options from the system rules before proceeding.
 {council.VOICE_GUIDANCE}"""
 
 
-def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None, council_mode=False, model_key=None, extra_context=None, allow_time_advance=True):
+# ==================== suggested actions + narration scrub (2026-11-02) ====================
+
+SUGGEST_ACTIONS_SPEC = {
+    "name": "suggest_actions",
+    "description": (
+        "Call once, at the end of every reply, alongside the narration: 2-4 short next moves the "
+        "player might make, shown as clickable choices under your narration (the player can always "
+        "type something else). Write them in the player's voice as plain actions, 3-9 words each, "
+        "specific to this exact moment and to named people/places in it - e.g. 'Tell Kamenev the "
+        "fraction votes tonight', 'Go to the Pavlovsky barracks', 'Ask Natalia what she heard'. Make "
+        "them genuinely different (bold, careful, social, sideways). Never generic ('Look around', "
+        "'Continue'), never numbered, never mention mechanics."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {"options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 4}},
+        "required": ["options"],
+    },
+}
+
+MAX_SUGGESTION_CHARS = 70
+
+
+def clean_suggestions(options):
+    out = []
+    for o in options or []:
+        if not isinstance(o, str):
+            continue
+        o = " ".join(o.split()).strip(" -•*\"'").rstrip(".")
+        o = re.sub(r"^\d+[.)]\s*", "", o)
+        if o and len(o) <= MAX_SUGGESTION_CHARS and o.lower() not in {x.lower() for x in out}:
+            out.append(o)
+    return out[:4]
+
+
+_TRAILING_PROMPTS = re.compile(
+    r"(\n+|^|(?<=[.!?\"”]) )(\*\*)?(what (do|will|would) you (do|say)( next| now)?\??|"
+    r"what('s| is) your (next )?(move|response|plan)\??|how do you respond\??|"
+    r"the choice is yours\.?|the decision is yours\.?)(\*\*)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def scrub_narration(text):
+    """Cheap, deterministic cleanup of the few chatbot tells a prompt can't fully stop: a closing
+    'What do you do?' (the choice chips do that job now), markdown headers/bold, and curly quotes."""
+    if not text:
+        return text
+    prev = None
+    while prev != text:
+        prev = text
+        text = _TRAILING_PROMPTS.sub("", text).rstrip()
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    return text.strip()
+
+
+# ==================== GM memory (2026-11-02) ====================
+# How many recent turns the GM sees verbatim. Older turns survive only as one-line summaries in the
+# system prompt (see _earlier_campaign_section). Kept small on purpose: each verbatim turn is a
+# player line plus a few paragraphs, and the window is resent on every call.
+MEMORY_TURNS = 8
+EARLIER_SUMMARIES = 24
+EARLIER_SUMMARY_CHARS = 220
+
+
+def summarize_outcomes(debug_events):
+    """One compact line of what the application decided in a turn - so a GM rebuilt from the
+    transcript remembers that the vote passed 551-401, not just the prose about it."""
+    bits = []
+    for ev in debug_events or []:
+        t = ev.get("type")
+        if t == "check":
+            skill = f"/{ev['skill']}" if ev.get("skill") else ""
+            bits.append(f"{ev.get('attribute')}{skill} check: {str(ev.get('degree', '')).replace('_', ' ')}")
+        elif t == "operation":
+            r = ev.get("result") or {}
+            if r.get("error"):
+                continue
+            if ev.get("operation") == "call_vote":
+                bits.append(f"vote \"{r.get('motion', '')}\" {'passed' if r.get('passed') else 'failed'} {r.get('yes')}-{r.get('no')}")
+            elif ev.get("operation") == "sway_unit":
+                bits.append(f"{r.get('unit')} loyalty {r.get('loyalty_before')}->{r.get('loyalty_after')}")
+            elif ev.get("operation") == "resolve_confrontation":
+                bits.append(f"clash at {r.get('objective')}: {str(r.get('player_outcome', '')).replace('_', ' ')}")
+        for c in ev.get("changes") or []:
+            k = c.get("kind")
+            if k == "resource" and c.get("after") != c.get("before"):
+                bits.append(f"{c['key']} {c['before']}->{c['after']}")
+            elif k == "time":
+                bits.append(f"{c.get('days')} day(s) passed, now {c.get('after')}")
+            elif k == "canon_event":
+                bits.append(f"canon: {c['key']} fired")
+            elif k == "threshold" and c.get("message"):
+                bits.append(f"event: {c['message'][:120]}")
+    # de-duplicate while keeping order
+    seen, out = set(), []
+    for b in bits:
+        if b not in seen:
+            seen.add(b)
+            out.append(b)
+    return "; ".join(out[:14])
+
+
+def rebuild_conversation(provider, turns, memory_turns=MEMORY_TURNS):
+    """A fresh provider conversation holding the last few turns of a transcript as plain
+    user/assistant text pairs (no tool calls - every provider accepts that shape)."""
+    conversation = provider.new_conversation()
+    for t in (turns or [])[-memory_turns:]:
+        player = (t.get("player_input") or "").strip()
+        narration = (t.get("narration") or "").strip()
+        if not player or not narration:
+            continue
+        try:
+            events = json.loads(t.get("debug_events_json") or "[]")
+        except (TypeError, ValueError):
+            events = []
+        outcome = summarize_outcomes(events)
+        provider.append_user_message(conversation, player)
+        conversation.append({"role": "assistant", "content": narration + (f"\n\n[Rules resolved: {outcome}]" if outcome else "")})
+    return conversation
+
+
+def _earlier_campaign_section(state):
+    log = state.get("campaign_log_summary") or []
+    older = log[:-MEMORY_TURNS] if len(log) > MEMORY_TURNS else []
+    if not older:
+        return ""
+    lines = []
+    for entry in older[-EARLIER_SUMMARIES:]:
+        text = " ".join(str(entry.get("summary", "")).split())
+        if len(text) > EARLIER_SUMMARY_CHARS:
+            text = text[:EARLIER_SUMMARY_CHARS].rsplit(" ", 1)[0] + "..."
+        lines.append(f"- turn {entry.get('turn')}: {text}")
+    skipped = len(older) - min(len(older), EARLIER_SUMMARIES)
+    head = f"(and {skipped} earlier turns not shown)\n" if skipped else ""
+    return "\n\n# EARLIER IN THE CAMPAIGN (the last few turns are in the conversation itself)\n" + head + "\n".join(lines)
+
+
+def run_turn(provider, model, state, setting_key, system_key, conversation, user_input, usage_sink=None, budget_ok=None, council_mode=False, model_key=None, extra_context=None, allow_time_advance=True, suggestions=False):
     """Returns (narration, debug_events).
 
     extra_context: see build_system_prompt - only ever passed by multiplayer.resolve_action, for
@@ -305,6 +450,9 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     pick a cheaper same-provider model for the council's judges; without it (the loop.py CLI path
     never passes it) council_mode is silently a no-op regardless of its value.
 
+    suggestions (2026-11-02): offer the suggest_actions tool - 2-4 short next moves the frontend
+    shows as clickable choices. Single-player only; the multiplayer UI has no place for them.
+
     allow_time_advance (2026-10-26): single-player campaigns keep their own calendar, moved by the GM
     through propose_state_update's days_elapsed (see dynamics.py). Multiplayer passes False - a shared
     server's date belongs to scheduler.py's ticks, and one player's turn must not move it.
@@ -318,6 +466,8 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
         dynamics.recompute_derived(state, dyn)
         dynamics.update_calendar(state, dyn)
     tool_specs = build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance)
+    if suggestions:
+        tool_specs.append(SUGGEST_ACTIONS_SPEC)
     provider.append_user_message(conversation, user_input)
     system_prompt = build_system_prompt(
         state, setting_key, system_key, extra_context=extra_context, allow_time_advance=allow_time_advance,
@@ -347,6 +497,13 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
 
         results = []
         for tc in turn_result.tool_calls:
+            if tc["name"] == "suggest_actions":
+                options = clean_suggestions((tc.get("input") or {}).get("options"))
+                debug_events = [e for e in debug_events if e.get("type") != "suggestions"]
+                if options:
+                    debug_events.append({"type": "suggestions", "options": options})
+                results.append({"id": tc["id"], "content": "Shown to the player."})
+                continue
             content, events = handle_tool_call(
                 tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance,
             )
@@ -354,13 +511,17 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
             results.append({"id": tc["id"], "content": content})
 
         provider.append_tool_results(conversation, turn_result, results)
+        # suggest_actions is the closing move of a turn: when it's the only thing the model asked
+        # for, there's nothing to feed back, so skip the extra round-trip (and its latency/cost).
+        if all(tc["name"] == "suggest_actions" for tc in turn_result.tool_calls):
+            break
 
     if dyn:
         closing = dynamics.end_of_turn(state, dyn, resource_schema, system)
         if closing:
             debug_events.append({"type": "world", "reasoning": "End of turn: the world moves.", "changes": closing})
 
-    narration = "\n".join(text_parts).strip()
+    narration = scrub_narration("\n".join(text_parts).strip())
 
     if council_mode and model_key and model_key not in council.SKIP_COUNCIL_FOR_MODEL_KEYS:
         # Runs on every turn as of 2026-08-20 - no gate here anymore, the router inside run_council

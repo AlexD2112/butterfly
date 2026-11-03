@@ -85,7 +85,10 @@ class TestTurnRouteBudget(unittest.TestCase):
                 call_count["n"] += 1
                 return super().call(*a, **kw)
 
-        with patch.object(providers, "get_provider", return_value=(CountingFakeProvider(per_call_usage), "gpt-5.6-luna")):
+        # Council is opt-in since 2026-11-02 (server.COUNCIL_MODE); switched on here because this test
+        # is specifically about a multi-call turn being billed in full.
+        with patch.object(providers, "get_provider", return_value=(CountingFakeProvider(per_call_usage), "gpt-5.6-luna")), \
+             patch.object(server, "COUNCIL_MODE", True):
             res = self.client.post(
                 f"/api/character/{character_id}/turn",
                 json={"input": "I look around.", "model_key": "luna"},

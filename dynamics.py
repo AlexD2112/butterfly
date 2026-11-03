@@ -257,8 +257,8 @@ def try_fire_event(state, dyn, resource_schema, key, cause):
 def fire_event(state, dyn, resource_schema, key, cause):
     state["canon_events"][key]["status"] = "fired"
     state["canon_events"][key]["fired_date"] = state.get("date")
-    changes = [{"kind": "canon_event", "key": key, "status": "fired"}]
     spec = ((dyn or {}).get("canon") or {}).get(key) or {}
+    changes = [{"kind": "canon_event", "key": key, "status": "fired", "message": spec.get("message")}]
     changes += apply_effects(state, dyn, resource_schema, spec.get("effects"), f"canon: {key}")
     if spec.get("message"):
         add_notice(state, spec["message"], f"canon: {key}")
@@ -372,7 +372,9 @@ def update_calendar(state, dyn):
         if gap is not None and gap >= 0:
             upcoming.append({"label": ms["label"], "date": ms["date"], "days_until": gap})
     upcoming.sort(key=lambda x: x["days_until"])
-    state["calendar"] = {"upcoming": upcoming[:3]}
+    state["calendar"] = {"upcoming": upcoming[:3], "style": (dyn.get("calendar") or {}).get("style")}
+    if dyn.get("hud"):
+        state["hud"] = dyn["hud"]  # which numbers the game screen's top bar shows
 
 
 def end_of_turn(state, dyn, resource_schema, system):
