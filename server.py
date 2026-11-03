@@ -31,6 +31,8 @@ load_dotenv(Path(__file__).parent / ".env")
 import db
 import dynamics
 import geodata
+import geography
+import mechanics
 import discord_oauth
 import discord_webhook
 import engine
@@ -319,6 +321,15 @@ def api_setting_map(setting_key):
     if data is None:
         return jsonify({"viable": False, "reason": "No map for this setting."}), 404
     status = geodata.map_status(setting_key, data)
+    geo = geography.load(setting_key)
+    if geo:  # the movement graph (2026-11-03): bridges, railways, sea lanes - drawn under the units
+        status["graph"] = {
+            "nodes": {nid: {"lat": n["lat"], "lng": n["lng"], "name": n["name"], "kind": n["kind"], "scale": n["scale"]}
+                      for nid, n in geo["nodes"].items()},
+            "edges": [{"id": eid, "a": e["a"], "b": e["b"], "mode": e["mode"], "name": e.get("name", "")}
+                      for eid, e in geo["edges"].items() if e["mode"] != "street" and not e.get("generated")],
+            "home": geo.get("initial_positions") or {},
+        }
     if status["resolving"] and GEOCODE_ENABLED:
         geodata.start_background_resolve(setting_key, data)
     return jsonify(status)
@@ -506,6 +517,10 @@ def api_character_state(character_id):
     if dyn:
         dynamics.ensure_initialized(state, dyn)
         dynamics.update_calendar(state, dyn)
+    catalog = mechanics.load_catalog(row["setting_key"])
+    if catalog:
+        mechanics.ensure_always_present(state, catalog)
+    geography.ensure_initialized(state, geography.load(row["setting_key"]))
     return jsonify({"state": engine.build_state_digest(state), "setting_key": row["setting_key"], "system_key": row["system_key"]})
 
 

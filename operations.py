@@ -247,9 +247,10 @@ def sway_unit(state, system, inp, influence_value=None):
     m = (state.get("mechanics") or {}).get(inp.get("instance_id"))
     if not m or m.get("render_primitive") != "forces":
         return {"error": f"No forces mechanic '{inp.get('instance_id')}'."}, []
-    unit = next((u for u in m["data"]["units"] if u["id"] == inp.get("unit_id")), None)
+    units = [u for x in (state.get("mechanics") or {}).values() if x.get("render_primitive") == "forces" for u in x["data"]["units"]]
+    unit = next((u for u in units if u["id"] == inp.get("unit_id")), None)
     if unit is None:
-        ids = [u["id"] for u in m["data"]["units"]]
+        ids = [u["id"] for u in units]
         return {"error": f"No unit '{inp.get('unit_id')}'. Units: {ids}"}, []
     today = state.get("date")
     if today and unit.get("last_swayed_date") == today:
@@ -376,7 +377,10 @@ def resolve_confrontation(state, system, inp, rng=random):
     m = (state.get("mechanics") or {}).get(inp.get("instance_id"))
     if not m or m.get("render_primitive") != "forces":
         return {"error": f"No forces mechanic '{inp.get('instance_id')}'."}, []
-    by_id = {u["id"]: u for u in m["data"]["units"]}
+    # Units can come from any forces tracker (2026-11-03): a fight at Gatchina can pit the city's Red
+    # Guards against Krasnov's Cossacks from the country-wide order of battle.
+    trackers = [x for x in (state.get("mechanics") or {}).values() if x.get("render_primitive") == "forces"]
+    by_id = {u["id"]: u for t in trackers for u in t["data"]["units"]}
     unknown = [uid for uid in (inp.get("player_units") or []) + (inp.get("opposing_units") or []) if uid not in by_id]
     if unknown:
         return {"error": f"Unknown unit ids {unknown}. Units: {list(by_id)}"}, []
@@ -493,7 +497,9 @@ def resolve_confrontation(state, system, inp, rng=random):
                 u["loyalty"] = max(-3, min(3, before + step))
                 loyalty_changes.append({"unit": u["name"], "before": before, "after": u["loyalty"], "cause": "watched the outcome"})
 
-    m["data"]["units"] = [u for u in m["data"]["units"] if u["strength"] > 0]
+    for t in trackers:
+        kept = [u for u in t["data"]["units"] if u["strength"] > 0]
+        t["data"]["units"] = kept or t["data"]["units"][:1]  # a tracker keeps at least one (zero-strength) unit
     engagement = {
         "objective": inp.get("objective", ""), "player_outcome": player_outcome,
         "date": state.get("date"), "turn": state.get("turn_number", 0),

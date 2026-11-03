@@ -542,6 +542,210 @@
       "updated_turn": 0,
       "review_after_turns": 6,
       "next_review_turn": 6
+    },
+    "russia_forces": {
+      "type_key": "russia_forces",
+      "title": "Armed Forces Across Russia",
+      "render_primitive": "forces",
+      "data": {
+        "loyalty_scale": "same as petrograd_garrison",
+        "units": [
+          {
+            "id": "latvian_riflemen",
+            "name": "Latvian Rifle regiments (12th Army)",
+            "kind": "infantry",
+            "strength": 15000,
+            "readiness": 4,
+            "loyalty": 2,
+            "note": "The best-disciplined troops on the Northern Front, and the most Bolshevik. Held the line before Riga."
+          },
+          {
+            "id": "fifth_army",
+            "name": "5th Army (Dvinsk)",
+            "kind": "infantry",
+            "strength": 20000,
+            "readiness": 2,
+            "loyalty": 1,
+            "note": "Huge, war-weary front army; its committees are drifting left. Strength is the men who'd move, not the rolls."
+          },
+          {
+            "id": "krasnov_corps",
+            "name": "3rd Cavalry Corps (Krasnov)",
+            "kind": "cossack",
+            "strength": 5000,
+            "readiness": 3,
+            "loyalty": -2,
+            "note": "Kornilov's spearhead in August, pulled back to Ostrov and Pskov under General Krasnov. The government's nearest loyal cavalry."
+          },
+          {
+            "id": "native_division",
+            "name": "Caucasian Native Cavalry Division",
+            "kind": "cavalry",
+            "strength": 3000,
+            "readiness": 3,
+            "loyalty": -1,
+            "note": "The 'Savage Division' - Kornilov sent it on Petrograd; Muslim agitators talked it out of the attack. Sullen and unreliable."
+          },
+          {
+            "id": "baltic_fleet",
+            "name": "Baltic Fleet crews (Helsingfors)",
+            "kind": "naval",
+            "strength": 12000,
+            "readiness": 4,
+            "loyalty": 3,
+            "note": "Centrobalt is under Bolshevik influence (Dybenko). Battleships and destroyers at Helsingfors; a few days from the Neva."
+          },
+          {
+            "id": "stavka_guard",
+            "name": "Stavka garrison (Mogilev)",
+            "kind": "garrison",
+            "strength": 2000,
+            "readiness": 3,
+            "loyalty": -1,
+            "note": "Guards supreme headquarters. Obeys the commander-in-chief, whoever that is this week."
+          },
+          {
+            "id": "tekke_regiment",
+            "name": "Tekke Cavalry Regiment (Kornilov's guard)",
+            "kind": "cavalry",
+            "strength": 400,
+            "readiness": 4,
+            "loyalty": -3,
+            "note": "Turkmen horsemen personally loyal to Kornilov, guarding him and his generals at Bykhov."
+          },
+          {
+            "id": "western_front_reserves",
+            "name": "Minsk garrison and Western Front reserves",
+            "kind": "garrison",
+            "strength": 10000,
+            "readiness": 2,
+            "loyalty": 1,
+            "note": "The Minsk Soviet leans Bolshevik; the front headquarters does not."
+          },
+          {
+            "id": "polish_corps",
+            "name": "1st Polish Corps (Dowbor-Musnicki)",
+            "kind": "infantry",
+            "strength": 15000,
+            "readiness": 3,
+            "loyalty": -1,
+            "note": "Polish units being gathered into a corps. Answers to Polish politics, not Russian; distrusts the Bolsheviks."
+          },
+          {
+            "id": "czechoslovak_corps",
+            "name": "Czechoslovak Corps",
+            "kind": "infantry",
+            "strength": 30000,
+            "readiness": 4,
+            "loyalty": 0,
+            "note": "Czech and Slovak volunteers and ex-prisoners, well officered, meaning to fight Austria. Neutral in Russian quarrels - for now."
+          },
+          {
+            "id": "ukrainian_units",
+            "name": "Ukrainianized units (Central Rada)",
+            "kind": "infantry",
+            "strength": 10000,
+            "readiness": 2,
+            "loyalty": 0,
+            "note": "Regiments that have declared for the Kiev Rada. Fight for Ukraine, not for either side in Petrograd."
+          },
+          {
+            "id": "moscow_garrison",
+            "name": "Moscow garrison (reserve regiments)",
+            "kind": "garrison",
+            "strength": 15000,
+            "readiness": 2,
+            "loyalty": 1,
+            "note": "Tens of thousands on the rolls; slow to move either way."
+          },
+          {
+            "id": "moscow_red_guards",
+            "name": "Moscow Red Guards",
+            "kind": "militia",
+            "strength": 6000,
+            "readiness": 2,
+            "loyalty": 3,
+            "note": "Factory militias from Zamoskvorechye and the outer districts."
+          },
+          {
+            "id": "moscow_junkers",
+            "name": "Moscow officer cadets (Alexandrovsky and ensign schools)",
+            "kind": "cadet",
+            "strength": 5000,
+            "readiness": 4,
+            "loyalty": -3,
+            "note": "Will fight for the government in Moscow, and did."
+          },
+          {
+            "id": "don_host",
+            "name": "Don Cossack Host (Ataman Kaledin)",
+            "kind": "cossack",
+            "strength": 8000,
+            "readiness": 3,
+            "loyalty": -2,
+            "note": "Kaledin's Cossacks at Novocherkassk. Will fight for the Don; uncertain beyond it."
+          },
+          {
+            "id": "kuban_host",
+            "name": "Kuban Cossack Host",
+            "kind": "cossack",
+            "strength": 5000,
+            "readiness": 3,
+            "loyalty": -1,
+            "note": "The Kuban Rada guards its own autonomy."
+          },
+          {
+            "id": "orenburg_cossacks",
+            "name": "Orenburg Cossacks (Dutov)",
+            "kind": "cossack",
+            "strength": 4000,
+            "readiness": 3,
+            "loyalty": -2,
+            "note": "Ataman Dutov's men, astride the road to Turkestan."
+          },
+          {
+            "id": "donbass_red_guards",
+            "name": "Donbass and Kharkov Red Guards",
+            "kind": "militia",
+            "strength": 5000,
+            "readiness": 2,
+            "loyalty": 3,
+            "note": "Miners and railwaymen of the Donets basin."
+          },
+          {
+            "id": "tsaritsyn_garrison",
+            "name": "Tsaritsyn garrison",
+            "kind": "garrison",
+            "strength": 8000,
+            "readiness": 2,
+            "loyalty": 2,
+            "note": "'Red Tsaritsyn' - the garrison sided with the Bolsheviks early."
+          },
+          {
+            "id": "kazan_garrison",
+            "name": "Kazan garrison",
+            "kind": "garrison",
+            "strength": 10000,
+            "readiness": 2,
+            "loyalty": 1,
+            "note": "A large reserve garrison on the Volga; the State Bank's gold is in the city."
+          },
+          {
+            "id": "urals_militias",
+            "name": "Urals factory militias",
+            "kind": "militia",
+            "strength": 3000,
+            "readiness": 2,
+            "loyalty": 3,
+            "note": "Armed workers of the Ekaterinburg and Perm works."
+          }
+        ]
+      },
+      "status": "active",
+      "created_turn": 0,
+      "updated_turn": 0,
+      "review_after_turns": 10,
+      "next_review_turn": 10
     }
   },
   "world_notices": [],

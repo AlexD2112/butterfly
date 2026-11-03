@@ -14,7 +14,7 @@ class TestLoadCatalog(unittest.TestCase):
             set(catalog.keys()),
             {
                 "petrograd_soviet_composition", "petrograd_garrison", "red_army_command", "diplomatic_position",
-                "bolshevik_central_committee", "military_revolutionary_committee",
+                "bolshevik_central_committee", "military_revolutionary_committee", "russia_forces",
             },
         )
         for type_key, entry in catalog.items():

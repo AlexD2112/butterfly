@@ -180,6 +180,8 @@ MAX_LEAN_STEP_PER_UPDATE = 1
 MAX_LOYALTY_STEP_PER_UPDATE = 1
 MAX_SEAT_SHIFT_FRACTION = 0.10      # of body_size, summed across all blocs, per update
 MAX_STRENGTH_GROWTH_FRACTION = 0.25  # per unit, per update (losses are unlimited)
+MAX_NEW_UNIT_STRENGTH = 3000  # a unit the AI adds by update; bigger arrivals come from code (geography.py)
+MAX_NEW_UNIT_READINESS = 3
 
 
 def _clamp(v, lo, hi):
@@ -274,6 +276,15 @@ def validate_forces(data, previous=None):
         loyalty = _clamp(_as_int(u.get("loyalty"), 0), *LOYALTY_RANGE)
         readiness = _clamp(_as_int(u.get("readiness"), 3), *READINESS_RANGE)
         prev = prev_by_id.get(uid)
+        if prev is None and previous is not None:
+            # A unit appearing mid-campaign through an update: capped, so the AI can't conjure an
+            # army in one line. Merges, splits and larger raises go through reorganize_units.
+            if strength > MAX_NEW_UNIT_STRENGTH:
+                notes.append(f"new unit {u['name']} strength {strength} limited to {MAX_NEW_UNIT_STRENGTH} (use reorganize_units)")
+                strength = MAX_NEW_UNIT_STRENGTH
+            if readiness > MAX_NEW_UNIT_READINESS:
+                notes.append(f"new unit {u['name']} readiness limited to {MAX_NEW_UNIT_READINESS}")
+                readiness = MAX_NEW_UNIT_READINESS
         if prev is not None:
             if abs(loyalty - prev["loyalty"]) > MAX_LOYALTY_STEP_PER_UPDATE:
                 stepped = prev["loyalty"] + (1 if loyalty > prev["loyalty"] else -1)
@@ -343,6 +354,17 @@ def validate_data(primitive, data, previous=None):
     if validator is None:
         return None, [f"unknown render primitive '{primitive}'"], []
     return validator(data, previous)
+
+
+def ensure_always_present(state, catalog):
+    """Creates any catalog type marked always_present that a save doesn't have yet (2026-11-03: the
+    country-wide order of battle, added after some campaigns had started)."""
+    changes = []
+    for type_key, entry in (catalog or {}).items():
+        if isinstance(entry, dict) and entry.get("always_present") and not any(
+                m.get("type_key") == type_key for m in (state.get("mechanics") or {}).values()):
+            changes += apply_mechanic_update(state, catalog, {"action": "create", "type_key": type_key, "instance_id": type_key})
+    return changes
 
 
 def apply_mechanic_update(state, catalog, update):
