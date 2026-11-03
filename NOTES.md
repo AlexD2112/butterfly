@@ -1,3 +1,23 @@
+# NPC sheets: code-set DCs, fog of war, new sheets (2026-11-03)
+
+- settings/petrograd_1917/npc_sheets.json: 31 sheets. The 15 stat blocks that were notes in npcs.md
+  (unchanged numbers, proficient skills added) plus 16 new: Natalia Sedova, Sverdlov, Tsereteli,
+  Chernov, Dzerzhinsky, Lunacharsky, Bukharin, Uritsky, Raskolnikov, Lazimir, Kornilov, Alekseev,
+  Kaledin, Polkovnikov, Verkhovsky, Buchanan. New numbers are design values. npcs.md is behaviour
+  notes only now.
+- request_check with a target_npc that has a sheet: DC = 10 + the NPC's modifier in the resisting
+  skill (default: the player's skill; opposed_by names another, 'none' keeps the GM's DC). The
+  result carries dc_source. Dan resisting a debate is DC 16 (Oration 14 +2, expertise +4).
+- Fog of war: familiarity 0-3 per sheet (how well Trotsky knows them at the start) plus one tier per
+  3 checks aimed at them. Tier 0 shows only what they're famous for, 1 a word per attribute and
+  their best skills, 2 ranges (2 wide, offset per person so the true value isn't always central)
+  and all trained skills, 3 the exact sheet. GET /api/character/<id>/npc/<key> sends only what the
+  tier allows; sheets made in play live in state["_npc_sheets"], which never reaches the client.
+- Relationships and Enmity rows in the sheet panel open the person's card.
+- create_npc_sheet: for important new figures; validated (all six 3-20, total <= 90, at most two
+  18+, <= 2 expertise / 4 proficient, real skill ids, no duplicates, two per turn), starts a
+  relationship at trust 0.
+
 # Narration guard, part 2 (2026-11-03)
 
 - It happened again after part 1 shipped. Without the server logs I can't see which branch it took,

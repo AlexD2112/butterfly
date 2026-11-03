@@ -33,6 +33,7 @@ import dynamics
 import geodata
 import geography
 import mechanics
+import npcs
 import discord_oauth
 import discord_webhook
 import engine
@@ -682,6 +683,26 @@ def api_character_turns(character_id):
     if row is None:
         return jsonify({"error": "Character not found."}), 404
     return jsonify({"turns": db.get_turns(character_id)})
+
+
+@app.route("/api/character/<int:character_id>/npc/<key>")
+def api_character_npc(character_id, key):
+    """One NPC as the player's character knows them (2026-11-03): npcs.player_view decides how much
+    of the sheet to show from how well they know the person - the exact numbers never leave the
+    server until the character knows them well."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    state = row["state"]
+    sheet_key = npcs.resolve(state, row["setting_key"], key)
+    view = npcs.player_view(state, row["setting_key"], sheet_key) if sheet_key else None
+    if view is None:
+        rel = (state.get("relationships") or {}).get(key) or {}
+        return jsonify({"key": key, "name": key.replace("_", " ").title(), "no_sheet": True,
+                        "trust": rel.get("trust"), "relationship_note": rel.get("note"),
+                        "enmity": ((state.get("enmity") or {}).get(key) or {}).get("pips")})
+    return jsonify(view)
 
 
 @app.route("/api/character/<int:character_id>/narrate_last", methods=["POST"])
