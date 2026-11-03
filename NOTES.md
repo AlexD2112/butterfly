@@ -1,3 +1,15 @@
+# Narration guard, part 2 (2026-11-03)
+
+- It happened again after part 1 shipped. Without the server logs I can't see which branch it took,
+  but the likeliest one: the model kept answering with tool calls (suggest_actions again) instead of
+  prose, and part 1's nudge could be answered with more tools. It also seemed to treat
+  request_check's description ("You publicly yield the floor to Dan...") as its narration.
+- Now: if the turn would still end with no scene, one last call goes out with tools switched off
+  (Anthropic tool_choice none, OpenAI tool_choice "none", Ollama no tools), so the model can only
+  write. The Turn Log shows "GM RETRY" when that happens. If even that returns nothing, the turn
+  says so in place of an empty scene instead of showing nothing.
+- request_check's description is now described to the model as a 3-10 word caption, not narration.
+
 # Narration guard (2026-11-03)
 
 - Reported: a turn showed the roll, +2 soviet authority and +20 XP, but no scene - only the check's

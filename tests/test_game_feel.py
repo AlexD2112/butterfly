@@ -27,7 +27,8 @@ class RecordingProvider:
     def append_user_message(self, conversation, text):
         conversation.append({"role": "user", "content": text})
 
-    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None, no_tools=False):
+        self.no_tools = getattr(self, "no_tools", []) + [no_tools]
         self.conversations.append([dict(m) if isinstance(m, dict) else m for m in conversation])
         self.specs.append(tool_specs)
         result = self.script[min(self.calls, len(self.script) - 1)]
@@ -214,9 +215,23 @@ class TestNarrationGuard(unittest.TestCase):
         self.assertEqual(provider.calls, 3)
         self.assertIn("recognizes you", narration)
 
+    def test_the_last_try_has_tools_switched_off(self):
+        # the second report: the model kept answering with tools, never prose
+        provider, narration, events = self.run_script([
+            tools_turn(CHECK),
+            tools_turn(("propose_state_update", {"reasoning": "xp"}), SUGGEST),
+            tools_turn(SUGGEST),
+            tools_turn(SUGGEST),
+            text_turn("Dan rises. 'The comrade is generous,' he says, and the room laughs."),
+        ])
+        self.assertEqual(provider.no_tools, [False, False, False, False, True])
+        self.assertIn("the room laughs", narration)
+        self.assertTrue(any(e["type"] == "gm_retry" and e["wrote"] for e in events))
+
     def test_the_gm_is_only_sent_back_once(self):
         provider, narration, _ = self.run_script([tools_turn(CHECK), text_turn(""), text_turn(""), text_turn("never")])
         self.assertEqual(provider.calls, 3)
+        self.assertEqual(narration, engine.MISSING_NARRATION)
 
 
 if __name__ == "__main__":

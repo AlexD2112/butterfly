@@ -2432,6 +2432,9 @@ function renderMechanics(debugEvents) {
       const lines = extras.concat((ev.changes || []).map(renderChangeLine));
       return `<div class="line world-event">${label}${ev.reasoning ? ` — ${escapeHtml(ev.reasoning)}` : ''}<br>${lines.join('<br>')}</div>`;
     }
+    if (ev.type === 'gm_retry') {
+      return `<div class="line">GM RETRY — no scene was written after the result; asked again with tools off (${ev.wrote ? 'it wrote one' : 'still nothing'})</div>`;
+    }
     if (ev.type === 'council') {
       const judgesSelected = (ev.judges_selected || []).join(', ');
       const routerNote = ev.router_reasoning ? ` — ${escapeHtml(ev.router_reasoning)}` : '';

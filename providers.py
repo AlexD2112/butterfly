@@ -76,10 +76,12 @@ class AnthropicProvider:
             for s in tool_specs
         ]
 
-    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None, no_tools=False):
         kwargs = {}
         if force_tool_name:
             kwargs["tool_choice"] = {"type": "tool", "name": force_tool_name}
+        elif no_tools:  # text only - the tool list stays so earlier tool_use blocks still validate
+            kwargs["tool_choice"] = {"type": "none"}
         response = self._client.messages.create(
             model=model,
             max_tokens=1500,
@@ -162,10 +164,12 @@ class OpenAIProvider:
             for s in tool_specs
         ]
 
-    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None, no_tools=False):
         kwargs = {}
         if force_tool_name:
             kwargs["tool_choice"] = {"type": "function", "name": force_tool_name}
+        elif no_tools:
+            kwargs["tool_choice"] = "none"
         response = self._client.responses.create(
             model=model,
             instructions=system_prompt,
@@ -269,10 +273,10 @@ class OllamaTunnelProvider:
             for s in tool_specs
         ]
 
-    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None):
+    def call(self, model, system_prompt, tool_specs, conversation, force_tool_name=None, no_tools=False):
         messages = [{"role": "system", "content": system_prompt}] + conversation
         body = {"model": model, "messages": messages, "stream": False}
-        if tool_specs:
+        if tool_specs and not no_tools:
             body["tools"] = self._tools_payload(tool_specs)
         if force_tool_name:
             body["tool_choice"] = {"type": "function", "function": {"name": force_tool_name}}
