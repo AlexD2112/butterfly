@@ -136,11 +136,54 @@ def load_json(setting_key, path):
 
 
 def load_premade_character_state(setting_key):
-    """Returns a fresh copy of a setting's premade signature character's starting state."""
+    """Returns a fresh copy of a setting's premade signature character's starting state.
+
+    2026-11-03: the opening scene is now saved into the state itself (opening_text / opening_gm_note)
+    at creation. Before, it lived only in opening_scene.md, was never a recorded turn, and so it
+    vanished when a game was reopened - and the GM never saw it either. Custom and historical
+    characters swap in the setting's opening_scene_other.md (see use_other_opening)."""
     info = SETTING_REGISTRY[setting_key]
     fresh = load_json(setting_key, info["premade_character_file"])
+    fresh["opening_text"], fresh["opening_gm_note"] = opening_parts(setting_key, premade=True)
     fresh["_is_new"] = True
     return fresh
+
+
+def _unwrap(text):
+    """Opening files are hard-wrapped at ~100 columns; the game renders single newlines as line
+    breaks, so join lines within a paragraph."""
+    paras = [" ".join(line.strip() for line in p.splitlines() if line.strip()) for p in text.strip().split("\n\n")]
+    return "\n\n".join(p for p in paras if p)
+
+
+def opening_parts(setting_key, premade=True):
+    """(player-facing text, GM-only note) from opening_scene.md / opening_scene_other.md. The GM
+    note follows a '<!-- gm -->' line and is never shown to the player."""
+    name = "opening_scene.md" if premade else "opening_scene_other.md"
+    path = setting_dir(setting_key) / name
+    if not path.exists():
+        path = setting_dir(setting_key) / "opening_scene.md"
+    raw = path.read_text(encoding="utf-8")
+    text, _, note = raw.partition("<!-- gm -->")
+    return _unwrap(text), " ".join(note.split())
+
+
+def use_other_opening(state, setting_key):
+    state["opening_text"], state["opening_gm_note"] = opening_parts(setting_key, premade=False)
+    return state
+
+
+def opening_for_existing(setting_key, state, created_at):
+    """The opening a game was shown: saved in its state, or - for games created before openings were
+    saved - the version that was live when it was created (settings/<key>/legacy_openings.json)."""
+    if state.get("opening_text"):
+        return state["opening_text"]
+    path = setting_dir(setting_key) / "legacy_openings.json"
+    if path.exists():
+        for entry in json.loads(path.read_text(encoding="utf-8")).get("openings", []):
+            if entry.get("until") is None or (created_at or 0) < entry["until"]:
+                return _unwrap(entry["text"])
+    return opening_parts(setting_key)[0]
 
 
 def load_state():
@@ -188,6 +231,8 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     # The campaign log is rendered as its own bounded section below instead of dumped whole - it grew
     # by ~400 characters every turn forever, inside every single call's prompt.
     digest.pop("campaign_log_summary", None)
+    digest.pop("opening_text", None)
+    digest.pop("opening_gm_note", None)
     earlier_section = _earlier_campaign_section(state)
     if mechanics.load_catalog(setting_key):
         digest.pop("mechanics", None)
@@ -391,10 +436,16 @@ def summarize_outcomes(debug_events):
     return "; ".join(out[:14])
 
 
-def rebuild_conversation(provider, turns, memory_turns=MEMORY_TURNS):
+def rebuild_conversation(provider, turns, memory_turns=MEMORY_TURNS, opening=None, opening_note=None):
     """A fresh provider conversation holding the last few turns of a transcript as plain
-    user/assistant text pairs (no tool calls - every provider accepts that shape)."""
+    user/assistant text pairs (no tool calls - every provider accepts that shape). While the game
+    is young enough that the opening is still inside the memory window, it goes first, so the GM
+    knows what scene the player's first moves are answering."""
     conversation = provider.new_conversation()
+    if opening and len(turns or []) < memory_turns:
+        provider.append_user_message(conversation, "(The game begins. Show me the opening scene.)")
+        note = f"\n\n[GM note, not shown to the player: {opening_note}]" if opening_note else ""
+        conversation.append({"role": "assistant", "content": opening + note})
     for t in (turns or [])[-memory_turns:]:
         player = (t.get("player_input") or "").strip()
         narration = (t.get("narration") or "").strip()

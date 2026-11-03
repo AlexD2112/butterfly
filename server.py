@@ -112,7 +112,7 @@ def _conversation_for(character_id, provider_key, provider):
     return _conversations[key]
 
 
-def _single_player_conversation(character_id, provider):
+def _single_player_conversation(character_id, provider, state=None, setting_key=None, created_at=None):
     """The GM's memory of recent play, rebuilt from the saved transcript on every turn.
 
     It used to be an in-memory thread that lived only as long as the server process - every deploy,
@@ -120,7 +120,9 @@ def _single_player_conversation(character_id, provider):
     400-character summaries. It also grew without bound (every tool call and result, forever), so
     long games got steadily slower and pricier. Rebuilding from db.get_turns fixes both: the window is
     the last engine.MEMORY_TURNS turns, verbatim, plus a one-line record of what the rules decided."""
-    return engine.rebuild_conversation(provider, db.get_turns(character_id))
+    opening = engine.opening_for_existing(setting_key, state, created_at) if (state is not None and setting_key) else None
+    return engine.rebuild_conversation(provider, db.get_turns(character_id), opening=opening,
+                                       opening_note=(state or {}).get("opening_gm_note"))
 
 
 # Serializes turns per-account so two concurrent requests for the same user (a double-click, two
@@ -392,6 +394,7 @@ def api_create_character():
         state["character"] = character
         state["setting_pack"] = setting_key
         state["system"] = system_key
+        engine.use_other_opening(state, setting_key)
         character_id = db.create_character(user["id"], setting_key, system_key, character["name"], state, is_premade=False, game_id=game_id)
         return jsonify({"character_id": character_id, "state": engine.build_state_digest(state), "is_new": True})
 
@@ -482,6 +485,7 @@ def api_create_historical_character():
     state["character"] = character
     state["setting_pack"] = setting_key
     state["system"] = system_key
+    engine.use_other_opening(state, setting_key)
     character_id = db.create_character(user["id"], setting_key, system_key, character["name"], state, is_premade=False, game_id=game_id)
     return jsonify({
         "eligible": True, "character_id": character_id, "state": engine.build_state_digest(state),
@@ -577,7 +581,22 @@ def api_character_opening_scene(character_id):
     row = db.get_character(character_id, user["id"])
     if row is None:
         return jsonify({"error": "Character not found."}), 404
-    return jsonify({"text": engine.load_text(row["setting_key"], "opening_scene.md")})
+    return jsonify({"text": engine.opening_for_existing(row["setting_key"], row["state"], row.get("created_at"))})
+
+
+@app.route("/api/character/<int:character_id>", methods=["DELETE"])
+def api_delete_character(character_id):
+    """Deletes one of the current account's single-player games (2026-11-03): the character, its
+    turn history and its game row. Spend already recorded against it stays in the budget ledger
+    (unlinked from the character) so deleting a game never refunds or hides usage. Multiplayer
+    characters aren't deletable here - they belong to a shared server's world."""
+    user = current_user()
+    result = db.delete_single_player_character(character_id, user["id"])
+    if result == "not_found":
+        return jsonify({"error": "Game not found."}), 404
+    if result == "multiplayer":
+        return jsonify({"error": "Multiplayer characters can't be deleted from here."}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/api/character/<int:character_id>/turns")
@@ -670,7 +689,7 @@ def api_character_turn(character_id):
 
         state = row["state"]
         provider_key = providers.MODEL_REGISTRY[model_key]["provider"]
-        conversation = _single_player_conversation(character_id, provider)
+        conversation = _single_player_conversation(character_id, provider, row["state"], row["setting_key"], row.get("created_at"))
 
         # usage_sink accumulates one entry per API call made during this turn (a single turn can make
         # several, via the request_check/propose_state_update tool loop). budget_ok recomputes spend

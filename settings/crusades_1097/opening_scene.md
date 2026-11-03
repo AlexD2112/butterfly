@@ -1,16 +1,24 @@
-The road east out of Nicaea is choked with dust, pilgrims, and the particular smell of an army that
-has been marching too long on too little. You are Bohemond of Taranto, and you did not come this far
-from Italy to hand over cities to the Byzantines for free - though that is exactly what happened at
-Nicaea, and the men under your command have not stopped grumbling about it.
+Tancred comes back up the column at a canter with dust to his eyebrows, and he doesn't bother to
+get down.
 
-Raymond of Toulouse rides somewhere ahead with his own considerable following, wealthier and more
-senior than you and entirely aware of it. Godfrey of Bouillon prays more than he schemes, which
-makes him easier to trust and harder to predict. Your nephew Tancred rides at your side, watching
-the horizon the way you taught him to - for opportunity as much as for danger.
+"Horsemen on the ridges, uncle. Both sides of the valley. Light cavalry, bows, no baggage. They're
+not shadowing us any more. They're counting us."
 
-Somewhere behind you, in Constantinople, sits an emperor to whom you swore an oath you have already
-begun to wonder whether you'll keep. Somewhere ahead of you, past the dust and the Anatolian hills,
-is a city called Antioch that you have not seen yet, but that you can already feel pulling at you
-like a debt someone else doesn't know they owe you.
+Around you the vanguard is strung out along the road from Nicaea: Normans, Flemings, a straggle of
+pilgrims who should never have kept up and somehow have, all of it moving at the speed of the ox
+carts. The rest of the army is half a day behind with Raymond and Godfrey, because nobody wanted
+fifty thousand people fighting over the same wells.
 
-What do you do first?
+Nicaea was taken and handed straight to the emperor's men. Your knights have not stopped talking
+about it. Bishop Adhemar's chaplain is riding up behind Tancred now, wanting to know why the column
+has stopped.
+
+Ahead, the valley opens toward a river and a stretch of marsh. Somewhere beyond it is Dorylaeum.
+Somewhere beyond that, a long way off, is Antioch.
+
+The sun is going down.
+<!-- gm -->
+Scene zero, end of June 1097: Bohemond leads the vanguard; Kilij Arslan's Seljuks are gathering for
+what history calls the Battle of Dorylaeum (1 July). The player can camp, send for the main army,
+press on, or prepare. If it comes to a fight, resolve it with checks and real consequences. Let the
+player's first move set the tone; nothing here needs a check.

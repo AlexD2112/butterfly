@@ -1,0 +1,9 @@
+{
+  "_comment": "Opening scenes older games were shown, before openings were saved with each game (2026-11-03). engine.opening_for_existing picks the first entry whose 'until' (unix seconds) is after the character's created_at; null means 'anything older than the saved-opening change'.",
+  "openings": [
+    {
+      "until": null,
+      "text": "The road east out of Nicaea is choked with dust, pilgrims, and the particular smell of an army that\nhas been marching too long on too little. You are Bohemond of Taranto, and you did not come this far\nfrom Italy to hand over cities to the Byzantines for free - though that is exactly what happened at\nNicaea, and the men under your command have not stopped grumbling about it.\n\nRaymond of Toulouse rides somewhere ahead with his own considerable following, wealthier and more\nsenior than you and entirely aware of it. Godfrey of Bouillon prays more than he schemes, which\nmakes him easier to trust and harder to predict. Your nephew Tancred rides at your side, watching\nthe horizon the way you taught him to - for opportunity as much as for danger.\n\nSomewhere behind you, in Constantinople, sits an emperor to whom you swore an oath you have already\nbegun to wonder whether you'll keep. Somewhere ahead of you, past the dust and the Anatolian hills,\nis a city called Antioch that you have not seen yet, but that you can already feel pulling at you\nlike a debt someone else doesn't know they owe you.\n"
+    }
+  ]
+}

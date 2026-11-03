@@ -320,6 +320,15 @@
     .turn .narration { font-size: 16.5px; }
     #inputbar { padding: 10px 12px; }
   }
+  .game-row { display: flex; gap: 8px; align-items: stretch; width: 100%; }
+  .game-row .menu-option { flex: 1; min-width: 0; }
+  .game-delete { flex: none; font-family: var(--font-ui); font-size: 11.5px; color: var(--muted); background: transparent;
+    border: 1px solid var(--border); border-radius: 6px; padding: 0 12px; }
+  .game-delete:hover:not(:disabled) { color: #d0745c; border-color: #5a3024; background: transparent; }
+  .game-delete.armed, .game-delete.armed:hover:not(:disabled) { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .login-hint { width: 100%; max-width: 480px; margin-top: 12px; font-family: var(--font-ui); font-size: 12px; line-height: 1.5;
+    color: var(--accent-2); border: 1px dashed #5a4a2c; border-radius: 6px; padding: 9px 12px; text-align: left; }
+  .login-hint a { color: var(--text); }
   /* input: Do / Say */
   .mode-toggle { display: flex; flex-direction: column; gap: 4px; }
   .mode-toggle button { padding: 3px 9px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
@@ -1078,17 +1087,21 @@ async function loadSpGamesScreen() {
   if (hint) hint.hidden = !(CURRENT_USER && CURRENT_USER.is_local);
   const el = document.getElementById('sp-games-list');
   el.innerHTML = games.length === 0 ? '<div class="mp-empty">No games yet — start one above.</div>' : games.map(c => `
-    <button class="menu-option" data-resume="${c.id}">
-      <div class="opt-title">${escapeHtml(c.name)}</div>
-      <div class="opt-desc char-list-item">
-        <span>${gameSubtitle(c)}</span>
-        <span class="period-badge">${escapeHtml(settingLabel(c.setting_key))}</span>
-      </div>
-    </button>
+    <div class="game-row" data-game="${c.id}">
+      <button class="menu-option" data-resume="${c.id}">
+        <div class="opt-title">${escapeHtml(c.name)}</div>
+        <div class="opt-desc char-list-item">
+          <span>${gameSubtitle(c)}</span>
+          <span class="period-badge">${escapeHtml(settingLabel(c.setting_key))}</span>
+        </div>
+      </button>
+      <button class="game-delete" data-delete="${c.id}" title="Delete this game">Delete</button>
+    </div>
   `).join('');
   el.querySelectorAll('[data-resume]').forEach(btn => {
     btn.addEventListener('click', () => launchGame(parseInt(btn.dataset.resume, 10)));
   });
+  wireDeleteButtons(el, loadSpGamesScreen);
 }
 
 document.getElementById('mode-full').addEventListener('click', async () => {
@@ -1108,10 +1121,10 @@ async function loadCharacterScreen() {
   // obvious path back into a setting, and it silently made a fresh character every time - which
   // looked like the old game's history had vanished.
   const existing = [...(data.characters || [])].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
-  let html = existing.map(c => `<button class="menu-option menu-option-continue" data-resume="${c.id}">
+  let html = existing.map(c => `<div class="game-row"><button class="menu-option menu-option-continue" data-resume="${c.id}">
     <div class="opt-title">Continue: ${escapeHtml(c.name)}</div>
     <div class="opt-desc">${gameSubtitle(c)}</div>
-  </button>`).join('');
+  </button><button class="game-delete" data-delete="${c.id}" title="Delete this game">Delete</button></div>`).join('');
   html += `<button class="menu-option" data-premade="1">
     <div class="opt-title">+ ${existing.length ? 'New game as' : 'Play as'} ${escapeHtml(data.premade_name)}</div>
     <div class="opt-desc">Start a new playthrough as the setting's signature character${existing.length ? ' (your saved games above are kept)' : ''}.</div>
@@ -1127,8 +1140,41 @@ async function loadCharacterScreen() {
   document.querySelectorAll('#character-options [data-resume]').forEach(btn => {
     btn.addEventListener('click', () => launchGame(parseInt(btn.dataset.resume, 10)));
   });
+  wireDeleteButtons(document.getElementById('character-options'), loadCharacterScreen);
   document.getElementById('create-custom-btn').addEventListener('click', openCreationForm);
   wireHistoricalFigureOption('hf');
+}
+
+// Two-step delete (2026-11-03): the first click arms the button for a few seconds, the second
+// deletes. No browser confirm() dialog - it blocks the page and looks out of place in the game.
+function wireDeleteButtons(container, onDeleted) {
+  container.querySelectorAll('[data-delete]').forEach(btn => {
+    let timer = null;
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!btn.classList.contains('armed')) {
+        btn.classList.add('armed');
+        btn.textContent = 'Delete for good?';
+        timer = setTimeout(() => { btn.classList.remove('armed'); btn.textContent = 'Delete'; }, 4000);
+        return;
+      }
+      clearTimeout(timer);
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+      try {
+        const res = await fetch(`/api/character/${btn.dataset.delete}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.status);
+        const row = btn.closest('.game-row');
+        if (row) row.remove();
+        if (onDeleted) onDeleted();
+      } catch (err) {
+        btn.disabled = false;
+        btn.classList.remove('armed');
+        btn.textContent = `Couldn't delete (${err.message})`;
+      }
+    });
+  });
 }
 
 // "3 hours ago", "5 days ago", etc. - good enough resolution for telling apart playthroughs of the
@@ -2417,6 +2463,13 @@ async function loadCharacterState(isNew) {
     } catch (e) {
       appendSystemNote(`Couldn't load this game's history (${e}). Your progress is saved - reload to try again.`);
     }
+    // The opening isn't a recorded turn, so it's fetched on its own: since 2026-11-03 it's saved with
+    // each game, and older games get the version that was live when they were started.
+    try {
+      const openingRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/opening_scene`);
+      const opening = (await openingRes.json()).text;
+      if (opening) appendTurn(null, opening, [], { instant: true, noSuggestions: true });
+    } catch (e) { /* non-essential */ }
     turns.forEach((t, i) => {
       let debugEvents = [];
       try { debugEvents = t.debug_events_json ? JSON.parse(t.debug_events_json) : []; } catch (e) { debugEvents = []; }

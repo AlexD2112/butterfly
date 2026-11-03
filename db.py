@@ -1547,6 +1547,35 @@ def list_rumor_broadcasts(server_id):
     return [dict(r) for r in rows]
 
 
+def delete_single_player_character(character_id, user_id):
+    """Returns "ok", "not_found" (missing or not this user's) or "multiplayer". Children first -
+    foreign keys are enforced (see get_db)."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT c.id, c.game_id, g.mode FROM characters c LEFT JOIN games g ON g.id = c.game_id "
+            "WHERE c.id = ? AND c.user_id = ?", (character_id, user_id),
+        ).fetchone()
+        if row is None:
+            return "not_found"
+        if row["mode"] not in (None, "single"):
+            return "multiplayer"
+        conn.execute("UPDATE usage_events SET character_id = NULL WHERE character_id = ?", (character_id,))
+        conn.execute("DELETE FROM turns WHERE character_id = ?", (character_id,))
+        conn.execute("DELETE FROM location_occupancy WHERE character_id = ?", (character_id,))
+        conn.execute("DELETE FROM characters WHERE id = ?", (character_id,))
+        if row["game_id"] is not None:
+            others = conn.execute("SELECT COUNT(*) FROM characters WHERE game_id = ?", (row["game_id"],)).fetchone()[0]
+            if others == 0:
+                conn.execute("DELETE FROM turns WHERE game_id = ?", (row["game_id"],))
+                conn.execute("DELETE FROM npcs WHERE game_id = ?", (row["game_id"],))
+                conn.execute("DELETE FROM games WHERE id = ?", (row["game_id"],))
+        conn.commit()
+        return "ok"
+    finally:
+        conn.close()
+
+
 def get_character(character_id, user_id):
     """Returns the full row (with parsed state) if it exists and belongs to user_id, else None -
     ownership is always checked here rather than trusting a bare character_id from the client."""
