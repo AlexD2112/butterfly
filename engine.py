@@ -22,6 +22,7 @@ import re
 
 import council
 import dynamics
+import geography
 import mechanics
 import operations
 from systems._shared import core as shared_core
@@ -235,6 +236,11 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     digest.pop("opening_gm_note", None)
     digest.pop("memory_log", None)
     earlier_section = _earlier_campaign_section(state)
+    geo = geography.load(setting_key)
+    geography_section = ""
+    if geo:
+        digest.pop("geo", None)
+        geography_section = "\n\n# " + geography.prompt_section(geo, state)
     if mechanics.load_catalog(setting_key):
         digest.pop("mechanics", None)
     if dynamics.load(setting_key):
@@ -281,6 +287,8 @@ fiction actually calls for it. Address anything flagged DUE FOR REVIEW above bef
         if "forces" in primitives:
             ops.append("- Winning over a unit in person (or talking a hostile one into staying in barracks): sway_unit. Never move a unit's loyalty more than a step by propose_mechanic_update when sway_unit is the honest description of what happened.")
             ops.append("- Any armed clash: resolve_confrontation. Units only fight at loyalty +2/+3 (for the player) or -2/-3 (against); waverers stay home. Narrate who refused - it's usually the story.")
+            if geography.load(setting_key):
+                ops.append("- Movement: before anyone goes anywhere that matters, move_unit (it times the trip and keeps positions honest). Fights happen at a place, among the units actually near it - move them in first, and narrate the march.")
         if ops:
             operations_section = "\n\n# OPERATIONS (resolved by the application - never narrate these outcomes on your own)\n" + "\n".join(ops)
 
@@ -318,7 +326,7 @@ the system's curated catalogs (by id) - never invent one.
 
 # CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
 {json.dumps(digest, indent=2)}
-{mechanics_section}{operations_section}{dynamics_section}{earlier_section}
+{mechanics_section}{operations_section}{dynamics_section}{geography_section}{earlier_section}
 {scene_section}
 
 Narrate in second person, present tense. Never resolve an uncertain action without calling
@@ -514,10 +522,12 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     mechanics_catalog = mechanics.load_catalog(setting_key)
     dyn = dynamics.load(setting_key)
     dynamics.ensure_initialized(state, dyn)
+    geo = geography.load(setting_key)
+    geography.ensure_initialized(state, geo)
     if dyn:
         dynamics.recompute_derived(state, dyn)
         dynamics.update_calendar(state, dyn)
-    tool_specs = build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance)
+    tool_specs = build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=geo)
     if suggestions:
         tool_specs.append(SUGGEST_ACTIONS_SPEC)
     provider.append_user_message(conversation, user_input)
@@ -557,7 +567,7 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
                 results.append({"id": tc["id"], "content": "Shown to the player."})
                 continue
             content, events = handle_tool_call(
-                tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance,
+                tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance, geo=geo,
             )
             debug_events.extend(events)
             results.append({"id": tc["id"], "content": content})
@@ -596,7 +606,7 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
 # Split out of run_turn when the tool set grew past the original four. Each handler returns
 # (content_for_the_model, debug_events).
 
-def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance):
+def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=None):
     specs = copy.deepcopy(system.TOOL_SPECS)
     for spec in specs:
         if spec["name"] != "propose_state_update":
@@ -620,7 +630,14 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance):
             specs.append(operations.vote_tool_spec())
         if "forces" in primitives:
             specs.append(operations.sway_tool_spec())
-            specs.append(operations.confrontation_tool_spec())
+            conf = operations.confrontation_tool_spec()
+            if geo:
+                conf["parameters"]["properties"]["place"] = {
+                    "type": "string", "description": "Where it happens - a place from GEOGRAPHY. Units more than a short march away (or cut off by a raised bridge or a picket) are left out by the application."}
+                conf["parameters"]["required"].append("place")
+            specs.append(conf)
+    if geo:
+        specs += geography.tool_specs()
     return specs
 
 
@@ -657,12 +674,20 @@ def _post_change_bookkeeping(state, dyn, resource_schema, system):
 def _notices_for(changes):
     lines = [c["message"] for c in changes if c.get("kind") == "threshold" and c.get("message")]
     lines += [f"canon event fired: {c['key']}" for c in changes if c.get("kind") == "canon_event"]
+    lines += [c["message"] for c in changes if c.get("kind") == "movement" and c.get("message")]
     return lines
 
 
-def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance):
+def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance, geo=None):
     name, inp = tc["name"], dict(tc["input"] or {})
     events = []
+
+    if geo and name in ("route_info", "move_unit", "set_route"):
+        result, changes = geography.handle(geo, state, name, inp)
+        if name != "route_info" or "error" in result:
+            events.append({"type": "geography", "operation": name, "reasoning": inp.get("reasoning") or inp.get("reason") or "",
+                           "result": result, "changes": changes})
+        return json.dumps(result), events
 
     if name == "request_check":
         result = system.roll_check(
@@ -762,7 +787,24 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         return json.dumps(result), events
 
     if name == "resolve_confrontation" and mechanics_catalog:
+        absent, place_node = {}, None
+        if geo:
+            if not inp.get("place"):
+                return json.dumps({"error": "Say where it happens: place (a name from GEOGRAPHY)."}), events
+            place_node, p_in, p_out, err = geography.presence(geo, state, inp["place"], inp.get("player_units") or [])
+            if err:
+                return json.dumps({"error": err}), events
+            _, o_in, o_out, _ = geography.presence(geo, state, inp["place"], inp.get("opposing_units") or [])
+            absent = {**p_out, **o_out}
+            inp["player_units"], inp["opposing_units"] = p_in, o_in
+            if not p_in:
+                return json.dumps({"error": "None of the player's units can reach that place now.", "absent": absent,
+                                   "hint": "move_unit them there first (or let the fight not happen)."}), events
         result, changes = operations.resolve_confrontation(state, system, inp)
+        if geo and "error" not in result:
+            if absent:
+                result["absent"] = absent
+            changes += geography.after_confrontation(geo, state, place_node, inp, result)
         if "error" not in result and dyn:
             changes += dynamics.apply_confrontation_effects(state, dyn, resource_schema, result)
             changes += _post_change_bookkeeping(state, dyn, resource_schema, system)

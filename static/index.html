@@ -325,6 +325,7 @@
   #map-canvas .leaflet-tooltip.map-label { background: transparent; border: none; box-shadow: none; color: #d8cfb3; font-family: var(--font-display);
     font-size: 13px; font-weight: 600; text-shadow: 0 0 3px #000, 0 0 6px #000; padding: 0; }
   #map-canvas .leaflet-tooltip.map-label::before { display: none; }
+  #map-canvas .map-you { width: 14px; height: 14px; background: #f0d48a; border: 2px solid #1a1408; transform: rotate(45deg); box-shadow: 0 0 0 2px #f0d48a66, 0 0 10px #000; }
   #map-canvas .leaflet-control-attribution { background: rgba(14,21,18,.8); color: var(--muted); }
   #map-canvas .leaflet-control-attribution a { color: var(--accent-2); }
 
@@ -1846,11 +1847,52 @@ function sourceNote(p) {
   if (p.osm) return `<br><a href="https://www.openstreetmap.org/${encodeURI(p.osm)}" target="_blank" rel="noopener">location: OpenStreetMap${matched}</a>${prec}`;
   return prec;
 }
+// The movement graph (2026-11-03, geography.py): bridges and railways under the markers, units drawn
+// where the game says they are now (their barracks pin until they move), marching units with a
+// dashed line to where they're headed, and a gold diamond for the player.
+let MAP_WIDE_LAYER = null;
+function geoState() { return (LAST_STATE && LAST_STATE.geo) || {}; }
+function graphNode(id) { const g = MAP_DATA && MAP_DATA.graph; return g && g.nodes[id]; }
+function nodePos(id) { const n = graphNode(id); return n ? [n.lat, n.lng] : null; }
+function edgeStyle(e, st) {
+  const closed = st.status && st.status !== 'open';
+  if (e.mode === 'bridge') return { color: closed ? '#ff6a45' : '#f0d48a', weight: 5, opacity: 0.9, dashArray: closed ? '3 5' : null };
+  if (e.mode === 'rail') return { color: closed ? '#ff6a45' : '#cfc6a8', weight: 2, opacity: 0.65, dashArray: closed ? '4 6' : null };
+  if (e.mode === 'sea') return { color: '#7fb3c8', weight: 1.5, opacity: 0.7, dashArray: '2 6' };
+  return { color: '#cfc6a8', weight: 1.5, opacity: 0.45, dashArray: '2 4' };
+}
+function drawGraphEdges(cityLayer, wideLayer) {
+  const graph = MAP_DATA.graph; if (!graph) return;
+  const est = geoState().edges || {};
+  graph.edges.forEach(e => {
+    const a = nodePos(e.a), b = nodePos(e.b); if (!a || !b) return;
+    const st = est[e.id] || {};
+    const bits = [e.name || e.mode];
+    if (st.status && st.status !== 'open') bits.push(st.status);
+    if (st.held_by) bits.push(`held by ${st.held_by}`);
+    const mk = () => L.polyline([a, b], edgeStyle(e, st)).bindTooltip(escapeHtml(bits.join(' · ')), { sticky: true });
+    const inCity = graphNode(e.a).scale === 'city' || graphNode(e.b).scale === 'city';
+    if (e.mode === 'bridge') { mk().addTo(cityLayer); return; }
+    mk().addTo(wideLayer);
+    if (inCity) mk().addTo(cityLayer);
+  });
+}
+function unitPlacement(u) {
+  const g = geoState();
+  const at = (g.positions || {})[u.id];
+  const home = (MAP_DATA.units || {})[u.id];
+  const homeNode = ((MAP_DATA.graph || {}).home || {})[u.id];
+  if (home && (!at || at === homeNode)) return { pos: [home.lat, home.lng], pin: home, node: at };
+  const p = nodePos(at);
+  return p ? { pos: p, pin: null, node: at } : null;
+}
 function drawMapUnits() {
   if (!MAP_OBJ || !MAP_DATA) return;
   if (MAP_LAYER) MAP_LAYER.remove();
+  if (MAP_WIDE_LAYER) MAP_WIDE_LAYER.remove();
   MAP_LAYER = L.layerGroup();
-  if (MAP_OBJ.getZoom() >= CITY_MIN_ZOOM) MAP_LAYER.addTo(MAP_OBJ);
+  MAP_WIDE_LAYER = L.layerGroup();
+  drawGraphEdges(MAP_LAYER, MAP_WIDE_LAYER);
   (MAP_DATA.landmarks || []).forEach(lm => {
     const m = L.circleMarker([lm.lat, lm.lng], { radius: lm.kind === 'bridge' ? 4 : 6, color: '#1a1408', weight: 2, fillColor: '#f0d48a', fillOpacity: 1 })
       .bindPopup(`<b>${escapeHtml(lm.name)}</b><br>${escapeHtml(lm.note || '')}${sourceNote(lm)}`);
@@ -1858,17 +1900,41 @@ function drawMapUnits() {
     if (lm.kind !== 'bridge') m.bindTooltip(escapeHtml(lm.name), { permanent: true, direction: left ? 'left' : 'right', className: 'map-label', offset: [left ? -6 : 6, 0] });
     m.addTo(MAP_LAYER);
   });
+  const g = geoState();
+  const stacked = {};
   const forces = Object.values((LAST_STATE && LAST_STATE.mechanics) || {}).filter(m => m.render_primitive === 'forces');
   forces.forEach(f => (f.data.units || []).forEach(u => {
-    const pos = (MAP_DATA.units || {})[u.id];
-    if (!pos) return;
+    const place = unitPlacement(u);
+    if (!place) return;
+    let pos = place.pos;
+    if (!place.pin) {  // several units on one graph node: fan them out a little so each can be clicked
+      const k = stacked[place.node] = (stacked[place.node] || 0) + 1;
+      if (k > 1) { const ang = k * 2.4; pos = [pos[0] + 0.0009 * Math.sin(ang), pos[1] + 0.0018 * Math.cos(ang)]; }
+    }
     const word = u.loyalty >= 2 ? 'Fights for you' : u.loyalty <= -2 ? 'Fights against you' : 'Stays in barracks';
-    const exact = !pos.precision || pos.precision === 'building';
-    L.circleMarker([pos.lat, pos.lng], { radius: 6 + Math.sqrt(u.strength || 0) / 12, color: loyaltyColor(u.loyalty), weight: 3,
+    const pin = place.pin;
+    const exact = pin ? (!pin.precision || pin.precision === 'building') : true;
+    const mv = (g.moving || {})[u.id];
+    const nodeName = (graphNode(place.node) || {}).name;
+    const where = mv ? `On the move to ${escapeHtml((graphNode(mv.to) || {}).name || mv.to)}${mv.eta ? `, due ${escapeHtml(mv.eta)}` : ''}`
+      : pin ? escapeHtml(pin.where || '') : `Now at ${escapeHtml(nodeName || '')}`;
+    const mk = () => L.circleMarker(pos, { radius: 6 + Math.sqrt(u.strength || 0) / 12, color: loyaltyColor(u.loyalty), weight: 3,
       fillColor: loyaltyColor(u.loyalty), fillOpacity: 0.5, dashArray: exact ? null : '4 4' })
-      .bindPopup(`<b>${escapeHtml(u.name)}</b><br>${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5<br>${word} (loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty})<br><span style="color:var(--muted)">${escapeHtml(pos.where || '')}</span>${sourceNote(pos)}`)
-      .addTo(MAP_LAYER);
+      .bindPopup(`<b>${escapeHtml(u.name)}</b><br>${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5<br>${word} (loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty})<br><span style="color:var(--muted)">${where}</span>${pin ? sourceNote(pin) : ''}`);
+    mk().addTo(MAP_LAYER);
+    if ((graphNode(place.node) || {}).scale === 'country') mk().addTo(MAP_WIDE_LAYER);
+    if (mv && mv.path) {
+      const i = Math.max(0, mv.path.indexOf(place.node));
+      const pts = [pos].concat(mv.path.slice(i + 1).map(nodePos).filter(Boolean));
+      if (pts.length > 1) [MAP_LAYER, MAP_WIDE_LAYER].forEach(layer =>
+        L.polyline(pts, { color: loyaltyColor(u.loyalty), weight: 2.5, opacity: 0.9, dashArray: '6 6' }).addTo(layer));
+    }
   }));
+  const you = nodePos(g.player);
+  if (you) [MAP_LAYER, MAP_WIDE_LAYER].forEach(layer =>
+    L.marker(you, { icon: L.divIcon({ className: '', html: '<div class="map-you"></div>', iconSize: [14, 14] }), zIndexOffset: 1000 })
+      .bindTooltip(`You · ${escapeHtml((graphNode(g.player) || {}).name || '')}`, { direction: 'top', offset: [0, -8] }).addTo(layer));
+  updateMapScale();
 }
 async function openMap() {
   if (!MAP_DATA) return;
@@ -1938,7 +2004,11 @@ function updateMapScale() {
   const city = MAP_OBJ.getZoom() >= CITY_MIN_ZOOM;
   if (!city) labelRegions();
   if (MAP_LAYER) { if (city && !MAP_OBJ.hasLayer(MAP_LAYER)) MAP_LAYER.addTo(MAP_OBJ); if (!city && MAP_OBJ.hasLayer(MAP_LAYER)) MAP_OBJ.removeLayer(MAP_LAYER); }
-  if (MAP_REGION_LAYER) { if (!city && !MAP_OBJ.hasLayer(MAP_REGION_LAYER)) MAP_REGION_LAYER.addTo(MAP_OBJ); if (city && MAP_OBJ.hasLayer(MAP_REGION_LAYER)) MAP_OBJ.removeLayer(MAP_REGION_LAYER); }
+  [MAP_REGION_LAYER, MAP_WIDE_LAYER].forEach(layer => {
+    if (!layer) return;
+    if (!city && !MAP_OBJ.hasLayer(layer)) layer.addTo(MAP_OBJ);
+    if (city && MAP_OBJ.hasLayer(layer)) MAP_OBJ.removeLayer(layer);
+  });
   document.querySelectorAll('#map-views button').forEach(b => {
     const v = (MAP_DATA.views || []).find(x => x.id === b.dataset.view);
     b.classList.toggle('active', !!v && (v.id === 'city' ? city : !city && Math.abs(MAP_OBJ.getZoom() - v.zoom) <= 1));

@@ -353,7 +353,8 @@ class TestConfrontation(unittest.TestCase):
         before = state["resources"]["party_standing"]
         _, _, result = run(state, "resolve_confrontation", {
             "instance_id": "petrograd_garrison", "objective": "Winter Palace", "player_side_attacking": True,
-            "player_units": ["red_guards", "kronstadt_sailors"], "opposing_units": ["junkers"], "terrain": "fortified"})
+            "player_units": ["red_guards", "kronstadt_sailors"], "opposing_units": ["junkers"], "terrain": "fortified",
+            "place": "Winter Palace"})
         self.assertLessEqual(state["resources"]["party_standing"], before - 6)
         self.assertTrue(any("July Days" in n for n in result.get("world_events", [])))
 
@@ -362,7 +363,8 @@ class TestConfrontation(unittest.TestCase):
         before = state["resources"]["party_standing"]
         run(state, "resolve_confrontation", {
             "instance_id": "petrograd_garrison", "objective": "Winter Palace", "player_side_attacking": True,
-            "player_units": ["red_guards", "kronstadt_sailors"], "opposing_units": ["junkers"], "terrain": "fortified"})
+            "player_units": ["red_guards", "kronstadt_sailors"], "opposing_units": ["junkers"], "terrain": "fortified",
+            "place": "Winter Palace"})
         self.assertEqual(state["resources"]["party_standing"], before)
 
     def test_unknown_units_are_an_error_not_a_guess(self):

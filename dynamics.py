@@ -39,6 +39,7 @@ import datetime
 import json
 from pathlib import Path
 
+import geography
 import operations
 from systems._shared import core
 
@@ -297,6 +298,11 @@ def advance_time(state, dyn, resource_schema, system, days, rng=None):
             if spec.get("type") == "locked" and spec.get("date") and spec["date"] <= state["date"]:
                 if state["canon_events"].get(key, {}).get("status") == "pending":
                     changes += fire_event(state, dyn, resource_schema, key, "date reached")
+        geo = geography.load(state.get("setting_pack"))
+        if geo:
+            for c in geography.tick_day(geo, state):
+                changes.append(c)
+                add_notice(state, c["message"], "movement")
         changes += check_thresholds(state, dyn, resource_schema, system, rng=rng)
     changes.insert(0, {"kind": "time", "before": before_date, "after": state["date"], "days": days})
     return changes
