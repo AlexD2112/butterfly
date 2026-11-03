@@ -279,6 +279,28 @@
   @keyframes fp-flash { 0% { color: var(--accent-2); } 100% { color: inherit; } }
   @media (max-width: 640px) { .hud-meters { margin-left: 0; } .hud-meter { min-width: 76px; } }
 
+  /* NPC sheets, seen through fog of war (2026-11-03) */
+  #npc-backdrop { position: fixed; inset: 0; background: rgba(8,10,9,.55); z-index: 76; display: none; }
+  #npc-backdrop.open { display: block; }
+  #npc-panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 48px); overflow-y: auto; z-index: 77; display: none; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.5); padding: 16px 18px; }
+  #npc-panel.open { display: block; }
+  #npc-panel h3 { margin: 0; font-family: var(--font-display); font-size: 21px; color: var(--accent-2); font-weight: 600; }
+  .npc-role { font-family: var(--font-ui); font-size: 12.5px; color: var(--muted); margin: 2px 0 10px; }
+  .npc-know { font-family: var(--font-ui); font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .npc-know b { color: var(--text); font-weight: 600; }
+  .npc-attr { display: flex; justify-content: space-between; font-family: var(--font-ui); font-size: 13.5px; padding: 4px 0; border-bottom: 1px dotted var(--border); }
+  .npc-attr .v { color: var(--text); }
+  .npc-attr .v.fog { color: var(--muted); font-style: italic; }
+  .npc-skills { font-family: var(--font-ui); font-size: 12.5px; margin-top: 10px; line-height: 1.5; }
+  .npc-skills .lbl { color: var(--muted); }
+  .npc-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; }
+  .npc-foot .card-desc { font-size: 11.5px; }
+  .rel-row.clickable, .enmity-row.clickable { cursor: pointer; border-radius: 4px; padding: 0 4px; margin-left: -4px; margin-right: -4px; }
+  .rel-row.clickable:hover, .enmity-row.clickable:hover { background: rgba(255,255,255,.04); }
+  .rel-row.clickable span:first-child, .enmity-row.clickable span:first-child { text-decoration: underline dotted; text-underline-offset: 3px; }
+
   /* memory (2026-11-03) */
   #memory-backdrop { position: fixed; inset: 0; background: rgba(8,10,9,.55); z-index: 72; display: none; }
   #memory-backdrop.open { display: block; }
@@ -873,6 +895,8 @@
   </div>
 </div>
 
+<div id="npc-backdrop"></div>
+<div id="npc-panel" role="dialog" aria-label="Person"></div>
 <div id="memory-backdrop"></div>
 <aside id="memory-panel" role="dialog" aria-label="Memory">
   <div class="memory-head">
@@ -1744,6 +1768,56 @@ const MEMORY_STARTERS = {
   crusades_1097: ['What did I swear to the emperor?', 'Who are the other princes and what do they want?', 'What happened at Nicaea?'],
 };
 let MEMORY_SETTING = null;
+// NPC sheets (2026-11-03): the server decides how much to send - a word for each attribute, a
+// range, or the real number - from how well the character knows the person.
+const ATTR_ORDER = ['oration', 'intellect', 'resolve', 'presence', 'cunning', 'physique'];
+function npcValue(a) {
+  if (a.value !== undefined) return `<span class="v">${a.value} (${fmtMod(a.modifier)})</span>`;
+  if (a.range) return `<span class="v">about ${a.range[0]}–${a.range[1]}</span>`;
+  if (a.word) return `<span class="v">${escapeHtml(a.word)}</span>`;
+  return '<span class="v fog">unknown</span>';
+}
+const prettySkill = s => s.replace(/_/g, ' ');
+async function openNpc(key) {
+  const panel = document.getElementById('npc-panel');
+  panel.innerHTML = '<div class="card-desc">…</div>';
+  document.getElementById('npc-backdrop').classList.add('open');
+  panel.classList.add('open');
+  let d;
+  try { d = await (await fetch(`/api/character/${CURRENT_CHARACTER_ID}/npc/${encodeURIComponent(key)}`)).json(); }
+  catch (e) { panel.innerHTML = `<div class="card-desc">Couldn't load (${escapeHtml(String(e))}).</div>`; return; }
+  const trust = d.trust === undefined || d.trust === null ? '' : `Trust ${d.trust > 0 ? '+' : ''}${d.trust}`;
+  const enmity = d.enmity ? ` · Rivalry ${'●'.repeat(d.enmity)}${'○'.repeat(3 - d.enmity)}` : '';
+  let body;
+  if (d.no_sheet) {
+    body = '<div class="card-desc">Not someone you can size up yet - no more than a name and a face.</div>';
+  } else {
+    const attrs = ATTR_ORDER.map(k => (d.attributes || []).find(a => a.attribute === k)).filter(Boolean)
+      .map(a => `<div class="npc-attr"><span>${a.attribute}</span>${npcValue(a)}</div>`).join('');
+    const sk = d.skills || {};
+    const skills = [
+      sk.expertise ? `<div><span class="lbl">Excels at:</span> ${sk.expertise.length ? sk.expertise.map(prettySkill).join(', ') : 'nothing that stands out'}</div>` : '',
+      sk.proficient ? `<div><span class="lbl">Practiced in:</span> ${sk.proficient.length ? sk.proficient.map(prettySkill).join(', ') : '—'}</div>` : '',
+      sk.proficiency !== undefined ? `<div><span class="lbl">Proficiency:</span> ${fmtMod(sk.proficiency)}</div>` : '',
+      !sk.expertise ? '<div class="lbl">What they are good at, you can only guess.</div>' : '',
+    ].join('');
+    const more = d.next_tier_in ? ` Every few dealings with them, you learn more (${d.next_tier_in} more).` : '';
+    body = `<div class="npc-know">How well you know them: <b>${escapeHtml(d.tier_label)}</b>.${more}</div>${attrs}<div class="npc-skills">${skills}</div>`;
+  }
+  panel.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px"><div><h3>${escapeHtml(d.name)}</h3>
+      <div class="npc-role">${escapeHtml(d.role || d.relationship_note || '')}</div></div><button id="npc-close" title="Close (Esc)">&times;</button></div>
+    ${body}
+    <div class="npc-foot"><span class="card-desc">${trust}${enmity}</span><button id="npc-ask" type="button">Ask your memory about them</button></div>`;
+  document.getElementById('npc-close').addEventListener('click', closeNpc);
+  document.getElementById('npc-ask').addEventListener('click', async () => { closeNpc(); await openMemory(); askMemory(`Who is ${d.name} to me, and what do I know about them?`); });
+}
+function closeNpc() {
+  document.getElementById('npc-backdrop').classList.remove('open');
+  document.getElementById('npc-panel').classList.remove('open');
+}
+document.getElementById('npc-backdrop').addEventListener('click', closeNpc);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.getElementById('npc-panel').classList.contains('open')) closeNpc(); });
+
 function memoryPanelOpen() { return document.getElementById('memory-panel').classList.contains('open'); }
 function renderMemoryLog(log) {
   const el = document.getElementById('memory-log');
@@ -2086,11 +2160,11 @@ function renderSidebar(state) {
   ).join('') || '<div class="card-desc">None.</div>';
 
   const relRows = Object.entries(state.relationships || {})
-    .map(([k, r]) => `<div class="rel-row"><span>${k.replace(/_/g, ' ')}</span><span>${r.trust > 0 ? '+' : ''}${r.trust}</span></div>`)
+    .map(([k, r]) => `<div class="rel-row clickable" data-npc="${escapeHtml(k)}" title="What you know of them"><span>${k.replace(/_/g, ' ')}</span><span>${r.trust > 0 ? '+' : ''}${r.trust}</span></div>`)
     .join('');
 
   const enmityRows = Object.entries(state.enmity || {})
-    .map(([k, e]) => `<div class="enmity-row pips-${e.pips}"><span>${k.replace(/_/g, ' ')}</span><span class="pips">${'●'.repeat(e.pips)}${'○'.repeat(3 - e.pips)}</span></div>`)
+    .map(([k, e]) => `<div class="enmity-row clickable pips-${e.pips}" data-npc="${escapeHtml(k)}" title="What you know of them"><span>${k.replace(/_/g, ' ')}</span><span class="pips">${'●'.repeat(e.pips)}${'○'.repeat(3 - e.pips)}</span></div>`)
     .join('') || '<div class="card-desc">No tracked rivals yet.</div>';
 
   const resRows = Object.entries(state.resources || {})
@@ -2162,6 +2236,7 @@ function renderSidebar(state) {
     ${section('Divergence Log', divergenceEntries, false)}
   `;
 
+  sidebarEl.querySelectorAll('[data-npc]').forEach(el => el.addEventListener('click', () => openNpc(el.dataset.npc)));
   const levelUpBtn = document.getElementById('level-up-banner-btn');
   if (levelUpBtn) levelUpBtn.addEventListener('click', toggleLevelUpPicker);
   renderHud(state);

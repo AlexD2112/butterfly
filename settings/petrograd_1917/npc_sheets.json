@@ -1,0 +1,656 @@
+{
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. Same six attributes and skill tiers as the player (Red Admiral). The first 15 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale, not measured quantities. familiarity 0-3 is how well Trotsky knows the person at the start (0 never met / 1 by reputation / 2 worked with / 3 knows well) - it sets how much of the sheet the player can see. Expertise = proficiency added twice; proficient = once.",
+ "sheets": {
+  "lenin": {
+   "name": "Vladimir Lenin",
+   "role": "Bolshevik leader, in hiding in Finland",
+   "attributes": {
+    "oration": 14,
+    "intellect": 19,
+    "resolve": 18,
+    "presence": 15,
+    "cunning": 19,
+    "physique": 10
+   },
+   "proficiency": 3,
+   "expertise": [
+    "revolutionary_theory",
+    "written_propaganda",
+    "factional_maneuvering",
+    "psychological_endurance"
+   ],
+   "proficient": [
+    "debate_and_public_argument",
+    "situation_analysis",
+    "operational_security"
+   ],
+   "familiarity": 3
+  },
+  "stalin": {
+   "name": "Joseph Stalin",
+   "role": "Central Committee member, editor of the party paper",
+   "attributes": {
+    "oration": 10,
+    "intellect": 13,
+    "resolve": 17,
+    "presence": 12,
+    "cunning": 18,
+    "physique": 13
+   },
+   "proficiency": 2,
+   "expertise": [
+    "factional_maneuvering",
+    "reading_hidden_agendas"
+   ],
+   "proficient": [
+    "operational_security",
+    "deception",
+    "willpower_vs_coercion"
+   ],
+   "familiarity": 1
+  },
+  "kamenev": {
+   "name": "Lev Kamenev",
+   "role": "Leader of the Bolshevik fraction in the Soviet",
+   "attributes": {
+    "oration": 14,
+    "intellect": 14,
+    "resolve": 7,
+    "presence": 12,
+    "cunning": 12,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "debate_and_public_argument",
+    "negotiation",
+    "revolutionary_theory",
+    "written_propaganda"
+   ],
+   "familiarity": 3
+  },
+  "zinoviev": {
+   "name": "Grigory Zinoviev",
+   "role": "Central Committee member, in hiding since July",
+   "attributes": {
+    "oration": 14,
+    "intellect": 13,
+    "resolve": 7,
+    "presence": 11,
+    "cunning": 12,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "platform_speechmaking",
+    "written_propaganda",
+    "factional_maneuvering"
+   ],
+   "familiarity": 2
+  },
+  "kerensky": {
+   "name": "Alexander Kerensky",
+   "role": "Minister-Chairman of the Provisional Government",
+   "attributes": {
+    "oration": 16,
+    "intellect": 14,
+    "resolve": 12,
+    "presence": 15,
+    "cunning": 13,
+    "physique": 11
+   },
+   "proficiency": 2,
+   "expertise": [
+    "platform_speechmaking"
+   ],
+   "proficient": [
+    "crowd_command_and_agitation",
+    "inspiring_loyalty",
+    "negotiation"
+   ],
+   "familiarity": 1
+  },
+  "kollontai": {
+   "name": "Alexandra Kollontai",
+   "role": "Bolshevik Central Committee member, agitator",
+   "attributes": {
+    "oration": 15,
+    "intellect": 15,
+    "resolve": 14,
+    "presence": 17,
+    "cunning": 13,
+    "physique": 11
+   },
+   "proficiency": 2,
+   "expertise": [
+    "personal_persuasion",
+    "cultivating_allies"
+   ],
+   "proficient": [
+    "platform_speechmaking",
+    "languages_and_translation",
+    "written_propaganda"
+   ],
+   "familiarity": 2
+  },
+  "spiridonova": {
+   "name": "Maria Spiridonova",
+   "role": "Leader of the Left SRs",
+   "attributes": {
+    "oration": 14,
+    "intellect": 14,
+    "resolve": 18,
+    "presence": 14,
+    "cunning": 12,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "crowd_command_and_agitation",
+    "psychological_endurance",
+    "willpower_vs_coercion"
+   ],
+   "familiarity": 1
+  },
+  "martov": {
+   "name": "Julius Martov",
+   "role": "Leader of the Menshevik-Internationalists",
+   "attributes": {
+    "oration": 15,
+    "intellect": 18,
+    "resolve": 9,
+    "presence": 14,
+    "cunning": 12,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "debate_and_public_argument",
+    "revolutionary_theory",
+    "written_propaganda"
+   ],
+   "familiarity": 3
+  },
+  "joffe": {
+   "name": "Adolph Joffe",
+   "role": "Bolshevik (ex-Mezhraionets), Trotsky's old friend",
+   "attributes": {
+    "oration": 12,
+    "intellect": 17,
+    "resolve": 15,
+    "presence": 13,
+    "cunning": 15,
+    "physique": 11
+   },
+   "proficiency": 3,
+   "expertise": [],
+   "proficient": [
+    "negotiation",
+    "languages_and_translation",
+    "situation_analysis"
+   ],
+   "familiarity": 3
+  },
+  "dybenko": {
+   "name": "Pavel Dybenko",
+   "role": "Chairman of Centrobalt, the Baltic Fleet's committee",
+   "attributes": {
+    "oration": 12,
+    "intellect": 11,
+    "resolve": 16,
+    "presence": 13,
+    "cunning": 8,
+    "physique": 17
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "crowd_command_and_agitation",
+    "physical_confrontation",
+    "inspiring_loyalty"
+   ],
+   "familiarity": 1
+  },
+  "krasnov": {
+   "name": "Pyotr Krasnov",
+   "role": "Commander of the 3rd Cavalry Corps",
+   "attributes": {
+    "oration": 8,
+    "intellect": 11,
+    "resolve": 17,
+    "presence": 14,
+    "cunning": 6,
+    "physique": 16
+   },
+   "proficiency": 3,
+   "expertise": [],
+   "proficient": [
+    "military_strategic_planning",
+    "crisis_command",
+    "inspiring_loyalty",
+    "endurance_and_travel"
+   ],
+   "familiarity": 0
+  },
+  "dan": {
+   "name": "Fyodor Dan",
+   "role": "Menshevik leader on the Soviet presidium",
+   "attributes": {
+    "oration": 14,
+    "intellect": 16,
+    "resolve": 13,
+    "presence": 13,
+    "cunning": 14,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [
+    "debate_and_public_argument"
+   ],
+   "proficient": [
+    "revolutionary_theory",
+    "factional_maneuvering",
+    "written_propaganda"
+   ],
+   "familiarity": 2
+  },
+  "chkheidze": {
+   "name": "Nikolai Chkheidze",
+   "role": "Chairman of the Petrograd Soviet (Menshevik)",
+   "attributes": {
+    "oration": 13,
+    "intellect": 13,
+    "resolve": 11,
+    "presence": 14,
+    "cunning": 10,
+    "physique": 9
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "negotiation",
+    "platform_speechmaking"
+   ],
+   "familiarity": 2
+  },
+  "podvoisky": {
+   "name": "Nikolai Podvoisky",
+   "role": "Head of the Bolshevik Military Organization",
+   "attributes": {
+    "oration": 11,
+    "intellect": 13,
+    "resolve": 15,
+    "presence": 14,
+    "cunning": 14,
+    "physique": 13
+   },
+   "proficiency": 2,
+   "expertise": [
+    "military_strategic_planning"
+   ],
+   "proficient": [
+    "inspiring_loyalty",
+    "operational_security",
+    "crisis_command"
+   ],
+   "familiarity": 1
+  },
+  "antonov_ovseenko": {
+   "name": "Vladimir Antonov-Ovseenko",
+   "role": "Bolshevik military organizer, ex-officer",
+   "attributes": {
+    "oration": 12,
+    "intellect": 14,
+    "resolve": 16,
+    "presence": 14,
+    "cunning": 12,
+    "physique": 13
+   },
+   "proficiency": 2,
+   "expertise": [
+    "crisis_command"
+   ],
+   "proficient": [
+    "military_strategic_planning",
+    "physical_confrontation",
+    "written_propaganda"
+   ],
+   "familiarity": 2
+  },
+  "natalia_sedova": {
+   "name": "Natalia Sedova",
+   "role": "Trotsky's wife",
+   "attributes": {
+    "oration": 11,
+    "intellect": 15,
+    "resolve": 16,
+    "presence": 13,
+    "cunning": 13,
+    "physique": 11
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "reading_hidden_agendas",
+    "operational_security",
+    "languages_and_translation"
+   ],
+   "familiarity": 3
+  },
+  "sverdlov": {
+   "name": "Yakov Sverdlov",
+   "role": "Secretary of the Bolshevik Central Committee",
+   "attributes": {
+    "oration": 13,
+    "intellect": 15,
+    "resolve": 16,
+    "presence": 14,
+    "cunning": 16,
+    "physique": 11
+   },
+   "proficiency": 3,
+   "expertise": [
+    "factional_maneuvering"
+   ],
+   "proficient": [
+    "operational_security",
+    "situation_analysis",
+    "cultivating_allies"
+   ],
+   "familiarity": 1
+  },
+  "tsereteli": {
+   "name": "Irakli Tsereteli",
+   "role": "Menshevik leader, Minister in the coalition government",
+   "attributes": {
+    "oration": 16,
+    "intellect": 15,
+    "resolve": 13,
+    "presence": 15,
+    "cunning": 11,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [
+    "platform_speechmaking"
+   ],
+   "proficient": [
+    "negotiation",
+    "debate_and_public_argument"
+   ],
+   "familiarity": 2
+  },
+  "chernov": {
+   "name": "Viktor Chernov",
+   "role": "Leader of the Socialist Revolutionary Party",
+   "attributes": {
+    "oration": 14,
+    "intellect": 16,
+    "resolve": 10,
+    "presence": 13,
+    "cunning": 11,
+    "physique": 11
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "revolutionary_theory",
+    "written_propaganda",
+    "debate_and_public_argument"
+   ],
+   "familiarity": 1
+  },
+  "dzerzhinsky": {
+   "name": "Felix Dzerzhinsky",
+   "role": "Bolshevik Central Committee member",
+   "attributes": {
+    "oration": 11,
+    "intellect": 14,
+    "resolve": 19,
+    "presence": 13,
+    "cunning": 16,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [
+    "willpower_vs_coercion"
+   ],
+   "proficient": [
+    "operational_security",
+    "reading_hidden_agendas",
+    "psychological_endurance"
+   ],
+   "familiarity": 1
+  },
+  "lunacharsky": {
+   "name": "Anatoly Lunacharsky",
+   "role": "Bolshevik (ex-Mezhraionets), orator and critic",
+   "attributes": {
+    "oration": 17,
+    "intellect": 16,
+    "resolve": 10,
+    "presence": 15,
+    "cunning": 10,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [
+    "platform_speechmaking"
+   ],
+   "proficient": [
+    "crowd_command_and_agitation",
+    "written_propaganda",
+    "revolutionary_theory"
+   ],
+   "familiarity": 3
+  },
+  "bukharin": {
+   "name": "Nikolai Bukharin",
+   "role": "Bolshevik theorist, Moscow",
+   "attributes": {
+    "oration": 13,
+    "intellect": 17,
+    "resolve": 11,
+    "presence": 14,
+    "cunning": 11,
+    "physique": 11
+   },
+   "proficiency": 2,
+   "expertise": [
+    "revolutionary_theory"
+   ],
+   "proficient": [
+    "written_propaganda",
+    "debate_and_public_argument"
+   ],
+   "familiarity": 2
+  },
+  "uritsky": {
+   "name": "Moisei Uritsky",
+   "role": "Bolshevik Central Committee member (ex-Mezhraionets)",
+   "attributes": {
+    "oration": 11,
+    "intellect": 14,
+    "resolve": 15,
+    "presence": 12,
+    "cunning": 14,
+    "physique": 11
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "operational_security",
+    "situation_analysis",
+    "factional_maneuvering"
+   ],
+   "familiarity": 3
+  },
+  "raskolnikov": {
+   "name": "Fyodor Raskolnikov",
+   "role": "Bolshevik leader of the Kronstadt sailors",
+   "attributes": {
+    "oration": 14,
+    "intellect": 13,
+    "resolve": 15,
+    "presence": 15,
+    "cunning": 12,
+    "physique": 14
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "crowd_command_and_agitation",
+    "inspiring_loyalty",
+    "physical_confrontation"
+   ],
+   "familiarity": 1
+  },
+  "lazimir": {
+   "name": "Pavel Lazimir",
+   "role": "Left SR, soldiers' section of the Soviet",
+   "attributes": {
+    "oration": 11,
+    "intellect": 12,
+    "resolve": 13,
+    "presence": 12,
+    "cunning": 11,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "negotiation",
+    "cultivating_allies"
+   ],
+   "familiarity": 0
+  },
+  "kornilov": {
+   "name": "Lavr Kornilov",
+   "role": "General; under arrest at Bykhov after his failed coup",
+   "attributes": {
+    "oration": 10,
+    "intellect": 13,
+    "resolve": 18,
+    "presence": 15,
+    "cunning": 9,
+    "physique": 15
+   },
+   "proficiency": 3,
+   "expertise": [
+    "crisis_command"
+   ],
+   "proficient": [
+    "military_strategic_planning",
+    "inspiring_loyalty",
+    "endurance_and_travel"
+   ],
+   "familiarity": 0
+  },
+  "alekseev": {
+   "name": "Mikhail Alekseev",
+   "role": "General, former chief of staff of the army",
+   "attributes": {
+    "oration": 10,
+    "intellect": 16,
+    "resolve": 14,
+    "presence": 12,
+    "cunning": 13,
+    "physique": 9
+   },
+   "proficiency": 3,
+   "expertise": [
+    "military_strategic_planning"
+   ],
+   "proficient": [
+    "situation_analysis",
+    "operational_security",
+    "cultivating_allies"
+   ],
+   "familiarity": 0
+  },
+  "kaledin": {
+   "name": "Alexei Kaledin",
+   "role": "Ataman of the Don Cossacks",
+   "attributes": {
+    "oration": 11,
+    "intellect": 13,
+    "resolve": 15,
+    "presence": 14,
+    "cunning": 11,
+    "physique": 13
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "military_strategic_planning",
+    "inspiring_loyalty",
+    "crisis_command"
+   ],
+   "familiarity": 0
+  },
+  "polkovnikov": {
+   "name": "Georgy Polkovnikov",
+   "role": "Commander of the Petrograd Military District",
+   "attributes": {
+    "oration": 10,
+    "intellect": 12,
+    "resolve": 11,
+    "presence": 12,
+    "cunning": 12,
+    "physique": 13
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "military_strategic_planning",
+    "crisis_command"
+   ],
+   "familiarity": 0
+  },
+  "verkhovsky": {
+   "name": "Alexander Verkhovsky",
+   "role": "Minister of War",
+   "attributes": {
+    "oration": 12,
+    "intellect": 14,
+    "resolve": 12,
+    "presence": 12,
+    "cunning": 11,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "military_strategic_planning",
+    "situation_analysis"
+   ],
+   "familiarity": 0
+  },
+  "buchanan": {
+   "name": "Sir George Buchanan",
+   "role": "British Ambassador",
+   "attributes": {
+    "oration": 12,
+    "intellect": 15,
+    "resolve": 13,
+    "presence": 14,
+    "cunning": 15,
+    "physique": 9
+   },
+   "proficiency": 3,
+   "expertise": [
+    "negotiation"
+   ],
+   "proficient": [
+    "languages_and_translation",
+    "reading_hidden_agendas",
+    "cultivating_allies"
+   ],
+   "familiarity": 0
+  }
+ }
+}

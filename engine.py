@@ -24,6 +24,7 @@ import council
 import dynamics
 import geography
 import mechanics
+import npcs as npc_sheets_mod
 import operations
 from systems._shared import core as shared_core
 
@@ -236,6 +237,10 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     digest.pop("opening_gm_note", None)
     digest.pop("memory_log", None)
     earlier_section = _earlier_campaign_section(state)
+    npc_section = ""
+    if npc_sheets_mod.load(setting_key):
+        digest.pop("npc_knowledge", None)
+        npc_section = "\n\n# " + npc_sheets_mod.prompt_section(state, setting_key)
     geo = geography.load(setting_key)
     geography_section = ""
     if geo:
@@ -326,7 +331,7 @@ the system's curated catalogs (by id) - never invent one.
 
 # CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
 {json.dumps(digest, indent=2)}
-{mechanics_section}{operations_section}{dynamics_section}{geography_section}{earlier_section}
+{mechanics_section}{operations_section}{dynamics_section}{geography_section}{npc_section}{earlier_section}
 {scene_section}
 
 Narrate in second person, present tense. Never resolve an uncertain action without calling
@@ -597,7 +602,8 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     if dyn:
         dynamics.recompute_derived(state, dyn)
         dynamics.update_calendar(state, dyn)
-    tool_specs = build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=geo)
+    tool_specs = build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=geo,
+                                  npc_sheets=bool(npc_sheets_mod.load(setting_key)))
     if suggestions:
         tool_specs.append(SUGGEST_ACTIONS_SPEC)
     provider.append_user_message(conversation, user_input)
@@ -647,6 +653,7 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
                 continue
             content, events = handle_tool_call(
                 tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance, geo=geo,
+                setting_key=setting_key,
             )
             debug_events.extend(events)
             results.append({"id": tc["id"], "content": content})
@@ -710,8 +717,15 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
 # Split out of run_turn when the tool set grew past the original four. Each handler returns
 # (content_for_the_model, debug_events).
 
-def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=None):
+def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=None, npc_sheets=False):
     specs = copy.deepcopy(system.TOOL_SPECS)
+    if npc_sheets:
+        for spec in specs:
+            if spec["name"] == "request_check":
+                spec["parameters"]["properties"]["opposed_by"] = {
+                    "type": "string",
+                    "description": "When target_npc has a sheet: the skill or attribute they resist with (default: the same skill the player uses). 'none' if they aren't actively resisting. The application sets the DC from their sheet."}
+        specs.append(npc_sheets_mod.CREATE_SPEC)
     for spec in specs:
         if spec["name"] != "propose_state_update":
             continue
@@ -782,9 +796,16 @@ def _notices_for(changes):
     return lines
 
 
-def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance, geo=None):
+def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance, geo=None,
+                     setting_key=None):
     name, inp = tc["name"], dict(tc["input"] or {})
     events = []
+
+    if name == "create_npc_sheet" and setting_key:
+        result = npc_sheets_mod.create(state, setting_key, system, inp)
+        if "error" not in result:
+            events.append({"type": "npc_sheet", "reasoning": inp.get("reasoning") or inp.get("role") or "", "result": result})
+        return json.dumps(result), events
 
     if geo and name in ("route_info", "move_unit", "set_route", "reorganize_units"):
         result, changes = geography.handle(geo, state, name, inp)
@@ -794,9 +815,19 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         return json.dumps(result), events
 
     if name == "request_check":
+        dc_source = None
+        if setting_key and inp.get("target_npc"):
+            # an NPC with a sheet sets the DC (2026-11-03) - the GM's number is only a fallback
+            sheet_dc, dc_source = npc_sheets_mod.opposed_dc(state, setting_key, system, inp["target_npc"], inp["attribute"],
+                                                  inp.get("skill"), inp.get("opposed_by"))
+            if sheet_dc is not None:
+                inp["dc"] = sheet_dc
+            npc_sheets_mod.record_encounter(state, setting_key, inp["target_npc"])
         result = system.roll_check(
             state["character"], inp["attribute"], inp.get("skill"), inp["dc"], inp.get("target_npc")
         )
+        if dc_source:
+            result["dc_source"] = dc_source
         auto_changes = system.apply_auto_liability_effects(state, result)
         stake_changes = _apply_at_stake(state, resource_schema, dyn, inp.get("at_stake"), result["degree"], "at stake in check")
         follow = _post_change_bookkeeping(state, dyn, resource_schema, system) if stake_changes else []

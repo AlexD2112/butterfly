@@ -239,11 +239,12 @@ can't move the date.
 ## 11. Opposed checks and NPCs
 
 NPCs built on this system carry the same six attributes and skill-tier structure as the player
-character (see the setting pack's `npcs.md` for stat blocks). The application does not
-automatically roll for NPCs - the GM uses an NPC's sheet as reference material for setting a
-believable DC or narrating how well they perform in a contested scene, keeping the actual dice
-resolution on the player character's side of the table, consistent with how the rest of this
-engine works (the player's actions get checked; the world reacts).
+character. Where a setting has NPC sheets (`npc_sheets.json`, see npcs.py) the application uses
+them: a request_check whose target_npc has a sheet gets DC = 10 + that NPC's modifier in the skill
+or attribute that resists (by default the same skill the player uses; `opposed_by` names another,
+or 'none' when they aren't actively resisting). The NPC still doesn't roll - the player's roll
+against a sheet-derived DC is the contest. New important figures get a sheet via create_npc_sheet.
+NPCs without a sheet keep the GM's DC.
 
 ## 12. State update protocol (tool reference)
 
