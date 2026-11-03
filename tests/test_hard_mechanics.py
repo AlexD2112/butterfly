@@ -268,6 +268,7 @@ class TestVotes(unittest.TestCase):
 class TestSwayUnit(unittest.TestCase):
     def setUp(self):
         self.state = fresh_petrograd()
+        self.state["geo"] = {"player": "semyonovsky"}  # an appeal in person needs the player there
 
     def test_dc_follows_loyalty_and_influence(self):
         self.assertEqual(operations.sway_dc(0), 11)

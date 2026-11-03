@@ -1,3 +1,33 @@
+# Geography, part 2: the country's forces, unit lifecycle, marching off the railway (2026-11-03)
+
+- russia_forces (mechanics_catalog.json, `always_present` - old saves get it on load): 21
+  formations outside Petrograd placed on the graph - Latvian Riflemen (Wenden), 5th Army (Dvinsk),
+  Krasnov's 3rd Cavalry Corps (Ostrov), Native Division (Dno), Baltic Fleet (Helsingfors), Stavka
+  guard (Mogilev), Tekke regiment (Bykhov), Minsk reserves, 1st Polish Corps (Bobruisk),
+  Czechoslovak Corps and Rada units (Kiev), Moscow garrison/Red Guards/cadets, Don and Kuban hosts,
+  Dutov's Orenburg Cossacks, Donbass Red Guards, Tsaritsyn and Kazan garrisons, Urals militias.
+  Strengths are turnout estimates, loyalties a design reconstruction. Fights and sway_unit now
+  find units in any forces tracker.
+- reorganize_units: raise (<=3000 men, readiness <=2, one raising per place per 3 days; lands in
+  the city or country tracker by where it is), merge (must be together; strength adds,
+  readiness/loyalty strength-weighted), split, disband. propose_mechanic_update can still add a unit
+  but it's capped at 3000 men / readiness 3.
+- Historical defaults (geography.json `scheduled`, Julian): Native Division to the Kuban (25 Sep),
+  Alekseev Organization at Novocherkassk (2 Nov), Kornilov and the Tekke ride for the Don (19 Nov,
+  on horseback - ~22 days by the model vs 17 historically), Volunteer Army (25 Dec), Czechoslovaks
+  east to Penza (1 Mar 1918), Chelyabinsk revolt (12 May 1918). Each fires once only if its unit
+  still exists and still fits (a Legion the player has won over doesn't revolt).
+- Off the railway: generated country roads (3 nearest neighbours; none to Kronstadt, Riga or
+  across the Gulf), the Volga and Northern Dvina by steamer (frozen Dec-Mar), sea legs slowed by
+  ice Jan-Mar and the Kronstadt ice walkable. Long marches cost days (8 marching hours per day:
+  ~30 km/day infantry, ~55 cavalry). move_unit/route_info take march=true to stay off trains.
+- Muster time: a unit needs (6 - readiness) x 0.75 h x sqrt(strength/2000) to turn out before the
+  first step. Kronstadt sailors to the Winter Palace is now ~7 h from the order (was 4).
+- sway_unit requires the player within 1.5 h of the unit when geography is on.
+- New nodes: Valka, Wenden, Ostrov, Bykhov, Bobruisk, Nizhny Novgorod, Tikhoretskaya,
+  Ekaterinodar, and the Trans-Siberian/CER to Vladivostok. The region areas group places
+  (Northern Front, Western Front, the Don and Kuban, Volga-Urals, Siberia...) for the prompt.
+
 # Geography: a movement graph the code routes over (2026-11-03)
 
 - Why: LLMs are poor at paths and distances from a map written as text (Fatemi et al. 2023 "Talk

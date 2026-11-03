@@ -523,6 +523,8 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     dyn = dynamics.load(setting_key)
     dynamics.ensure_initialized(state, dyn)
     geo = geography.load(setting_key)
+    if mechanics_catalog:
+        mechanics.ensure_always_present(state, mechanics_catalog)
     geography.ensure_initialized(state, geo)
     if dyn:
         dynamics.recompute_derived(state, dyn)
@@ -682,7 +684,7 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
     name, inp = tc["name"], dict(tc["input"] or {})
     events = []
 
-    if geo and name in ("route_info", "move_unit", "set_route"):
+    if geo and name in ("route_info", "move_unit", "set_route", "reorganize_units"):
         result, changes = geography.handle(geo, state, name, inp)
         if name != "route_info" or "error" in result:
             events.append({"type": "geography", "operation": name, "reasoning": inp.get("reasoning") or inp.get("reason") or "",
@@ -774,6 +776,10 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         return json.dumps(result), events
 
     if name == "sway_unit" and mechanics_catalog:
+        if geo:  # an appeal in person needs the player there (2026-11-03)
+            _, here, away, _ = geography.presence(geo, state, "player", [inp.get("unit_id")])
+            if inp.get("unit_id") in away:
+                return json.dumps({"error": f"The player isn't with {inp.get('unit_id')} ({away[inp['unit_id']]}). Travel there with move_unit first, or narrate a letter or an emissary without a roll."}), events
         influence_key = ((dyn or {}).get("influence") or {}).get("sway")
         result, changes = operations.sway_unit(state, system, inp, influence_value=_resource_value(state, influence_key))
         if "error" not in result:

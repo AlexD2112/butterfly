@@ -84,6 +84,16 @@ def force_units(state):
     return out
 
 
+def find_unit(state, uid):
+    """(tracker instance id, unit dict) for a unit id in any forces tracker, or (None, None)."""
+    for iid, m in (state.get("mechanics") or {}).items():
+        if m.get("render_primitive") == "forces":
+            for u in (m.get("data") or {}).get("units") or []:
+                if u["id"] == uid:
+                    return iid, u
+    return None, None
+
+
 def _uname(state, uid):
     return (force_units(state).get(uid) or {}).get("name", uid)
 
@@ -98,9 +108,15 @@ def ensure_initialized(state, geo):
         g["edges"] = {eid: {"status": "cut" if e["mode"] == "rail" else "blocked", "reason": e["closed_at_start"]}
                       for eid, e in geo["edges"].items() if e.get("closed_at_start")}
     pos = g.setdefault("positions", {})
-    for uid in force_units(state):
+    units = force_units(state)
+    for uid in units:
         if uid not in pos and uid in (geo.get("initial_positions") or {}):
             pos[uid] = geo["initial_positions"][uid]
+    for uid in [u for u in pos if u not in units]:  # disbanded, destroyed, or dropped from a tracker
+        pos.pop(uid)
+    for uid in [u for u in g["moving"] if u not in units]:
+        g["moving"].pop(uid)
+    g.setdefault("schedule_done", [])
     return g
 
 
@@ -168,6 +184,14 @@ def _speed(geo, state, who):
     return foot.get(kind, foot["default"])
 
 
+def _month(state):
+    return str(state.get("date") or "")[5:7]
+
+
+def frozen(geo, state, key):
+    return _month(state) in ((geo.get("freeze") or {}).get(key) or [])
+
+
 def _passable(state, eid, edge, mode, who_side):
     """Can a mover of this side use this edge in this way ('foot', 'train', 'ship')?"""
     st = edge_state(state, eid)
@@ -184,7 +208,7 @@ def _passable(state, eid, edge, mode, who_side):
     return True, None
 
 
-def route(geo, state, start, goal, who=PLAYER):
+def route(geo, state, start, goal, who=PLAYER, foot_only=False):
     """Fastest way from start to goal for this mover, respecting edge states. Returns a dict with
     hours, path (node ids), legs [(edge_id, how, hours)], and 'avoided' (blocks the route went round),
     or None if there is no way through."""
@@ -193,7 +217,14 @@ def route(geo, state, start, goal, who=PLAYER):
     speed = _speed(geo, state, who)
     who_side = side_of(state, who)
     rail_kmh, sea_kmh = geo["speeds_kmh"]["rail"], geo["speeds_kmh"]["sea"]
+    river_kmh = geo["speeds_kmh"].get("river", sea_kmh)
     board = geo.get("boarding_hours") or {}
+    # Past a short walk, men march about 8 hours a day: a long leg on foot costs its days, not its
+    # walking hours (24/8 = 3x). Trains and ships run around the clock.
+    march = 24.0 / geo.get("march_hours_per_day", 24)
+    long_km = geo.get("long_march_km", 1e9)
+    river_shut = frozen(geo, state, "river")
+    ice_walk = frozen(geo, state, "sea_ice_walk")
     avoided = set()
     # Dijkstra over (node, how we arrived) so boarding a train or a ship costs once, not per leg
     frontier = [(0.0, 0, start, "foot")]
@@ -215,14 +246,23 @@ def route(geo, state, start, goal, who=PLAYER):
         for eid, nxt in geo["_adj"][node]:
             e = geo["edges"][eid]
             options = []
+            walk = e["km"] / speed * (march if e["km"] > long_km else 1)
             if e["mode"] in FOOT_MODES:
-                options.append(("foot", e["km"] / speed))
+                options.append(("foot", walk))
             elif e["mode"] == "rail":
                 options.append(("train", e["km"] / rail_kmh + (0 if how == "train" else board.get("rail", 0))))
-                options.append(("foot", e["km"] / speed))  # march along the line
+                options.append(("foot", walk))  # march along the line
             elif e["mode"] == "sea":
-                options.append(("ship", e["km"] / sea_kmh + (0 if how == "ship" else board.get("sea", 0))))
+                # winter: icebreakers keep the Gulf open, slowly - and the ice off Kronstadt bears men
+                slow = 2 if e.get("freezes") and ice_walk else 1
+                options.append(("ship", slow * e["km"] / sea_kmh + (0 if how == "ship" else board.get("sea", 0))))
+                if e.get("ice_walk") and ice_walk:
+                    options.append(("ice", e["km"] / speed))
+            elif e["mode"] == "river" and not river_shut:
+                options.append(("ship", e["km"] / river_kmh + (0 if how == "ship" else board.get("river", 0))))
             for leg_how, hours in options:
+                if foot_only and leg_how not in ("foot", "ice"):
+                    continue
                 ok, why = _passable(state, eid, e, leg_how, who_side)
                 if not ok:
                     avoided.add(why)
@@ -236,10 +276,10 @@ def route(geo, state, start, goal, who=PLAYER):
     return None
 
 
-def route_noted(geo, state, start, goal, who=PLAYER):
+def route_noted(geo, state, start, goal, who=PLAYER, foot_only=False):
     """route(), with 'avoided' trimmed to the blocks that actually cost this trip time (a raised
     bridge on the far side of town is not worth mentioning on the way to Pskov)."""
-    r = route(geo, state, start, goal, who)
+    r = route(geo, state, start, goal, who, foot_only)
     if r is None or not r["avoided"]:
         if r is not None:
             r["avoided"] = []
@@ -248,10 +288,10 @@ def route_noted(geo, state, start, goal, who=PLAYER):
     saved = state["geo"]["edges"]
     state["geo"]["edges"] = {}
     try:
-        free = route(geo, state, start, goal, who)
+        free = route(geo, state, start, goal, who, foot_only)
     finally:
         state["geo"]["edges"] = saved
-    r["avoided"] = blocks if free and free["hours"] < r["hours"] - 0.05 else []
+    r["avoided"] = (blocks[:3] + ([f"and {len(blocks) - 3} more"] if len(blocks) > 3 else [])) if free and free["hours"] < r["hours"] - 0.05 else []
     return r
 
 
@@ -260,15 +300,23 @@ def describe_route(geo, r):
     matter, not every street corner."""
     parts, last = [], None
     for eid, how, _ in r["legs"]:
-        e = geo["edges"][eid]
-        if how == "train":
+        e = geo["edges"].get(eid) or {"mode": eid}
+        if eid == "muster":
+            bit = "mustering"
+        elif how == "train":
             bit = f"by train ({e.get('name', 'rail')})"
+        elif how == "ice":
+            bit = "across the ice"
+        elif how == "ship" and e["mode"] == "river":
+            bit = f"by river steamer ({e.get('name', 'river')})"
         elif how == "ship":
             bit = "by ship"
         elif e["mode"] == "bridge":
             bit = f"over the {e['name']}"
         elif e["mode"] == "rail":
             bit = f"marching along the {e.get('name', 'line')}"
+        elif e["mode"] == "road" and e.get("km", 0) > 15:
+            bit = "marching by road"
         else:
             bit = "on foot"
         if bit != last:
@@ -293,7 +341,15 @@ def _add_days(iso, days):
     return (date.fromisoformat(iso) + timedelta(days=days)).isoformat()
 
 
-def move(geo, state, who, to_text):
+def muster_hours(unit):
+    """Time for a unit to turn out, draw ammunition and get moving before the first step: an hour or
+    so for a keen battalion, most of a day for a big, slack one."""
+    readiness = unit.get("readiness", 3)
+    size = max(0.25, (unit.get("strength", 1000) / 2000) ** 0.5)
+    return round(min(12.0, max(0.25, (6 - readiness) * 0.75 * size)), 2)
+
+
+def move(geo, state, who, to_text, foot_only=False):
     """Moves a unit or the player toward a place. Short trips finish now; longer ones put the unit on
     the road and it arrives as the clock advances (tick_day). Returns a result dict for the GM."""
     g = ensure_initialized(state, geo)
@@ -307,12 +363,19 @@ def move(geo, state, who, to_text):
     if start is None:  # a unit the tracker added mid-campaign: it appears where the GM says
         g["positions"][who] = goal
         return {"unit": who, "placed_at": place_name(geo, goal), "note": "First placement - no travel time."}
-    r = route_noted(geo, state, start, goal, who)
+    r = route_noted(geo, state, start, goal, who, foot_only)
     if r is None:
         return {"error": f"No way through from {place_name(geo, start)} to {place_name(geo, goal)} right now.",
                 "blocked_by": blocks_near(geo, state, start, goal, who)}
+    already_marching = who in g["moving"]
+    muster = 0.0 if who == PLAYER or already_marching or start == goal else muster_hours(units[who])
+    if muster:
+        r["legs"].insert(0, ("muster", "muster", muster))
+        r["hours"] = round(r["hours"] + muster, 2)
     result = {"unit": who, "from": place_name(geo, start), "to": place_name(geo, goal),
               "travel": fmt_hours(r["hours"]), "hours": r["hours"], "route": describe_route(geo, r)}
+    if muster:
+        result["muster"] = f"{fmt_hours(muster)} to turn out and get moving (included)"
     if r["avoided"]:
         result["went_round"] = r["avoided"]
     g["moving"].pop(who, None)
@@ -369,7 +432,7 @@ def tick_day(geo, state, hours=24.0):
         node = g["positions"].get(uid, mv["path"][0])
         while mv["legs"] and budget > 0:
             eid, how, leg_hours = mv["legs"][0]
-            ok, why = _passable(state, eid, geo["edges"][eid], how, side)
+            ok, why = (True, None) if eid == "muster" else _passable(state, eid, geo["edges"][eid], how, side)
             if not ok:
                 g["moving"].pop(uid)
                 g["positions"][uid] = node
@@ -383,15 +446,222 @@ def tick_day(geo, state, hours=24.0):
                 break
             budget -= leg_hours
             mv["hours_left"] = max(0.0, mv["hours_left"] - leg_hours)
+            mv["legs"].pop(0)
+            if eid == "muster":
+                continue
             e = geo["edges"][eid]
             node = e["b"] if e["a"] == node else e["a"]
-            mv["legs"].pop(0)
             g["positions"][uid] = node
         if uid in g["moving"] and not mv["legs"]:
             g["moving"].pop(uid)
             g["positions"][uid] = mv["to"]
             changes.append({"kind": "movement", "unit": uid, "status": "arrived", "at": mv["to"],
                             "message": f"{_uname(state, uid)} arrived at {place_name(geo, mv['to'])}."})
+    changes += run_schedule(geo, state)
+    return changes
+
+
+# ---------------------------------------------------------------- units appearing, merging, splitting
+
+MAX_RAISE = 3000          # men raised in one go
+RAISE_COOLDOWN_DAYS = 3   # per place
+MAX_RAISE_READINESS = 2   # new levies are green
+
+
+def _tracker_for(geo, state, node):
+    """Which forces tracker a new unit at this place belongs in: the city's, or the country's."""
+    forces = [iid for iid, m in (state.get("mechanics") or {}).items() if m.get("render_primitive") == "forces"]
+    want = "petrograd_garrison" if geo["nodes"].get(node, {}).get("scale") == "city" else "russia_forces"
+    return want if want in forces else (forces[0] if forces else None)
+
+
+def _new_id(state, name):
+    base = "_".join(_norm(name).split())[:40] or "unit"
+    uid, n = base, 2
+    while uid in force_units(state):
+        uid, n = f"{base}_{n}", n + 1
+    return uid
+
+
+def _add_unit(state, iid, unit):
+    state["mechanics"][iid]["data"]["units"].append(unit)
+
+
+def _remove_unit(state, uid):
+    iid, u = find_unit(state, uid)
+    if iid:
+        m = state["mechanics"][iid]["data"]
+        m["units"] = [x for x in m["units"] if x["id"] != uid]
+        if not m["units"]:  # a forces tracker must keep at least one unit to stay valid
+            m["units"] = [u | {"strength": 0, "note": "disbanded"}]
+    g = state.get("geo") or {}
+    (g.get("positions") or {}).pop(uid, None)
+    (g.get("moving") or {}).pop(uid, None)
+
+
+def _together(geo, state, uids):
+    """All present (not marching) and within a short walk of the first one's place."""
+    g = state["geo"]
+    first = g["positions"].get(uids[0])
+    for uid in uids:
+        if uid in g["moving"]:
+            return None, f"{_uname(state, uid)} is on the move."
+        at = g["positions"].get(uid)
+        if at is None:
+            return None, f"{_uname(state, uid)} isn't on the map yet - place it with move_unit."
+        if at != first:
+            r = route(geo, state, at, first, uid)
+            if not r or r["hours"] > ACT_HOURS:
+                return None, f"{_uname(state, uid)} is at {place_name(geo, at)}, not with {_uname(state, uids[0])} at {place_name(geo, first)}."
+    return first, None
+
+
+def reorganize(geo, state, inp):
+    """raise / merge / split / disband. Code does the arithmetic and checks everyone is where they
+    need to be; the GM supplies the fiction."""
+    ensure_initialized(state, geo)
+    action = inp.get("action")
+    g = state["geo"]
+    if action == "raise":
+        node, err = resolve_place(geo, state, inp.get("at"))
+        if err:
+            return {"error": err}
+        recent = [r for r in g.setdefault("raised", []) if r["at"] == node and state.get("date") and r["date"] >= _add_days(state["date"], -RAISE_COOLDOWN_DAYS)]
+        if recent:
+            return {"error": f"Men were already raised at {place_name(geo, node)} on {recent[-1]['date']}; wait a few days or raise them elsewhere."}
+        iid = _tracker_for(geo, state, node)
+        if not iid:
+            return {"error": "No forces tracker to add the unit to."}
+        name = (inp.get("name") or "").strip()
+        if not name:
+            return {"error": "A new unit needs a name."}
+        strength = max(50, min(MAX_RAISE, int(inp.get("strength") or 500)))
+        unit = {"id": _new_id(state, name), "name": name, "kind": str(inp.get("kind") or "militia"),
+                "strength": strength, "readiness": max(1, min(MAX_RAISE_READINESS, int(inp.get("readiness") or 1))),
+                "loyalty": max(-3, min(3, int(inp.get("loyalty") if inp.get("loyalty") is not None else 2))),
+                "note": str(inp.get("note") or inp.get("reasoning") or "")}
+        _add_unit(state, iid, unit)
+        g["positions"][unit["id"]] = node
+        g["raised"] = (g["raised"] + [{"at": node, "date": state.get("date")}])[-30:]
+        out = {"raised": unit, "at": place_name(geo, node), "tracker": iid}
+        if strength < int(inp.get("strength") or 0):
+            out["note"] = f"Capped at {MAX_RAISE} men per raising; raise again elsewhere or in a few days."
+        return out
+    if action == "merge":
+        uids = list(dict.fromkeys(inp.get("units") or []))
+        if len(uids) < 2:
+            return {"error": "merge needs two or more unit ids."}
+        found = [find_unit(state, u) for u in uids]
+        missing = [u for u, (iid, _) in zip(uids, found) if not iid]
+        if missing:
+            return {"error": f"Unknown units {missing}."}
+        node, err = _together(geo, state, uids)
+        if err:
+            return {"error": err}
+        parts = [u for _, u in found]
+        total = sum(u["strength"] for u in parts) or 1
+        keep = parts[0]
+        merged = {
+            "strength": total,
+            "readiness": max(1, min(5, int(sum(u["readiness"] * u["strength"] for u in parts) / total))),
+            "loyalty": max(-3, min(3, round(sum(u["loyalty"] * u["strength"] for u in parts) / total))),
+        }
+        for u in parts[1:]:
+            _remove_unit(state, u["id"])
+        keep.update(merged)
+        if inp.get("name"):
+            keep["name"] = inp["name"]
+        keep["note"] = (keep.get("note", "") + f" Merged with {', '.join(u['name'] for u in parts[1:])} ({state.get('date')}).").strip()
+        return {"merged_into": keep["id"], "name": keep["name"], "at": place_name(geo, node), **merged,
+                "note": "Readiness and loyalty are the strength-weighted average - a keen unit absorbing a slack one loses its edge."}
+    if action == "split":
+        iid, u = find_unit(state, inp.get("unit"))
+        if not iid:
+            return {"error": f"Unknown unit '{inp.get('unit')}'."}
+        node, err = _together(geo, state, [u["id"]])
+        if err:
+            return {"error": err}
+        n = int(inp.get("strength") or 0)
+        if not 0 < n < u["strength"]:
+            return {"error": f"Detach between 1 and {u['strength'] - 1} men."}
+        name = (inp.get("name") or f"{u['name']} detachment").strip()
+        new = {k: u[k] for k in ("kind", "readiness", "loyalty")} | {
+            "id": _new_id(state, name), "name": name, "strength": n, "note": f"Detached from {u['name']} ({state.get('date')})."}
+        u["strength"] -= n
+        _add_unit(state, iid, new)
+        g["positions"][new["id"]] = node
+        return {"split_from": u["id"], "new_unit": new, "remaining": u["strength"], "at": place_name(geo, node)}
+    if action == "disband":
+        iid, u = find_unit(state, inp.get("unit"))
+        if not iid:
+            return {"error": f"Unknown unit '{inp.get('unit')}'."}
+        _remove_unit(state, u["id"])
+        return {"disbanded": u["id"], "name": u["name"], "reason": inp.get("reasoning") or ""}
+    return {"error": "action must be raise, merge, split or disband."}
+
+
+def _schedule_ok(state, item):
+    cond = item.get("if") or {}
+    uid = item.get("unit") if isinstance(item.get("unit"), str) else None
+    if uid:
+        _, u = find_unit(state, uid)
+        if not u or u.get("strength", 0) <= 0:
+            return False
+        if "loyalty_max" in cond and u["loyalty"] > cond["loyalty_max"]:
+            return False
+        if "loyalty_min" in cond and u["loyalty"] < cond["loyalty_min"]:
+            return False
+    return True
+
+
+def run_schedule(geo, state):
+    """Historical defaults for units the player isn't driving (geography.json "scheduled"). Each item
+    fires once on its date if its unit still exists and still fits the condition - so a campaign that
+    has already won the Czechoslovaks over, or destroyed the Tekke regiment, doesn't get history."""
+    g = state["geo"]
+    today = state.get("date") or ""
+    changes = []
+    for item in geo.get("scheduled") or []:
+        if item["id"] in g["schedule_done"] or item["date"] > today:
+            continue
+        g["schedule_done"].append(item["id"])
+        if not _schedule_ok(state, item):
+            continue
+        act, msg = item["action"], item.get("message", "")
+        if act == "appear":
+            unit = dict(item["unit"])
+            if unit["id"] in force_units(state):
+                continue
+            node = item["at"]
+            iid = _tracker_for(geo, state, node)
+            if not iid:
+                continue
+            _add_unit(state, iid, unit)
+            g["positions"][unit["id"]] = node
+        elif act == "move":
+            res = move(geo, state, item["unit"], item["to"], foot_only=bool(item.get("foot_only")))
+            if "error" in res:
+                continue
+        elif act == "reinforce":
+            _, u = find_unit(state, item["unit"])
+            u["strength"] += int(item.get("strength_add", 0))
+            if item.get("name"):
+                u["name"] = item["name"]
+        elif act == "split":
+            iid, u = find_unit(state, item["unit"])
+            n = min(int(item["strength"]), u["strength"] - 1)
+            if n <= 0:
+                continue
+            new = {k: u[k] for k in ("kind", "readiness")} | {"strength": n, "note": msg, **item["new"]}
+            u["strength"] -= n
+            if "loyalty" in item:
+                u["loyalty"] = new["loyalty"] = item["loyalty"]
+            else:
+                new["loyalty"] = u["loyalty"]
+            _add_unit(state, iid, new)
+            g["positions"][new["id"]] = item.get("at") or g["positions"].get(u["id"])
+        changes.append({"kind": "movement", "status": "history", "unit": item.get("unit") if isinstance(item.get("unit"), str) else item["unit"]["id"],
+                        "message": msg})
     return changes
 
 
@@ -538,21 +808,28 @@ def prompt_section(geo, state):
     units = force_units(state)
     lines = ["GEOGRAPHY (code-owned. Travel times, who is where and what's blocked come from here; never invent them.",
              "Use route_info to ask how long a trip takes, move_unit to send a unit (or the player) somewhere, set_route",
-             "to raise a bridge, cut a line or put a picket on a road, and give resolve_confrontation the place: only units",
-             f"within about {fmt_hours(REACH_HOURS)} of it can fight.)"]
+             "to raise a bridge, cut a line or put a picket on a road, reorganize_units to raise, merge, split or disband",
+             "units, and give resolve_confrontation the place: only units within about "
+             f"{fmt_hours(REACH_HOURS)} of it can fight. Units are listed by id; details are in the forces trackers.)"]
     if g.get("player"):
         lines.append(f"The player is at {place_name(geo, g['player'])} ({area_name(geo, g['player'])}).")
     by_area = {}
     for uid, nid in sorted(g["positions"].items()):
         if uid in units and uid not in g["moving"]:
             by_area.setdefault(geo["nodes"].get(nid, {}).get("area", "outside"), []).append(
-                f"{units[uid]['name']} [{uid}] at {place_name(geo, nid)}")
+                f"{uid} at {place_name(geo, nid)}")
     order = list((geo.get("areas") or {}).keys())
     for area in sorted(by_area, key=lambda a: order.index(a) if a in order else 99):
         lines.append(f"{(geo.get('areas') or {}).get(area, area)}: " + "; ".join(by_area[area]) + ".")
     for uid, mv in g["moving"].items():
-        name = units.get(uid, {}).get("name", uid)
-        lines.append(f"On the move: {name} [{uid}] to {place_name(geo, mv['to'])}, due {mv.get('eta') or 'soon'}.")
+        lines.append(f"On the move: {uid} to {place_name(geo, mv['to'])}, due {mv.get('eta') or 'soon'}.")
+    unplaced = [uid for uid, u in units.items() if uid not in g["positions"] and u.get("strength", 0) > 0]
+    if unplaced:
+        lines.append("Not on the map yet (place each with move_unit before it does anything): " + ", ".join(unplaced) + ".")
+    if frozen(geo, state, "river"):
+        lines.append("Winter: the rivers are frozen (no steamers).")
+    if frozen(geo, state, "sea_ice_walk"):
+        lines.append("Deep winter: icebreakers only in the Gulf, and the ice off Kronstadt bears men on foot.")
     for eid, st in g["edges"].items():
         e = geo["edges"].get(eid)
         if not e:
@@ -572,8 +849,12 @@ def prompt_section(geo, state):
         if n["scale"] == "city" and n["kind"] not in ("bridgehead", "barracks"):
             city.setdefault(n["area"], []).append(n["name"])
     lines.append("City places: " + " | ".join(f"{(geo.get('areas') or {}).get(a, a)}: {', '.join(v)}" for a, v in city.items()) + ".")
-    far = [n["name"] for n in geo["nodes"].values() if n["scale"] == "country"]
-    lines.append("By rail, road or sea: " + ", ".join(far) + ".")
+    far = {}
+    for n in geo["nodes"].values():
+        if n["scale"] == "country":
+            far.setdefault(n["area"], []).append(n["name"])
+    lines.append("Beyond the city (by rail, road, river or sea): " + " | ".join(
+        f"{(geo.get('areas') or {}).get(a, a)}: {', '.join(v)}" for a, v in far.items()) + ".")
     return "\n".join(lines)
 
 
@@ -588,6 +869,7 @@ def tool_specs():
                 "to": {"type": "string", "description": "A place name from GEOGRAPHY."},
                 "from": {"type": "string", "description": "A place name, or a unit id (where that unit is). Default: the player."},
                 "unit": {"type": "string", "description": "Who is travelling (sets their pace and side), default the player."},
+                "march": {"type": "boolean", "description": "Only by road on foot or horseback (no trains or ships)."},
             }, "required": ["to"]},
         },
         {
@@ -596,6 +878,7 @@ def tool_specs():
             "parameters": {"type": "object", "properties": {
                 "unit": {"type": "string", "description": "A unit id from the forces tracker, or 'player'."},
                 "to": {"type": "string", "description": "A place name from GEOGRAPHY."},
+                "march": {"type": "boolean", "description": "true: keep off railways and ships - march or ride by road (a fugitive column, cavalry raiding, troops avoiding hostile railwaymen). Much slower."},
                 "reasoning": {"type": "string"},
             }, "required": ["unit", "to"]},
         },
@@ -610,7 +893,26 @@ def tool_specs():
                 "reason": {"type": "string"},
             }, "required": ["route", "by"]},
         },
+        REORGANIZE_SPEC,
     ]
+
+
+REORGANIZE_SPEC = {
+    "name": "reorganize_units",
+    "description": "Change the order of battle itself. raise: new men under arms at a place (max 3000 at a time, green, one raising per place every few days) - factory workers handed rifles, a mutiny's volunteers. merge: two or more units in the same place become one (strength adds, readiness and loyalty average). split: detach men into a new unit in the same place. disband: a unit dissolves, deserts or is destroyed. Never write these changes into a tracker by hand.",
+    "parameters": {"type": "object", "properties": {
+        "action": {"type": "string", "enum": ["raise", "merge", "split", "disband"]},
+        "at": {"type": "string", "description": "raise: where (a place from GEOGRAPHY)."},
+        "name": {"type": "string", "description": "raise/split: the new unit's name; merge: optional new name."},
+        "kind": {"type": "string", "description": "raise: militia, garrison, infantry, cavalry, cossack, naval, cadet, armor..."},
+        "strength": {"type": "integer", "description": "raise: men; split: men to detach."},
+        "loyalty": {"type": "integer", "description": "raise: -3..+3 toward the player's side (default +2)."},
+        "readiness": {"type": "integer", "description": "raise: 1-2."},
+        "units": {"type": "array", "items": {"type": "string"}, "description": "merge: unit ids, the first one keeps its id."},
+        "unit": {"type": "string", "description": "split/disband: the unit id."},
+        "reasoning": {"type": "string"},
+    }, "required": ["action"]},
+}
 
 
 def handle(geo, state, name, inp):
@@ -618,6 +920,7 @@ def handle(geo, state, name, inp):
     ensure_initialized(state, geo)
     if name == "route_info":
         who = inp.get("unit") or PLAYER
+        foot_only = bool(inp.get("march"))
         g = state["geo"]
         if inp.get("from"):
             start, err = resolve_place(geo, state, inp["from"])
@@ -628,7 +931,7 @@ def handle(geo, state, name, inp):
         goal, err = resolve_place(geo, state, inp.get("to"))
         if err:
             return {"error": err}, []
-        r = route_noted(geo, state, start, goal, who)
+        r = route_noted(geo, state, start, goal, who, foot_only)
         if not r:
             return {"from": place_name(geo, start), "to": place_name(geo, goal), "reachable": False,
                     "blocked_by": blocks_near(geo, state, start, goal, who)}, []
@@ -638,7 +941,7 @@ def handle(geo, state, name, inp):
             out["went_round"] = r["avoided"]
         return out, []
     if name == "move_unit":
-        result = move(geo, state, inp.get("unit") or "", inp.get("to"))
+        result = move(geo, state, inp.get("unit") or "", inp.get("to"), foot_only=bool(inp.get("march")))
         if "error" in result:
             return result, []
         return result, [{"kind": "movement", "unit": result["unit"], "status": "arrived" if result.get("arrived", True) else "departed",
@@ -648,4 +951,9 @@ def handle(geo, state, name, inp):
         if "error" in result:
             return result, []
         return result, [{"kind": "route", **result}]
+    if name == "reorganize_units":
+        result = reorganize(geo, state, inp)
+        if "error" in result:
+            return result, []
+        return result, [{"kind": "reorganization", "action": inp.get("action"), **{k: v for k, v in result.items() if k != "raised"}}]
     return {"error": f"unknown geography tool {name}"}, []

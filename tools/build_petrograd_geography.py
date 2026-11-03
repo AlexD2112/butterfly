@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTING = ROOT / "settings" / "petrograd_1917"
-DETOUR = {"street": 1.3, "road": 1.25, "rail": 1.2, "sea": 1.1, "bridge": 1.0}
+DETOUR = {"street": 1.3, "road": 1.25, "rail": 1.2, "sea": 1.1, "river": 1.5, "bridge": 1.0}
 
 # ---------------------------------------------------------------- city places, by bank
 # area values: left_bank (the centre and south), vasilievsky, petrograd_side, fortress, vyborg_side
@@ -159,6 +159,34 @@ OUTSIDE = {
     "ufa": ("Ufa", "town", 54.7400, 55.9700, ""),
     "chelyabinsk": ("Chelyabinsk", "junction", 55.1600, 61.4000, "Where the Trans-Siberian proper begins."),
     "omsk": ("Omsk", "city", 54.9900, 73.3700, "Western Siberia."),
+    # added 2026-11-03 for the country-wide order of battle and the Civil War theatres
+    "valka": ("Valka", "junction", 57.7750, 26.0200, "Junction behind the 12th Army's front."),
+    "wenden": ("Wenden", "front", 57.3120, 25.2700, "Headquarters area of the Latvian Riflemen, 12th Army."),
+    "ostrov": ("Ostrov", "town", 57.3450, 28.3500, "South of Pskov; the 3rd Cavalry Corps was quartered here after Kornilov."),
+    "bykhov": ("Bykhov", "town", 53.5200, 30.2500, "Where Kornilov and his generals are held, guarded by the Tekke regiment."),
+    "bobruisk": ("Bobruisk", "town", 53.1400, 29.2200, "Fortress town; the 1st Polish Corps is forming nearby."),
+    "nizhny_novgorod": ("Nizhny Novgorod", "city", 56.3300, 44.0000, "Volga river port and fair city."),
+    "tikhoretskaya": ("Tikhoretskaya", "junction", 45.8500, 40.1200, "Kuban rail junction."),
+    "ekaterinodar": ("Ekaterinodar", "city", 45.0400, 38.9800, "Capital of the Kuban Cossacks."),
+    "novonikolaevsk": ("Novonikolaevsk", "town", 55.0300, 82.9200, "Where the Trans-Siberian crosses the Ob."),
+    "krasnoyarsk": ("Krasnoyarsk", "town", 56.0100, 92.8700, "Central Siberia."),
+    "irkutsk": ("Irkutsk", "city", 52.2900, 104.3000, "Eastern Siberia, by Lake Baikal."),
+    "chita": ("Chita", "town", 52.0300, 113.5000, "Transbaikalia; the Transbaikal Cossacks."),
+    "harbin": ("Harbin", "city", 45.7500, 126.6500, "Russian railway town in Manchuria (Chinese Eastern Railway)."),
+    "vladivostok": ("Vladivostok", "port", 43.1200, 131.9000, "Pacific port at the end of the Trans-Siberian."),
+}
+# Which part of the country each place outside the city belongs to - the GM sees forces grouped this way.
+REGION_OF = {
+    "petrograd_region": ["kronstadt", "oranienbaum", "levashovo", "pulkovo", "tsarskoe_selo", "gatchina", "beloostrov"],
+    "finland_baltic": ["terijoki", "vyborg", "helsingfors", "narva", "reval"],
+    "northern_front": ["luga", "pskov", "dno", "ostrov", "dvinsk", "riga", "valka", "wenden", "novosokolniki", "novgorod", "chudovo"],
+    "western_front": ["vitebsk", "orsha", "mogilev", "bykhov", "minsk", "baranovichi", "smolensk", "zhlobin", "gomel", "bobruisk"],
+    "north": ["mga", "zvanka", "petrozavodsk", "murmansk", "vologda", "arkhangelsk", "vyatka"],
+    "centre": ["bologoye", "tver", "moscow", "yaroslavl", "tula", "orel", "kursk", "ryazan", "kozlov", "voronezh", "nizhny_novgorod"],
+    "ukraine": ["kiev", "bakhmach", "kharkov"],
+    "south": ["rostov", "novocherkassk", "povorino", "tsaritsyn", "tikhoretskaya", "ekaterinodar"],
+    "volga_urals": ["ruzaevka", "kazan", "penza", "syzran", "samara", "orenburg", "ufa", "perm", "ekaterinburg", "chelyabinsk"],
+    "siberia": ["omsk", "novonikolaevsk", "krasnoyarsk", "irkutsk", "chita", "harbin", "vladivostok"],
 }
 RAIL = [  # (line name, [station ids in order])
     ("Finland connecting line (over the Neva railway bridge)", ["finland_station", "nikolaevsky_station"]),
@@ -185,14 +213,33 @@ RAIL = [  # (line name, [station ids in order])
     ("Moscow-Kazan line", ["ryazan", "ruzaevka", "kazan"]),
     ("Samara line", ["ruzaevka", "penza", "syzran", "samara", "ufa", "chelyabinsk", "omsk"]),
     ("Orenburg line", ["samara", "orenburg"]),
+    ("Riga-Pskov line", ["valka", "wenden"]),
+    ("Warsaw line (south of Pskov)", ["pskov", "ostrov"]),
+    ("Mogilev-Zhlobin line", ["mogilev", "bykhov"]),
+    ("Libava-Romny line", ["minsk", "bobruisk", "gomel"]),
+    ("Moscow-Nizhny line", ["moscow", "nizhny_novgorod"]),
+    ("Vladikavkaz railway", ["rostov", "tikhoretskaya", "ekaterinodar"]),
+    ("Tsaritsyn-Tikhoretskaya line", ["tsaritsyn", "tikhoretskaya"]),
+    ("Trans-Siberian railway", ["omsk", "novonikolaevsk", "krasnoyarsk", "irkutsk", "chita"]),
+    ("Chinese Eastern Railway", ["chita", "harbin", "vladivostok"]),
 ]
+# the old straight Pskov-Riga and Warsaw-line legs are rerouted through the new junctions below
+RAIL_REPLACE = {("pskov", "riga"): ["pskov", "valka", "wenden", "riga"], ("pskov", "dvinsk"): ["pskov", "ostrov", "dvinsk"],
+                ("mogilev", "zhlobin"): ["mogilev", "bykhov", "zhlobin"]}
 CLOSED_AT_START = {  # edge id: why
-    "rail:pskov-riga": "Riga is behind German lines",
+    "rail:wenden-riga": "Riga is behind German lines",
 }
-SEA = [  # (a, b) - sea and river routes
-    ("kronstadt", "neva_quays"), ("kronstadt", "oranienbaum"), ("kronstadt", "helsingfors"),
-    ("kronstadt", "reval"), ("helsingfors", "reval"),
+SEA = [  # (a, b, can walk it over the ice in deep winter)
+    ("kronstadt", "neva_quays", True), ("kronstadt", "oranienbaum", True), ("kronstadt", "helsingfors", False),
+    ("kronstadt", "reval", False), ("helsingfors", "reval", False),
 ]
+RIVERS = [  # (river, [ports in order]) - navigable April to November only
+    ("Volga", ["yaroslavl", "nizhny_novgorod", "kazan", "samara", "syzran", "tsaritsyn"]),
+    ("Northern Dvina", ["vologda", "arkhangelsk"]),
+]
+NO_ROADS = {"kronstadt", "riga"}  # an island; a city behind German lines
+WATER_BETWEEN = {frozenset(p) for p in (("helsingfors", "reval"), ("helsingfors", "narva"), ("murmansk", "vyborg"))}
+COUNTRY_ROAD_NEIGHBOURS = 3  # every place outside the city gets a road to its nearest few - armies can leave the railway
 ROADS = [  # roads that matter outside the rail lines
     ("putilov_works", "pulkovo"), ("pulkovo", "tsarskoe_selo"), ("tsarskoe_selo", "gatchina"),
     ("vitebsk_station", "putilov_works"),
@@ -207,6 +254,37 @@ BARRACKS_NAMES = {
     "armored_cars": "Mikhailovsky Manege (armored cars)",
     "pavlovsky": "Pavlovsky barracks (Field of Mars)",
 }
+# where the country-wide order of battle (mechanics_catalog.json: russia_forces) starts
+COUNTRY_POSITIONS = {
+    "latvian_riflemen": "wenden", "fifth_army": "dvinsk", "krasnov_corps": "ostrov", "native_division": "dno",
+    "baltic_fleet": "helsingfors", "stavka_guard": "mogilev", "tekke_regiment": "bykhov", "western_front_reserves": "minsk",
+    "polish_corps": "bobruisk", "czechoslovak_corps": "kiev", "ukrainian_units": "kiev", "moscow_garrison": "moscow",
+    "moscow_red_guards": "moscow", "moscow_junkers": "moscow", "don_host": "novocherkassk", "kuban_host": "ekaterinodar",
+    "orenburg_cossacks": "orenburg", "donbass_red_guards": "kharkov", "tsaritsyn_garrison": "tsaritsyn",
+    "kazan_garrison": "kazan", "urals_militias": "ekaterinburg",
+}
+# Historical defaults for units the player isn't driving (Julian dates). Each fires once, on its date,
+# only if its conditions still hold - if the campaign has already changed the unit (won it over,
+# destroyed it, moved it), history doesn't happen to it. The GM is told when one fires.
+SCHEDULE = [
+    {"id": "native_division_south", "date": "1917-09-25", "action": "move", "unit": "native_division", "to": "ekaterinodar",
+     "if": {"loyalty_max": 0}, "message": "The Caucasian Native Division, disgraced by the Kornilov affair, is entrained for the North Caucasus."},
+    {"id": "alekseev_organization", "date": "1917-11-02", "action": "appear", "at": "novocherkassk",
+     "unit": {"id": "volunteer_army", "name": "Alekseev Organization (officer volunteers)", "kind": "cadet", "strength": 600,
+              "readiness": 4, "loyalty": -3, "note": "Officers and cadets gathering at Novocherkassk under General Alekseev."},
+     "message": "General Alekseev reaches Novocherkassk and begins gathering officers into a volunteer force."},
+    {"id": "kornilov_escapes", "date": "1917-11-19", "action": "move", "unit": "tekke_regiment", "to": "novocherkassk", "foot_only": True,
+     "if": {"loyalty_max": -2}, "message": "Kornilov walks out of Bykhov with the Tekke regiment and rides for the Don."},
+    {"id": "volunteer_army_founded", "date": "1917-12-25", "action": "reinforce", "unit": "volunteer_army", "strength_add": 2500,
+     "name": "Volunteer Army (Alekseev, Kornilov)", "if": {"loyalty_max": -2},
+     "message": "The Volunteer Army is formally constituted at Novocherkassk under Alekseev and Kornilov."},
+    {"id": "czech_legion_east", "date": "1918-03-01", "action": "move", "unit": "czechoslovak_corps", "to": "penza",
+     "if": {"loyalty_max": 1}, "message": "With Ukraine lost to the Germans, the Czechoslovak Corps entrains east, meaning to sail from Vladivostok for France."},
+    {"id": "czech_legion_revolt", "date": "1918-05-12", "action": "split", "unit": "czechoslovak_corps", "at": "chelyabinsk",
+     "strength": 12000, "new": {"id": "czech_chelyabinsk", "name": "Czechoslovak Legion (Chelyabinsk group)"},
+     "loyalty": -2, "if": {"loyalty_max": 0},
+     "message": "Fighting breaks out with the Czechoslovak Legion at Chelyabinsk; its echelons along the Trans-Siberian turn on the Soviets."},
+]
 NEIGHBOURS = 3  # street links per city place, to its nearest same-bank places
 
 
@@ -234,7 +312,9 @@ def main():
     for nid, (name, kind, area, lat, lng, note) in EXTRA_CITY.items():
         nodes[nid] = {"name": name, "kind": kind, "scale": "city", "area": area, "lat": lat, "lng": lng, "note": note}
     for nid, (name, kind, lat, lng, note) in OUTSIDE.items():
-        nodes[nid] = {"name": name, "kind": kind, "scale": "country", "area": "outside", "lat": lat, "lng": lng, "note": note}
+        region = next((r for r, ids in REGION_OF.items() if nid in ids), None)
+        assert region, f"{nid} has no region"
+        nodes[nid] = {"name": name, "kind": kind, "scale": "country", "area": region, "lat": lat, "lng": lng, "note": note}
 
     edges = {}
 
@@ -253,35 +333,65 @@ def main():
     for eid, name, a, b, raisable in BRIDGES:
         add(eid, a, b, "bridge", name, raisable=raisable)
     for line, stops in RAIL:
+        expanded = []
         for a, b in zip(stops, stops[1:]):
+            seg = RAIL_REPLACE.get((a, b)) or [a, b]
+            expanded += seg if not expanded else seg[1:]
+        for a, b in zip(expanded, expanded[1:]):
             add(f"rail:{a}-{b}", a, b, "rail", line)
-    for a, b in SEA:
-        add(f"sea:{a}-{b}", a, b, "sea", "by sea")
+    for a, b, ice in SEA:
+        add(f"sea:{a}-{b}", a, b, "sea", "by sea", freezes=True, **({"ice_walk": True} if ice else {}))
+    for river, ports in RIVERS:
+        for a, b in zip(ports, ports[1:]):
+            add(f"river:{a}-{b}", a, b, "river", f"the {river}", freezes=True)
     for a, b in ROADS:
         add(f"road:{a}-{b}", a, b, "road", "road")
+    # country roads: generated, so an army can march off the railway (slowly) - not drawn on the map
+    country = [n for n, v in nodes.items() if v["scale"] == "country"]
+    for nid in country:
+        near = sorted((o for o in country if o != nid), key=lambda o: hav_km((nodes[nid]["lat"], nodes[nid]["lng"]), (nodes[o]["lat"], nodes[o]["lng"])))
+        for o in near[:COUNTRY_ROAD_NEIGHBOURS]:
+            a, b = sorted([nid, o])
+            if (f"road:{a}-{b}" not in edges and not ({a, b} & NO_ROADS) and frozenset((a, b)) not in WATER_BETWEEN
+                    and hav_km((nodes[a]["lat"], nodes[a]["lng"]), (nodes[b]["lat"], nodes[b]["lng"])) < 1100):
+                add(f"road:{a}-{b}", a, b, "road", "road", generated=True)
+    # the city's southern and northern edges meet the country roads
+    for a, b in (("pulkovo", "putilov_works"), ("levashovo", "red_guards"), ("okhta", "mga")):
+        a2, b2 = sorted([a, b])
+        if f"road:{a2}-{b2}" not in edges:
+            add(f"road:{a2}-{b2}", a2, b2, "road", "road")
     for eid, why in CLOSED_AT_START.items():
         edges[eid]["closed_at_start"] = why
 
     initial = {uid: uid for uid in m["units"] if uid in nodes}
     initial.update({"kronstadt_sailors": "kronstadt", "womens_battalion": "levashovo", "peter_paul": "peter_and_paul_fortress"})
+    initial.update(COUNTRY_POSITIONS)
     out = {
         "_comment": "GENERATED by tools/build_petrograd_geography.py - edit the tables there, not this file. "
                     "Approximate travel network for geography.py: city places by bank joined by streets and "
                     "bridges, the 1917 railway network, and sea routes. km already includes a detour factor.",
         "speeds_kmh": {
-            "foot": {"default": 4.0, "cossack": 9.0, "armor": 14.0, "cadet": 4.5, "player": 5.0},
-            "rail": 25.0, "sea": 15.0,
+            "foot": {"default": 4.0, "cossack": 7.0, "cavalry": 7.0, "armor": 14.0, "cadet": 4.5, "player": 5.0},
+            "rail": 25.0, "sea": 15.0, "river": 12.0,
         },
-        "boarding_hours": {"rail": 4.0, "sea": 2.0},
+        "boarding_hours": {"rail": 4.0, "sea": 2.0, "river": 3.0},
+        "march_hours_per_day": 8,
+        "long_march_km": 15,
+        "freeze": {"river": ["12", "01", "02", "03"], "sea_ice_walk": ["01", "02", "03"]},
         "same_scene_hours": 12,
         "areas": {
             "left_bank": "The centre and south (Admiralty, Liteyny, Smolny, Moscow and Narva districts)",
             "vasilievsky": "Vasilievsky Island", "petrograd_side": "The Petrograd side",
             "fortress": "Hare Island (the Peter and Paul Fortress)", "vyborg_side": "The Vyborg side",
-            "outside": "Outside the city",
+            "petrograd_region": "Around Petrograd", "finland_baltic": "Finland and Estonia",
+            "northern_front": "The Northern Front", "western_front": "The Western Front and Stavka",
+            "north": "The North", "centre": "Moscow and the centre", "ukraine": "Ukraine",
+            "south": "The Don, the Kuban and the lower Volga", "volga_urals": "The Volga and the Urals",
+            "siberia": "Siberia and the Far East",
         },
         "player_start": "kresty_prison",
         "initial_positions": initial,
+        "scheduled": SCHEDULE,
         "nodes": nodes,
         "edges": edges,
     }
