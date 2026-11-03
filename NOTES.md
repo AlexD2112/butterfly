@@ -1,3 +1,19 @@
+# Map lookups widened, muted base maps, Memory panel (2026-11-03, later)
+
+- Map: places that miss on Wikidata search now get two more tries - Wikidata items physically near
+  the estimate whose label has a stem (`list=geosearch`), then OpenStreetMap Nominatim inside the
+  bbox. More search terms and stems per place. A cached miss re-runs automatically when its search
+  terms change (so this deploy re-checks every earlier miss). Popups show what each place matched.
+- Base maps: default is now the dark unlabeled street map with a sepia tint; OpenTopoMap terrain is
+  desaturated and darkened (per-layer CSS `filter` in map.json). Markers drawn bolder.
+- Still not verified against live Wikidata/OSM from the dev sandbox (blocked); a GitHub Actions
+  probe to run the lookups there was refused by the session's permissions.
+- Memory: `POST /api/character/<id>/ask` - one tool-less model call answering what the character
+  would know as of today (date-pinned, only already-fired canon, campaign divergences override
+  history). Billed and gated like a turn; no turn recorded, clock unmoved; Q&A kept in
+  `state.memory_log` (last 30, excluded from the GM prompt). "Memory" button opens a side panel with
+  per-setting starter questions.
+
 # Openings saved with each game, rewritten openings, deleting games (2026-11-03)
 
 - Why the opening vanished: it was never a recorded turn - only opening_scene.md, shown once for a

@@ -15,6 +15,8 @@ BBOX = [59.75, 29.6, 60.15, 30.6]
 def fake_wikidata(items):
     """items: {qid: (label, lat, lng)}; search matches any item whose label contains the term."""
     def get(params):
+        if params["action"] == "query":  # geosearch: everything is "nearby"
+            return {"query": {"geosearch": [{"title": q} for q in items]}}
         if params["action"] == "wbsearchentities":
             term = params["search"].lower()
             return {"search": [{"id": q, "label": lab} for q, (lab, _, _) in items.items() if term in lab.lower()]}
@@ -33,9 +35,21 @@ class TestResolvePlace(unittest.TestCase):
     def tearDown(self):
         self.sleep.stop()
 
-    def resolve(self, items, entry, kind="unit"):
-        with patch.object(geodata, "_http_get_json", side_effect=fake_wikidata(items)):
+    def resolve(self, items, entry, kind="unit", osm=None):
+        with patch.object(geodata, "_http_get_json", side_effect=fake_wikidata(items)), \
+             patch.object(geodata, "_nominatim", return_value=osm):
             return geodata.resolve_place(entry, kind, BBOX)
+
+    def test_nearby_fallback_finds_a_differently_named_item(self):
+        rec = self.resolve({"Q9": ("Здание казарм Павловского полка (Марсово поле, 1)", 59.9441, 30.3307)},
+                           {"search": ["Something that matches nothing"], "must_contain": ["павловск"], "lat": 59.9437, "lng": 30.3317})
+        self.assertTrue(rec["ok"])
+        self.assertEqual(rec["searched"], "nearby")
+
+    def test_openstreetmap_fallback(self):
+        osm = {"ok": True, "lat": 59.95, "lng": 30.33, "osm": "way/1", "label": "x", "source": "openstreetmap"}
+        rec = self.resolve({}, {"search": ["Казармы"], "must_contain": ["казарм"], "lat": 59.95, "lng": 30.33}, osm=osm)
+        self.assertEqual(rec["source"], "openstreetmap")
 
     def test_accepts_a_match_near_the_estimate(self):
         rec = self.resolve({"Q1": ("Казармы лейб-гвардии Павловского полка", 59.9441, 30.3307)},
@@ -75,10 +89,12 @@ class TestMapStatus(unittest.TestCase):
         cache = {}
         for i, lm in enumerate(self.data["landmarks"]):
             cache[f"petrograd_1917:landmark:{lm['id']}"] = (
-                {"ok": True, "lat": 59.94, "lng": 30.31, "qid": f"Q{i}", "source": "wikidata"} if i < ok_landmarks else {"ok": False, "checked_at": 0})
+                {"ok": True, "lat": 59.94, "lng": 30.31, "qid": f"Q{i}", "source": "wikidata"} if i < ok_landmarks
+                else {"ok": False, "checked_at": 9e12, "terms": geodata.terms_signature(lm)})
         for i, uid in enumerate(self.data["units"]):
             cache[f"petrograd_1917:unit:{uid}"] = (
-                {"ok": True, "lat": 59.95, "lng": 30.33, "qid": f"U{i}", "source": "wikidata"} if i < ok_units else {"ok": False, "checked_at": 0})
+                {"ok": True, "lat": 59.95, "lng": 30.33, "qid": f"U{i}", "source": "wikidata"} if i < ok_units
+                else {"ok": False, "checked_at": 9e12, "terms": geodata.terms_signature(self.data["units"][uid])})
         geodata._save_cache(cache)
 
     def test_viable_only_with_enough_verified_places(self):
@@ -100,7 +116,15 @@ class TestMapStatus(unittest.TestCase):
 
     def test_historic_layer_only_when_tiles_exist(self):
         self.assertNotIn("historic", [l["id"] for l in self.data["layers"]])
-        self.assertEqual(self.data["default_layer"], "terrain")
+        self.assertEqual(self.data["default_layer"], "streets")
+        self.assertTrue(all(l.get("filter") for l in self.data["layers"]))  # base maps are muted
+
+    def test_changed_search_terms_retry_a_miss(self):
+        self.write(len(self.data["landmarks"]), len(self.data["units"]) - 1)
+        self.assertFalse(geodata.map_status("petrograd_1917", self.data)["resolving"])
+        uid = list(self.data["units"])[-1]
+        self.data["units"][uid]["search"] = self.data["units"][uid]["search"] + ["a new term"]
+        self.assertTrue(geodata.map_status("petrograd_1917", self.data)["resolving"])
 
     def test_resolve_all_caches_and_survives_network_failure(self):
         calls = {"n": 0}

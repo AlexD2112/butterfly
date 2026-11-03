@@ -233,6 +233,7 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     digest.pop("campaign_log_summary", None)
     digest.pop("opening_text", None)
     digest.pop("opening_gm_note", None)
+    digest.pop("memory_log", None)
     earlier_section = _earlier_campaign_section(state)
     if mechanics.load_catalog(setting_key):
         digest.pop("mechanics", None)
@@ -774,6 +775,91 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         return json.dumps(result), events
 
     return f"Unknown tool: {name}", events
+
+
+# ==================== Memory: ask what your character would know (2026-11-03) ====================
+MEMORY_LOG_KEEP = 30
+
+
+def _known_canon(state, setting_key):
+    """Canon the character can know about: what has already happened in this campaign, plus anything
+    dated on or before today. Never the setting's future beats."""
+    dyn = dynamics.load(setting_key)
+    lines = []
+    for key, ev in (state.get("canon_events") or {}).items():
+        if ev.get("status") != "fired":
+            continue
+        spec = ((dyn or {}).get("canon") or {}).get(key) or {}
+        lines.append(f"- {key.replace('_', ' ')}{' (' + ev['fired_date'] + ')' if ev.get('fired_date') else ''}: {spec.get('summary') or spec.get('message') or ''}".rstrip(": "))
+    return "\n".join(lines) or "(nothing recorded yet)"
+
+
+def answer_memory_question(provider, model, state, setting_key, system_key, question, usage_sink=None):
+    """One model call, no tools, no state changes beyond logging the exchange. The point is to catch
+    the PLAYER up with their character - who these people are, what happened in July, what the
+    Mensheviks want - without spending a game turn or advancing the clock."""
+    c = state.get("character") or {}
+    setting = SETTING_REGISTRY[setting_key]
+    rels = "\n".join(f"- {k.replace('_', ' ')}: trust {v.get('trust', 0):+d}. {v.get('note', '')}" for k, v in (state.get("relationships") or {}).items())
+    enmity = "\n".join(f"- {k.replace('_', ' ')}: {v.get('pips', 0)}/3. {v.get('note', '')}" for k, v in (state.get("enmity") or {}).items() if v.get("pips"))
+    commitments = "\n".join(f"- {v.get('description', k)} ({v.get('status')})" for k, v in (state.get("commitments") or {}).items())
+    recent = "\n".join(f"- {e.get('summary', '')[:300]}" for e in (state.get("campaign_log_summary") or [])[-6:])
+    divergence = "\n".join(f"- {d.get('note')}" for d in (state.get("divergence_log") or [])[-10:])
+    opening = state.get("opening_text") or ""
+    system_prompt = f"""You are the memory of {c.get('name')} ({c.get('role', '')}), in the setting "{setting['label']}". Today, in the
+story, is {state.get('date')}. The player controls this character but may know little about the period;
+they are asking you what their character would know, so they can play the part well.
+
+Answer as what the character knows, believes, has heard, or remembers - in second person ("You've known
+Kamenev since exile; he..."). Plain prose, 60-180 words, no markdown, no lists unless the question asks
+for one. Speak like a well-informed person of the period, not a textbook.
+
+Hard rules:
+- Nothing after {state.get('date')}. If asked about the future, say the character can't know it, and give
+  what they'd expect, hope or fear, as opinion. Never hint at how history turned out.
+- If the character plausibly wouldn't know something, say so, and say what they might have heard.
+- The campaign's own events override history: if the state below says something changed, that is what
+  happened. Don't contradict it.
+- Don't invent game mechanics, numbers or rules; don't tell the player what to do. You can say what
+  the character thinks of the options.
+- If the question isn't something a memory can answer (e.g. "roll a check", "what do I do"), say so in a
+  sentence and offer what the character does know that's relevant.
+
+# WHO THE CHARACTER IS
+{json.dumps({k: c.get(k) for k in ("name", "role", "flags", "liabilities", "feats")}, ensure_ascii=False, default=str)}
+
+# PEOPLE (setting notes - use what the character would know of them as of today)
+{load_text(setting_key, "npcs.md")}
+
+# FACTIONS
+{load_text(setting_key, "factions.md")}
+
+# THE CHARACTER'S OWN RELATIONSHIPS
+{rels or '(none recorded)'}
+Rivalries: {enmity or 'none active'}
+Commitments: {commitments or 'none'}
+
+# WHAT HAS HAPPENED SO FAR
+Opening of the campaign: {opening[:1200]}
+Events that have already happened: 
+{_known_canon(state, setting_key)}
+Recent play:
+{recent or '(nothing yet)'}
+Where this campaign has departed from history:
+{divergence or '(nowhere yet)'}"""
+    conversation = provider.new_conversation()
+    for qa in (state.get("memory_log") or [])[-4:]:
+        provider.append_user_message(conversation, qa["q"])
+        conversation.append({"role": "assistant", "content": qa["a"]})
+    provider.append_user_message(conversation, question)
+    result = provider.call(model, system_prompt, [], conversation)
+    if usage_sink is not None and result.usage is not None:
+        usage_sink.append(result.usage)
+    answer = scrub_narration("\n".join(result.text_parts).strip()) or "Nothing comes to mind."
+    log = state.setdefault("memory_log", [])
+    log.append({"q": question, "a": answer, "date": state.get("date"), "turn": state.get("turn_number", 0)})
+    del log[:-MEMORY_LOG_KEEP]
+    return answer
 
 
 def generate_historical_character(provider, model, setting_key, system_key, figure_name, usage_sink=None):

@@ -279,6 +279,27 @@
   @keyframes fp-flash { 0% { color: var(--accent-2); } 100% { color: inherit; } }
   @media (max-width: 640px) { .hud-meters { margin-left: 0; } .hud-meter { min-width: 76px; } }
 
+  /* memory (2026-11-03) */
+  #memory-backdrop { position: fixed; inset: 0; background: rgba(8,10,9,.55); z-index: 72; display: none; }
+  #memory-backdrop.open { display: block; }
+  #memory-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 94vw; z-index: 73; display: flex;
+    flex-direction: column; background: var(--panel); border-left: 1px solid var(--border); transform: translateX(100%);
+    transition: transform .22s ease; box-shadow: -10px 0 40px rgba(0,0,0,.4); }
+  #memory-panel.open { transform: none; }
+  .memory-head { display: flex; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .memory-head h3 { margin: 0; font-family: var(--font-display); font-size: 20px; color: var(--accent-2); font-weight: 600; }
+  .memory-sub { font-family: var(--font-ui); font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  #memory-log { flex: 1; overflow-y: auto; padding: 14px 16px; }
+  .mem-q { font-family: var(--font-ui); font-size: 13px; color: var(--accent-2); margin: 14px 0 6px; }
+  .mem-q:first-child { margin-top: 0; }
+  .mem-a { font-family: var(--font-serif); font-size: 16px; line-height: 1.6; color: var(--text); }
+  .mem-a p { margin: 0 0 .7em; }
+  .mem-empty { font-family: var(--font-ui); font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .memory-starters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
+  .memory-starters button { font-size: 12px; border-radius: 999px; padding: 5px 11px; background: transparent; border-color: #4a4630; }
+  .memory-input { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  #memory-input { flex: 1; resize: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 8px 10px; font-family: var(--font-serif); font-size: 15px; }
   /* map (2026-11-02) */
   #map-backdrop { position: fixed; inset: 0; background: rgba(8, 10, 9, 0.7); z-index: 70; display: none; }
   #map-backdrop.open { display: block; }
@@ -827,6 +848,7 @@
       <select id="model-select"></select>
       <button id="sheet-toggle-btn" title="Character sheet">Sheet <span class="dot"></span></button>
       <button id="mech-toggle-btn" title="Trackers: the Soviet, the armed forces, and other structures">Trackers</button>
+      <button id="memory-toggle-btn" title="Ask what your character would know - doesn't use a turn">Memory</button>
       <button id="map-toggle-btn" title="Map" hidden>Map</button>
     </div>
   </header>
@@ -844,6 +866,19 @@
   </div>
 </div>
 
+<div id="memory-backdrop"></div>
+<aside id="memory-panel" role="dialog" aria-label="Memory">
+  <div class="memory-head">
+    <div><h3>Memory</h3><div class="memory-sub">Ask what your character would know right now. Doesn't use a turn or move the clock.</div></div>
+    <button id="memory-close" title="Close (Esc)">&times;</button>
+  </div>
+  <div id="memory-log"></div>
+  <div class="memory-starters" id="memory-starters"></div>
+  <div class="memory-input">
+    <textarea id="memory-input" rows="2" placeholder="Who is Kamenev to me? What happened in July?"></textarea>
+    <button id="memory-send">Ask</button>
+  </div>
+</aside>
 <div id="map-backdrop"></div>
 <div id="map-panel" role="dialog" aria-label="Map">
   <div class="map-head">
@@ -1691,6 +1726,79 @@ function renderMechPanel(state) {
   mechPanelEl.innerHTML = `<div id="mech-panel-header"><h3 style="margin:0">Mechanics</h3></div>${cards}`;
 }
 
+// ---------------- memory (2026-11-03) ----------------
+// Ask what your character would know. One model call on the server (engine.answer_memory_question);
+// no turn is spent and nothing in the game changes except the saved Q&A.
+const MEMORY_STARTERS = {
+  petrograd_1917: ['Who are the people around me, and where do I stand with them?', 'What happened in the July Days?', 'What was the Kornilov affair?', 'What do the Mensheviks and SRs want?'],
+  britannia_876: ['Who are my ealdormen, and can I trust them?', 'How did the Danes get this far?', 'What is the fyrd and how do I raise it?'],
+  rome_59_bce: ['What do Pompey and Crassus each want from me?', 'What is Bibulus doing, exactly?', 'Who is Clodius?'],
+  crusades_1097: ['What did I swear to the emperor?', 'Who are the other princes and what do they want?', 'What happened at Nicaea?'],
+};
+let MEMORY_SETTING = null;
+function memoryPanelOpen() { return document.getElementById('memory-panel').classList.contains('open'); }
+function renderMemoryLog(log) {
+  const el = document.getElementById('memory-log');
+  el.innerHTML = (log || []).length === 0
+    ? '<div class="mem-empty">Nothing asked yet. Ask about people, places, what happened before the game began, how things work in this period - anything your character would already know.</div>'
+    : log.map(qa => `<div class="mem-q">${escapeHtml(qa.q)}</div><div class="mem-a">${formatNarration(qa.a)}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+async function openMemory() {
+  document.getElementById('memory-backdrop').classList.add('open');
+  document.getElementById('memory-panel').classList.add('open');
+  const starters = MEMORY_STARTERS[MEMORY_SETTING] || [];
+  const box = document.getElementById('memory-starters');
+  box.innerHTML = starters.map(q => `<button type="button">${escapeHtml(q)}</button>`).join('');
+  box.querySelectorAll('button').forEach((b, i) => b.addEventListener('click', () => askMemory(starters[i])));
+  try {
+    const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/memory`);
+    renderMemoryLog((await res.json()).log);
+  } catch (e) { renderMemoryLog([]); }
+  document.getElementById('memory-input').focus();
+}
+function closeMemory() {
+  document.getElementById('memory-backdrop').classList.remove('open');
+  document.getElementById('memory-panel').classList.remove('open');
+}
+async function askMemory(preset) {
+  const input = document.getElementById('memory-input');
+  const btn = document.getElementById('memory-send');
+  const q = (typeof preset === 'string' ? preset : input.value).trim();
+  if (!q || btn.disabled) return;
+  input.value = '';
+  btn.disabled = true;
+  const el = document.getElementById('memory-log');
+  const empty = el.querySelector('.mem-empty'); if (empty) empty.remove();
+  el.insertAdjacentHTML('beforeend', `<div class="mem-q">${escapeHtml(q)}</div><div class="mem-a gm-typing"><span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span><span class="label">Remembering</span></div>`);
+  el.scrollTop = el.scrollHeight;
+  const pending = el.lastElementChild;
+  try {
+    const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, model_key: modelSelect.value }),
+    });
+    const data = await res.json();
+    pending.className = 'mem-a';
+    pending.innerHTML = data.error ? `<span class="clamped">${escapeHtml(data.error)}</span>` : formatNarration(data.answer);
+    if (data.budget) renderBudget(data.budget);
+  } catch (e) {
+    pending.className = 'mem-a';
+    pending.textContent = `Request failed: ${e}`;
+  }
+  el.scrollTop = el.scrollHeight;
+  btn.disabled = false;
+  input.focus();
+}
+document.getElementById('memory-toggle-btn').addEventListener('click', openMemory);
+document.getElementById('memory-close').addEventListener('click', closeMemory);
+document.getElementById('memory-backdrop').addEventListener('click', closeMemory);
+document.getElementById('memory-send').addEventListener('click', () => askMemory());
+document.getElementById('memory-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askMemory(); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && memoryPanelOpen()) closeMemory(); });
+
 // ---------------- map (2026-11-02) ----------------
 // Leaflet, loaded on first open, over an unlabeled modern basemap (the 1917 street plan is mostly
 // intact). Landmarks come from settings/<key>/map.json; units are drawn from the live order of
@@ -1726,16 +1834,19 @@ function loadLeaflet() {
 }
 function loyaltyColor(l) { return l >= 2 ? '#7a9b5f' : l <= -2 ? '#b5482f' : '#8a9c86'; }
 function sourceNote(p) {
-  return p.qid ? `<br><a href="https://www.wikidata.org/wiki/${encodeURIComponent(p.qid)}" target="_blank" rel="noopener">location: Wikidata ${escapeHtml(p.qid)}</a>` : '';
+  const matched = p.label ? ` (${escapeHtml(p.label)})` : '';
+  if (p.qid) return `<br><a href="https://www.wikidata.org/wiki/${encodeURIComponent(p.qid)}" target="_blank" rel="noopener">location: Wikidata${matched}</a>`;
+  if (p.osm) return `<br><a href="https://www.openstreetmap.org/${encodeURI(p.osm)}" target="_blank" rel="noopener">location: OpenStreetMap${matched}</a>`;
+  return '';
 }
 function drawMapUnits() {
   if (!MAP_OBJ || !MAP_DATA) return;
   if (MAP_LAYER) MAP_LAYER.remove();
   MAP_LAYER = L.layerGroup().addTo(MAP_OBJ);
   (MAP_DATA.landmarks || []).forEach(lm => {
-    const m = L.circleMarker([lm.lat, lm.lng], { radius: lm.kind === 'bridge' ? 3 : 5, color: '#b08d4f', weight: 1.5, fillColor: '#e0c98f', fillOpacity: 0.9 })
+    const m = L.circleMarker([lm.lat, lm.lng], { radius: lm.kind === 'bridge' ? 4 : 6, color: '#1a1408', weight: 2, fillColor: '#f0d48a', fillOpacity: 1 })
       .bindPopup(`<b>${escapeHtml(lm.name)}</b><br>${escapeHtml(lm.note || '')}${sourceNote(lm)}`);
-    const left = lm.label === 'left';
+    const left = lm.label_side === 'left';
     if (lm.kind !== 'bridge') m.bindTooltip(escapeHtml(lm.name), { permanent: true, direction: left ? 'left' : 'right', className: 'map-label', offset: [left ? -6 : 6, 0] });
     m.addTo(MAP_LAYER);
   });
@@ -1744,8 +1855,8 @@ function drawMapUnits() {
     const pos = (MAP_DATA.units || {})[u.id];
     if (!pos) return;
     const word = u.loyalty >= 2 ? 'Fights for you' : u.loyalty <= -2 ? 'Fights against you' : 'Stays in barracks';
-    L.circleMarker([pos.lat, pos.lng], { radius: 5 + Math.sqrt(u.strength || 0) / 14, color: loyaltyColor(u.loyalty), weight: 2,
-      fillColor: loyaltyColor(u.loyalty), fillOpacity: 0.35 })
+    L.circleMarker([pos.lat, pos.lng], { radius: 6 + Math.sqrt(u.strength || 0) / 12, color: loyaltyColor(u.loyalty), weight: 3,
+      fillColor: loyaltyColor(u.loyalty), fillOpacity: 0.5 })
       .bindPopup(`<b>${escapeHtml(u.name)}</b><br>${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5<br>${word} (loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty})<br><span style="color:var(--muted)">${escapeHtml(pos.where || '')}</span>${sourceNote(pos)}`)
       .addTo(MAP_LAYER);
   }));
@@ -1761,16 +1872,21 @@ async function openMap() {
   if (!MAP_OBJ) {
     MAP_OBJ = L.map('map-canvas', { zoomControl: true, attributionControl: true }).setView(MAP_DATA.center, MAP_DATA.zoom);
     const bases = {};
+    // Each layer's CSS filter (map.json) mutes the base map so markers stay the brightest thing on it.
+    const filterCss = (MAP_DATA.layers || []).map(l => l.filter ? `.maplayer-${l.id} { filter: ${l.filter}; }` : '').join('\n');
+    let styleEl = document.getElementById('map-layer-filters');
+    if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'map-layer-filters'; document.head.appendChild(styleEl); }
+    styleEl.textContent = filterCss;
     (MAP_DATA.layers || []).forEach(l => {
       bases[l.name] = L.tileLayer(l.url, { maxZoom: l.maxZoom || 18, minZoom: l.minZoom || 0,
-        subdomains: l.subdomains || 'abc', attribution: l.attribution || '' });
+        subdomains: l.subdomains || 'abc', attribution: l.attribution || '', className: `maplayer-${l.id}` });
       if (l.id === MAP_DATA.default_layer) bases[l.name].addTo(MAP_OBJ);
     });
     if (Object.keys(bases).length > 1) L.control.layers(bases, null, { position: 'topright' }).addTo(MAP_OBJ);
   }
   const unplaced = MAP_DATA.unplaced || [];
   document.getElementById('map-unplaced').textContent = unplaced.length
-    ? `Not shown (location couldn't be verified): ${unplaced.join(', ')}` : 'Every location verified against Wikidata';
+    ? `Not shown (location couldn't be verified): ${unplaced.join(', ')}` : 'Every location verified (Wikidata / OpenStreetMap)';
   setTimeout(() => { MAP_OBJ.invalidateSize(); drawMapUnits(); }, 50);
 }
 function closeMap() {
@@ -2445,6 +2561,7 @@ async function loadCharacterState(isNew) {
   const setting = SETTINGS.find(x => x.key === data.setting_key);
   if (setting) document.getElementById('game-header').textContent = `Forking Paths — ${setting.label}`;
   setupMapButton(data.setting_key);
+  MEMORY_SETTING = data.setting_key;
   renderSidebar(data.state);
   renderMechPanel(data.state);
   if (isNew) {

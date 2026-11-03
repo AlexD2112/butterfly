@@ -1,5 +1,5 @@
 {
-  "_comment": "Map for the game screen (2026-11-02). Positions are NOT typed in: geodata.py looks each place up on Wikidata by its search terms and only accepts a result whose label contains must_contain, that sits inside bbox, and that lies within max_m metres of the rough lat/lng estimate given here (the estimate is only an anchor for that check - it is never drawn). Places that can't be verified are left off the map, and the Map button only appears once enough places verify (geodata.VIABILITY_*). Layers: 'historic' is a georeferenced period street plan, used only if its tiles exist under static/ (build them with tools/georeference_scan.py); otherwise the map opens on terrain (OpenTopoMap), with an unlabeled modern street layer as a third option - central Petrograd's rivers, canals and street plan are largely unchanged since 1917.",
+  "_comment": "Map for the game screen (2026-11-02). Positions are NOT typed in: geodata.py looks each place up on Wikidata by its search terms and only accepts a result whose label contains must_contain, that sits inside bbox, and that lies within max_m metres of the rough lat/lng estimate given here (the estimate is only an anchor for that check - it is never drawn). Places that can't be verified are left off the map, and the Map button only appears once enough places verify (geodata.VIABILITY_*). Layers: 'historic' is a georeferenced period street plan, used only if its tiles exist under static/ (build them with tools/georeference_scan.py); otherwise it opens on the unlabeled dark street map, with OpenTopoMap terrain as an option. Each layer carries a CSS 'filter' (desaturate/tint/darken) so the base map stays in the background behind the markers instead of competing with them - central Petrograd's rivers, canals and street plan are largely unchanged since 1917.",
   "center": [
     59.943,
     30.335
@@ -19,23 +19,26 @@
       "url": "/static/maptiles/petrograd_1917/{z}/{x}/{y}.png",
       "attribution": "Historic plan: see static/maptiles/petrograd_1917/SOURCE.txt",
       "maxZoom": 17,
-      "minZoom": 11
-    },
-    {
-      "id": "terrain",
-      "name": "Terrain",
-      "url": "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-      "subdomains": "abc",
-      "attribution": "Map data &copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors, SRTM | Style &copy; <a href=\"https://opentopomap.org\">OpenTopoMap</a> (CC-BY-SA)",
-      "maxZoom": 17
+      "minZoom": 11,
+      "filter": "sepia(0.25) brightness(0.8) contrast(1.05)"
     },
     {
       "id": "streets",
-      "name": "Streets (no modern labels)",
+      "name": "Period (dark)",
       "url": "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
       "subdomains": "abcd",
       "attribution": "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
-      "maxZoom": 18
+      "maxZoom": 18,
+      "filter": "sepia(0.55) saturate(0.8) brightness(1.2) contrast(1.05)"
+    },
+    {
+      "id": "terrain",
+      "name": "Terrain (muted)",
+      "url": "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+      "subdomains": "abc",
+      "attribution": "Map data &copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors, SRTM | Style &copy; <a href=\"https://opentopomap.org\">OpenTopoMap</a> (CC-BY-SA)",
+      "maxZoom": 17,
+      "filter": "grayscale(1) sepia(0.4) brightness(0.42) contrast(1.3)"
     }
   ],
   "default_layer": "historic",
@@ -91,11 +94,14 @@
       "note": "Where the campaign begins.",
       "search": [
         "Кресты",
-        "Kresty"
+        "Kresty",
+        "Кресты (тюрьма)",
+        "Следственный изолятор № 1"
       ],
       "must_contain": [
         "крест",
-        "kresty"
+        "kresty",
+        "следственный изолятор"
       ],
       "lat": 59.9531,
       "lng": 30.3876
@@ -151,7 +157,9 @@
       "note": "Whoever holds it can cut the government off.",
       "search": [
         "Центральная телефонная станция",
-        "Центральная городская телефонная станция"
+        "Центральная городская телефонная станция",
+        "Здание Центральной телефонной станции",
+        "Центральная телефонная станция (Санкт-Петербург)"
       ],
       "must_contain": [
         "телефон",
@@ -159,7 +167,7 @@
       ],
       "lat": 59.9353,
       "lng": 30.3141,
-      "label": "left"
+      "label_side": "left"
     },
     {
       "id": "central_telegraph",
@@ -167,15 +175,18 @@
       "note": "Petrograd's link to the front and the provinces.",
       "search": [
         "Центральный телеграф",
-        "Главный почтамт"
+        "Главный почтамт",
+        "Центральный телеграф (Санкт-Петербург)",
+        "Почтамтская улица"
       ],
       "must_contain": [
         "почтамт",
-        "telegraph"
+        "telegraph",
+        "телеграф"
       ],
       "lat": 59.9318,
       "lng": 30.301,
-      "label": "left"
+      "label_side": "left"
     },
     {
       "id": "nevsky_prospekt",
@@ -199,7 +210,8 @@
       "note": "Links the center to Vasilievsky Island.",
       "search": [
         "Благовещенский мост",
-        "Blagoveshchensky Bridge"
+        "Blagoveshchensky Bridge",
+        "Благовещенский мост (Санкт-Петербург)"
       ],
       "must_contain": [
         "благовещенск",
@@ -215,7 +227,8 @@
       "note": "From the Winter Palace to Vasilievsky Island.",
       "search": [
         "Дворцовый мост",
-        "Palace Bridge"
+        "Palace Bridge",
+        "Дворцовый мост (Санкт-Петербург)"
       ],
       "must_contain": [
         "дворцов",
@@ -231,7 +244,8 @@
       "note": "To the Petrograd side and the fortress.",
       "search": [
         "Троицкий мост",
-        "Trinity Bridge"
+        "Trinity Bridge",
+        "Троицкий мост (Санкт-Петербург)"
       ],
       "must_contain": [
         "троицк",
@@ -247,7 +261,8 @@
       "note": "To the Vyborg side and its factories.",
       "search": [
         "Литейный мост",
-        "Liteyny Bridge"
+        "Liteyny Bridge",
+        "Литейный мост (Санкт-Петербург)"
       ],
       "must_contain": [
         "литейн",
@@ -263,11 +278,14 @@
       "note": "The city's biggest factory; tens of thousands of workers.",
       "search": [
         "Кировский завод",
-        "Kirov Plant"
+        "Kirov Plant",
+        "Путиловский завод",
+        "Кировский завод (Санкт-Петербург)"
       ],
       "must_contain": [
         "киров",
-        "kirov"
+        "kirov",
+        "путилов"
       ],
       "lat": 59.879,
       "lng": 30.259,
@@ -295,10 +313,16 @@
       "name": "Red Guards",
       "where": "Vyborg side factory districts",
       "search": [
-        "Выборгская сторона"
+        "Выборгская сторона",
+        "Выборгский район (Санкт-Петербург)",
+        "Завод «Русский дизель»",
+        "Сампсониевский проспект"
       ],
       "must_contain": [
-        "выборгск"
+        "выборгск",
+        "выборг",
+        "русский дизель",
+        "сампсони"
       ],
       "lat": 59.962,
       "lng": 30.346
@@ -321,10 +345,13 @@
       "where": "Field of Mars",
       "search": [
         "Казармы лейб-гвардии Павловского полка",
-        "Казармы Павловского полка"
+        "Казармы Павловского полка",
+        "Здание казарм лейб-гвардии Павловского полка",
+        "Марсово поле"
       ],
       "must_contain": [
-        "павловск"
+        "павловск",
+        "марсово"
       ],
       "lat": 59.9437,
       "lng": 30.3317
@@ -334,10 +361,12 @@
       "where": "Admiralty side, west of the center",
       "search": [
         "Казармы лейб-гвардии Кексгольмского полка",
-        "Казармы Кексгольмского полка"
+        "Казармы Кексгольмского полка",
+        "Казармы Конногвардейского полка"
       ],
       "must_contain": [
-        "кексгольм"
+        "кексгольм",
+        "конногвард"
       ],
       "lat": 59.929,
       "lng": 30.293
@@ -347,10 +376,13 @@
       "where": "Liteyny district",
       "search": [
         "Казармы лейб-гвардии Волынского полка",
-        "Казармы Волынского полка"
+        "Казармы Волынского полка",
+        "Парадная улица"
       ],
       "must_contain": [
-        "волынск"
+        "волынск",
+        "волын",
+        "парадн"
       ],
       "lat": 59.9425,
       "lng": 30.37
@@ -360,10 +392,12 @@
       "where": "Liteyny district",
       "search": [
         "Казармы лейб-гвардии Литовского полка",
-        "Казармы Литовского полка"
+        "Казармы Литовского полка",
+        "Литовский замок"
       ],
       "must_contain": [
-        "литовск"
+        "литовск",
+        "литов"
       ],
       "lat": 59.9468,
       "lng": 30.362
@@ -373,10 +407,12 @@
       "where": "Kirochnaya Street",
       "search": [
         "Казармы лейб-гвардии Преображенского полка",
-        "Казармы Преображенского полка"
+        "Казармы Преображенского полка",
+        "Кирочная улица"
       ],
       "must_contain": [
-        "преображенск"
+        "преображенск",
+        "кирочн"
       ],
       "lat": 59.944,
       "lng": 30.354
@@ -386,10 +422,14 @@
       "where": "Izmailovsky Prospekt",
       "search": [
         "Казармы лейб-гвардии Измайловского полка",
-        "Казармы Измайловского полка"
+        "Казармы Измайловского полка",
+        "Измайловский проспект",
+        "Троицкий собор (Санкт-Петербург)"
       ],
       "must_contain": [
-        "измайловск"
+        "измайловск",
+        "измайлов",
+        "троицкий собор"
       ],
       "lat": 59.912,
       "lng": 30.3055
@@ -401,10 +441,14 @@
         "Казармы лейб-гвардии Семёновского полка",
         "Казармы Семёновского полка",
         "Казармы лейб-гвардии Семеновского полка",
-        "Казармы Семеновского полка"
+        "Казармы Семеновского полка",
+        "Семёновский плац",
+        "Пионерская площадь"
       ],
       "must_contain": [
-        "семе"
+        "семе",
+        "семёнов",
+        "пионерск"
       ],
       "lat": 59.9195,
       "lng": 30.329
@@ -414,10 +458,14 @@
       "where": "south of the center",
       "search": [
         "Казармы лейб-гвардии Егерского полка",
-        "Казармы Егерского полка"
+        "Казармы Егерского полка",
+        "Егерская слобода",
+        "Рузовская улица"
       ],
       "must_contain": [
-        "егерск"
+        "егерск",
+        "егер",
+        "рузовск"
       ],
       "lat": 59.916,
       "lng": 30.342
@@ -427,7 +475,9 @@
       "where": "Petrograd side",
       "search": [
         "Казармы лейб-гвардии Гренадерского полка",
-        "Казармы Гренадерского полка"
+        "Казармы Гренадерского полка",
+        "Гренадерские казармы",
+        "Петроградская сторона"
       ],
       "must_contain": [
         "гренадер"
@@ -440,7 +490,8 @@
       "where": "Vyborg side",
       "search": [
         "Казармы лейб-гвардии Московского полка",
-        "Казармы Московского полка"
+        "Казармы Московского полка",
+        "Казармы лейб-гвардии Московского полка (Санкт-Петербург)"
       ],
       "must_contain": [
         "московск"
@@ -453,10 +504,12 @@
       "where": "Vasilievsky Island",
       "search": [
         "Казармы лейб-гвардии Финляндского полка",
-        "Казармы Финляндского полка"
+        "Казармы Финляндского полка",
+        "Средний проспект Васильевского острова"
       ],
       "must_contain": [
-        "финлянд"
+        "финлянд",
+        "средний проспект"
       ],
       "lat": 59.937,
       "lng": 30.265
@@ -478,10 +531,13 @@
       "where": "south of the center",
       "search": [
         "Казармы лейб-гвардии Казачьего полка",
-        "Казармы Донского казачьего полка"
+        "Казармы Донского казачьего полка",
+        "Казармы Казачьего полка",
+        "Обводный канал"
       ],
       "must_contain": [
-        "казач"
+        "казач",
+        "обводн"
       ],
       "lat": 59.91,
       "lng": 30.353
@@ -491,7 +547,9 @@
       "where": "military schools, Petrograd side",
       "search": [
         "Владимирское военное училище",
-        "Павловское военное училище"
+        "Павловское военное училище",
+        "Владимирское пехотное училище",
+        "Николаевское кавалерийское училище"
       ],
       "must_contain": [
         "училищ"
@@ -503,7 +561,8 @@
       "name": "1st Petrograd Women's Battalion",
       "where": "Levashovo, north of the city",
       "search": [
-        "Левашово"
+        "Левашово",
+        "Левашово (Санкт-Петербург)"
       ],
       "must_contain": [
         "левашов"
@@ -517,10 +576,12 @@
       "where": "Mikhailovsky Manege",
       "search": [
         "Михайловский манеж",
-        "Манеж Михайловского замка"
+        "Манеж Михайловского замка",
+        "Зимний стадион (Санкт-Петербург)"
       ],
       "must_contain": [
-        "манеж"
+        "манеж",
+        "зимний стадион"
       ],
       "lat": 59.9378,
       "lng": 30.3383
