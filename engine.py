@@ -340,6 +340,25 @@ level-up options from the system rules before proceeding.
 {council.VOICE_GUIDANCE}"""
 
 
+# ==================== narration guard (2026-11-03) ====================
+# Tools whose results the player can only learn through narration: dice, votes, appeals, fights.
+OUTCOME_TOOLS = {"request_check", "call_vote", "sway_unit", "resolve_confrontation"}
+NARRATE_NUDGE = (
+    "(From the application, not the player: the player has seen the dice and the numbers but no "
+    "narration. Write the scene now, in prose: what happens as a result of the outcome(s) above, "
+    "honoring their degree. Don't roll again for the same action.)"
+)
+NARRATE_FIRST = (
+    "Not shown yet: the player hasn't seen any narration of the outcome. Write the scene first, "
+    "then call suggest_actions again."
+)
+
+
+def _needs_narration(outcome_unnarrated, text_parts):
+    """True when the turn would end with a result nobody narrated, or with no text at all."""
+    return outcome_unnarrated or not "".join(text_parts).strip()
+
+
 # ==================== suggested actions + narration scrub (2026-11-02) ====================
 
 SUGGEST_ACTIONS_SPEC = {
@@ -539,10 +558,18 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
 
     text_parts = []
     debug_events = []
+    # Narration guard (2026-11-03): a turn could end with the dice rolled and the numbers moved but
+    # no scene written - the model's last response was just tools, or empty. outcome_unnarrated is
+    # set when a roll/vote/fight result goes back to the model and cleared by any text after it;
+    # if the turn is about to end with it still set, the model is sent back once to write the scene.
+    outcome_unnarrated = False
+    nudged = False
     while True:
         turn_result = provider.call(model, system_prompt, tool_specs, conversation)
         provider.append_assistant_turn(conversation, turn_result)
         text_parts.extend(turn_result.text_parts)
+        if any(t.strip() for t in turn_result.text_parts):
+            outcome_unnarrated = False
 
         if usage_sink is not None and turn_result.usage is not None:
             usage_sink.append(turn_result.usage)
@@ -557,6 +584,10 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
             break
 
         if not turn_result.tool_calls:
+            if _needs_narration(outcome_unnarrated, text_parts) and not nudged:
+                provider.append_user_message(conversation, NARRATE_NUDGE)
+                nudged = True
+                continue
             break
 
         results = []
@@ -566,18 +597,25 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
                 debug_events = [e for e in debug_events if e.get("type") != "suggestions"]
                 if options:
                     debug_events.append({"type": "suggestions", "options": options})
-                results.append({"id": tc["id"], "content": "Shown to the player."})
+                unnarrated = _needs_narration(outcome_unnarrated, text_parts)
+                results.append({"id": tc["id"], "content": NARRATE_FIRST if unnarrated else "Shown to the player."})
                 continue
             content, events = handle_tool_call(
                 tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance, geo=geo,
             )
             debug_events.extend(events)
             results.append({"id": tc["id"], "content": content})
+            if tc["name"] in OUTCOME_TOOLS:
+                outcome_unnarrated = True
 
         provider.append_tool_results(conversation, turn_result, results)
         # suggest_actions is the closing move of a turn: when it's the only thing the model asked
-        # for, there's nothing to feed back, so skip the extra round-trip (and its latency/cost).
+        # for, there's nothing to feed back, so skip the extra round-trip (and its latency/cost) -
+        # unless the scene itself still hasn't been written (its tool result above says so).
         if all(tc["name"] == "suggest_actions" for tc in turn_result.tool_calls):
+            if _needs_narration(outcome_unnarrated, text_parts) and not nudged:
+                nudged = True
+                continue
             break
 
     if dyn:
