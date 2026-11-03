@@ -1,3 +1,12 @@
+# Bridge ends snapped to OpenStreetMap (2026-11-03)
+
+- My hand-estimated bridge ends were off by up to a few hundred metres, and the Okhtinsky Bridge was
+  drawn at the wrong angle (it crosses the Neva east-west there). Every bridge end now comes from
+  that bridge's way in OSM (fetched via Nominatim in the user's Chrome) and was checked over
+  satellite imagery. The modern bridges stand on their 1917 sites, so the map tiles were right.
+- The Ioannovsky Bridge now ends at a new Ioannovsky Gate node on Hare Island instead of the
+  fortress's centre.
+
 # Geography, part 2: the country's forces, unit lifecycle, marching off the railway (2026-11-03)
 
 - russia_forces (mechanics_catalog.json, `always_present` - old saves get it on load): 21
