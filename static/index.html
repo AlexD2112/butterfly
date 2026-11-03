@@ -312,6 +312,9 @@
   .map-legend { display: flex; gap: 12px; flex-wrap: wrap; }
   .map-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
   #map-canvas { flex: 1; background: #0b0f0d; }
+  .map-views { display: flex; gap: 6px; flex-wrap: wrap; }
+  .map-views button { font-size: 11.5px; padding: 4px 10px; border-radius: 999px; background: transparent; }
+  .map-views button.active { background: var(--accent-2); color: #0e1512; border-color: var(--accent-2); }
   #map-unplaced { font-family: var(--font-ui); font-size: 11px; color: var(--muted); padding: 6px 14px; border-top: 1px solid var(--border); }
   #map-canvas .leaflet-control-layers { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
   .leaflet-container { font-family: var(--font-ui); }
@@ -883,6 +886,7 @@
 <div id="map-panel" role="dialog" aria-label="Map">
   <div class="map-head">
     <h3 id="map-title">Petrograd</h3>
+    <div id="map-views" class="map-views"></div>
     <div class="map-legend"><span><i style="background:#a6d872"></i>fights for you</span><span><i style="background:#e2dbc6"></i>stays in barracks</span><span><i style="background:#ff6a45"></i>fights against you</span><span>dashed = area, not exact building</span></div>
     <button id="map-close" title="Close (Esc)">&times;</button>
   </div>
@@ -1845,7 +1849,8 @@ function sourceNote(p) {
 function drawMapUnits() {
   if (!MAP_OBJ || !MAP_DATA) return;
   if (MAP_LAYER) MAP_LAYER.remove();
-  MAP_LAYER = L.layerGroup().addTo(MAP_OBJ);
+  MAP_LAYER = L.layerGroup();
+  if (MAP_OBJ.getZoom() >= CITY_MIN_ZOOM) MAP_LAYER.addTo(MAP_OBJ);
   (MAP_DATA.landmarks || []).forEach(lm => {
     const m = L.circleMarker([lm.lat, lm.lng], { radius: lm.kind === 'bridge' ? 4 : 6, color: '#1a1408', weight: 2, fillColor: '#f0d48a', fillOpacity: 1 })
       .bindPopup(`<b>${escapeHtml(lm.name)}</b><br>${escapeHtml(lm.note || '')}${sourceNote(lm)}`);
@@ -1881,17 +1886,79 @@ async function openMap() {
     let styleEl = document.getElementById('map-layer-filters');
     if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'map-layer-filters'; document.head.appendChild(styleEl); }
     styleEl.textContent = filterCss;
+    MAP_BASES = {};
     (MAP_DATA.layers || []).forEach(l => {
-      bases[l.name] = L.tileLayer(l.url, { maxZoom: l.maxZoom || 18, minZoom: l.minZoom || 0,
+      // maxNativeZoom: past a layer's own detail limit, Leaflet scales its last tiles up instead of
+      // showing a blank map (matters for the world-scale layers).
+      bases[l.name] = MAP_BASES[l.id] = L.tileLayer(l.url, { maxZoom: 18, maxNativeZoom: l.maxZoom || 18, minZoom: l.minZoom || 0,
         subdomains: l.subdomains || 'abc', attribution: l.attribution || '', className: `maplayer-${l.id}` });
       if (l.id === MAP_DATA.default_layer) bases[l.name].addTo(MAP_OBJ);
     });
     if (Object.keys(bases).length > 1) L.control.layers(bases, null, { position: 'topright' }).addTo(MAP_OBJ);
+    drawRegions();
+    MAP_OBJ.on('zoomend', updateMapScale);
+    renderMapViews();
   }
   const unplaced = MAP_DATA.unplaced || [];
   document.getElementById('map-unplaced').textContent = unplaced.length
-    ? `Not shown (location couldn't be verified): ${unplaced.join(', ')}` : 'Every location verified (Wikidata / OpenStreetMap)';
+    ? `Not shown (location couldn't be verified): ${unplaced.join(', ')}` : 'Every city location verified (Wikidata / OpenStreetMap / period sources). Zoomed-out views are approximate.';
   setTimeout(() => { MAP_OBJ.invalidateSize(); drawMapUnits(); }, 50);
+}
+// Zoomed-out views (2026-11-03): the city's units and landmarks give way to approximate region-
+// level places and a sketched front line when you zoom out past city scale.
+let MAP_BASES = {}, MAP_REGION_LAYER = null, MAP_REGION_MARKERS = [];
+const CITY_MIN_ZOOM = 10;
+function drawRegions() {
+  const reg = MAP_DATA.regions || {};
+  MAP_REGION_LAYER = L.layerGroup();
+  if (reg.front_line && (reg.front_line.points || []).length) {
+    L.polyline(reg.front_line.points, { color: '#ff6a45', weight: 2.5, dashArray: '6 6', opacity: 0.9 })
+      .bindTooltip(escapeHtml(reg.front_line.name), { sticky: true }).addTo(MAP_REGION_LAYER);
+  }
+  MAP_REGION_MARKERS = (reg.places || []).map(p => {
+    const m = L.circleMarker([p.lat, p.lng], { radius: p.world ? 5 : 4, color: '#1a1408', weight: 2, fillColor: '#f0d48a', fillOpacity: 1 })
+      .bindPopup(`<b>${escapeHtml(p.name)}</b><br>${escapeHtml(p.note || '')}<br><span style="color:var(--muted)">approximate</span>`)
+      .addTo(MAP_REGION_LAYER);
+    return [p, m];
+  });
+  updateMapScale();
+}
+// At world scale only the big capitals keep a permanent label (Europe is too crowded otherwise);
+// everything else shows its name on hover.
+function labelRegions() {
+  const zoomedIn = MAP_OBJ.getZoom() >= 5;
+  MAP_REGION_MARKERS.forEach(([p, m]) => {
+    const permanent = zoomedIn || !!p.world;
+    m.unbindTooltip();
+    m.bindTooltip(escapeHtml(p.name), { permanent, direction: 'right', className: 'map-label', offset: [6, 0] });
+  });
+}
+function updateMapScale() {
+  if (!MAP_OBJ) return;
+  const city = MAP_OBJ.getZoom() >= CITY_MIN_ZOOM;
+  if (!city) labelRegions();
+  if (MAP_LAYER) { if (city && !MAP_OBJ.hasLayer(MAP_LAYER)) MAP_LAYER.addTo(MAP_OBJ); if (!city && MAP_OBJ.hasLayer(MAP_LAYER)) MAP_OBJ.removeLayer(MAP_LAYER); }
+  if (MAP_REGION_LAYER) { if (!city && !MAP_OBJ.hasLayer(MAP_REGION_LAYER)) MAP_REGION_LAYER.addTo(MAP_OBJ); if (city && MAP_OBJ.hasLayer(MAP_REGION_LAYER)) MAP_OBJ.removeLayer(MAP_REGION_LAYER); }
+  document.querySelectorAll('#map-views button').forEach(b => {
+    const v = (MAP_DATA.views || []).find(x => x.id === b.dataset.view);
+    b.classList.toggle('active', !!v && (v.id === 'city' ? city : !city && Math.abs(MAP_OBJ.getZoom() - v.zoom) <= 1));
+  });
+}
+function switchBase(id) {
+  if (!MAP_BASES[id]) return;
+  Object.values(MAP_BASES).forEach(b => { if (MAP_OBJ.hasLayer(b)) MAP_OBJ.removeLayer(b); });
+  MAP_BASES[id].addTo(MAP_OBJ);
+}
+function renderMapViews() {
+  const box = document.getElementById('map-views');
+  if (!box) return;
+  box.innerHTML = (MAP_DATA.views || []).map(v => `<button type="button" data-view="${escapeHtml(v.id)}">${escapeHtml(v.name)}</button>`).join('');
+  box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    const v = MAP_DATA.views.find(x => x.id === b.dataset.view);
+    switchBase(v.layer || MAP_DATA.default_layer);
+    MAP_OBJ.flyTo(v.center, v.zoom, { duration: REDUCED_MOTION ? 0 : 1.2 });
+  }));
+  updateMapScale();
 }
 function closeMap() {
   document.getElementById('map-backdrop').classList.remove('open');

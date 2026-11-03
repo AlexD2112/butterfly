@@ -314,6 +314,8 @@ def map_status(setting_key, map_data):
         "resolving": pending > 0,
         "center": map_data.get("center"), "zoom": map_data.get("zoom"),
         "layers": layers,
+        "views": map_data.get("views") or [],
+        "regions": map_data.get("regions") or {},
         "default_layer": map_data.get("default_layer") or (layers[0]["id"] if layers else None),
         "landmarks": landmarks, "units": units, "unplaced": sorted(unplaced),
         "counts": {"landmarks": [len(landmarks), n_lm], "units": [len(units), n_un], "pending": pending},
