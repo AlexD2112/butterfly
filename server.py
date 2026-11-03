@@ -599,6 +599,62 @@ def api_delete_character(character_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/character/<int:character_id>/ask", methods=["POST"])
+def api_character_ask(character_id):
+    """Memory (2026-11-03): ask what your character would know right now - one cheap model call,
+    no turn spent, no clock movement, nothing changed but the saved Q&A. Gated and billed exactly
+    like a turn (Discord login, budget, per-account lock)."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    if user["is_local"]:
+        return jsonify({"error": "Log in with Discord to ask questions.", "discord_login_required": True}), 403
+    body = request.get_json(force=True)
+    question = " ".join((body.get("question") or "").split())[:500]
+    if not question:
+        return jsonify({"error": "Empty question."}), 400
+    model_key = body.get("model_key") or providers.DEFAULT_MODEL_KEY
+    if model_key not in providers.MODEL_REGISTRY or (
+            providers.ALLOWED_MODEL_KEYS is not None and model_key not in providers.ALLOWED_MODEL_KEYS):
+        return jsonify({"error": f"Model '{model_key}' isn't currently selectable."}), 400
+    lock = _turn_lock_for(user["id"])
+    if not lock.acquire(blocking=False):
+        return jsonify({"error": "Another request is already in progress for this account."}), 429
+    try:
+        budget = db.get_budget_status(user["id"])
+        if budget["remaining_usd"] <= 0:
+            return jsonify({"error": "Out of usage budget for this account.", "budget": budget}), 402
+        try:
+            provider, model = providers.get_provider(model_key)
+        except providers.ProviderError as e:
+            return jsonify({"error": str(e)}), 400
+        usage_sink = []
+        state = row["state"]
+        try:
+            answer = engine.answer_memory_question(provider, model, state, row["setting_key"], row["system_key"], question, usage_sink=usage_sink)
+        except Exception as e:
+            return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
+        finally:
+            for usage in usage_sink:
+                db.record_usage(user["id"], character_id, usage["provider"], usage["model"], usage["input_tokens"],
+                                usage["output_tokens"], usage.get("cache_read_tokens", 0), usage.get("cache_creation_tokens", 0),
+                                pricing.estimate_cost_usd(usage))
+        db.save_character_state(character_id, user["id"], state)
+        return jsonify({"answer": answer, "budget": db.get_budget_status(user["id"])})
+    finally:
+        lock.release()
+
+
+@app.route("/api/character/<int:character_id>/memory")
+def api_character_memory(character_id):
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    return jsonify({"log": row["state"].get("memory_log") or []})
+
+
 @app.route("/api/character/<int:character_id>/turns")
 def api_character_turns(character_id):
     """The full recorded history for a single-player character - db.get_turns() already existed and

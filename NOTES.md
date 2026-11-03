@@ -1,3 +1,32 @@
+# Map positions pinned by hand; Esri base maps (2026-11-03, via the user's Chrome)
+
+- Ran the lookups in the user's browser (Wikidata search + geosearch + SPARQL over every
+  barracks/school/manege item in the city, plus Nominatim). 32 of 34 places now carry a `pinned`
+  position in map.json with its Wikidata QID or OSM id, the matched name, and a precision
+  (building / street / quarter / district / town). Several earlier "misses" were my rough estimates
+  being too far off for the distance check (Kresty was 1.3 km out), not missing data. Litovsky and
+  Keksgolmsky have no barracks entry in either source; left unpinned. Imprecise positions draw as
+  dashed circles and say so in their popups. Viability no longer waits on pending lookups.
+- CARTO basemaps now render an "API KEY REQUIRED" watermark without a key - dropped. OpenTopoMap
+  dropped as too busy even filtered. Default is Esri World Dark Gray Base with a sepia filter;
+  Esri Light Gray with a parchment filter is the alternative. Checked visually in Chrome.
+
+# Map lookups widened, muted base maps, Memory panel (2026-11-03, later)
+
+- Map: places that miss on Wikidata search now get two more tries - Wikidata items physically near
+  the estimate whose label has a stem (`list=geosearch`), then OpenStreetMap Nominatim inside the
+  bbox. More search terms and stems per place. A cached miss re-runs automatically when its search
+  terms change (so this deploy re-checks every earlier miss). Popups show what each place matched.
+- Base maps: default is now the dark unlabeled street map with a sepia tint; OpenTopoMap terrain is
+  desaturated and darkened (per-layer CSS `filter` in map.json). Markers drawn bolder.
+- Still not verified against live Wikidata/OSM from the dev sandbox (blocked); a GitHub Actions
+  probe to run the lookups there was refused by the session's permissions.
+- Memory: `POST /api/character/<id>/ask` - one tool-less model call answering what the character
+  would know as of today (date-pinned, only already-fired canon, campaign divergences override
+  history). Billed and gated like a turn; no turn recorded, clock unmoved; Q&A kept in
+  `state.memory_log` (last 30, excluded from the GM prompt). "Memory" button opens a side panel with
+  per-setting starter questions.
+
 # Openings saved with each game, rewritten openings, deleting games (2026-11-03)
 
 - Why the opening vanished: it was never a recorded turn - only opening_scene.md, shown once for a

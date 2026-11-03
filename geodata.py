@@ -11,7 +11,9 @@ it against Wikidata - search, then fetch the item's coordinate (P625) - acceptin
   - it lies within the setting's bounding box, and
   - it lies within `max_m` metres of the rough estimate (so a same-named place elsewhere can't win).
 
-Anything that fails all three tests stays unplaced and is simply not drawn - a missing marker is
+Places can also carry a `pinned` position in map.json - one found and checked by hand against the
+same sources - which is used as-is and never looked up. Anything else that fails all three tests
+stays unplaced and is simply not drawn - a missing marker is
 better than a confidently wrong one. Results (hits and misses) are cached in a JSON file next to the
 database, so each place is looked up once per deploy disk, not once per page view.
 
@@ -34,6 +36,8 @@ import db
 
 USER_AGENT = "ForkingPaths/1.0 (historical RPG; https://forkingpaths.app)"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
+NOMINATIM_API = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_SPACING = 1.1          # Nominatim's usage policy: at most one request per second
 HTTP_TIMEOUT = 12
 REQUEST_SPACING = 0.25          # seconds between Wikidata requests - polite, and plenty for ~40 places
 SEARCH_LANGUAGES = ("ru", "en")
@@ -146,18 +150,94 @@ def resolve_place(entry, kind, bbox):
                 return {"ok": True, "lat": round(best[2], 6), "lng": round(best[3], 6), "qid": best[1],
                         "label": best[4], "source": "wikidata", "searched": term,
                         "distance_from_estimate_m": round(best[0])}
-    return {"ok": False, "checked_at": time.time()}
+
+    # Fallback 1 (2026-11-03): Wikidata items physically near the estimate whose name matches.
+    # Catches buildings whose labels don't start with our search wording (e.g. a barracks listed
+    # under its street address with the regiment only in the label's middle).
+    if None not in est and stems:
+        rec = _nearby_wikidata(est, max_m, stems, bbox)
+        if rec:
+            return rec
+
+    # Fallback 2: OpenStreetMap (Nominatim), restricted to the setting's bounding box.
+    for term in (entry.get("search") or [])[:3]:
+        try:
+            rec = _nominatim(term, est, max_m, stems, bbox)
+        except (OSError, ValueError) as e:  # OSM down or rate-limited: Wikidata results still stand
+            print(f"[geodata] nominatim failed for {term!r}: {e}", flush=True)
+            break
+        if rec:
+            return rec
+    return {"ok": False, "checked_at": time.time(), "terms": terms_signature(entry)}
+
+
+def terms_signature(entry):
+    return "|".join(entry.get("search") or []) + "#" + "|".join(
+        [entry["must_contain"]] if isinstance(entry.get("must_contain"), str) else (entry.get("must_contain") or []))
+
+
+def _nearby_wikidata(est, max_m, stems, bbox):
+    time.sleep(REQUEST_SPACING)
+    found = _http_get_json({
+        "action": "query", "list": "geosearch", "gscoord": f"{est[0]}|{est[1]}",
+        "gsradius": int(min(max_m, 10000)), "gslimit": 100, "format": "json",
+    })
+    qids = [g["title"] for g in (found.get("query") or {}).get("geosearch", []) if str(g.get("title", "")).startswith("Q")]
+    best = None
+    for i in range(0, len(qids), 50):
+        time.sleep(REQUEST_SPACING)
+        for qid, (lat, lng, label) in _coords_for(qids[i:i + 50]).items():
+            if not any(x in (label or "").lower() for x in stems) or not in_bbox(lat, lng, bbox):
+                continue
+            dist = haversine_m(est[0], est[1], lat, lng)
+            if dist <= max_m and (best is None or dist < best[0]):
+                best = (dist, qid, lat, lng, label)
+    if not best:
+        return None
+    return {"ok": True, "lat": round(best[2], 6), "lng": round(best[3], 6), "qid": best[1], "label": best[4],
+            "source": "wikidata", "searched": "nearby", "distance_from_estimate_m": round(best[0])}
+
+
+def _nominatim(term, est, max_m, stems, bbox):
+    params = {"q": term, "format": "json", "limit": 8, "accept-language": "ru"}
+    if bbox:
+        south, west, north, east = bbox
+        params.update({"viewbox": f"{west},{north},{east},{south}", "bounded": 1})
+    time.sleep(NOMINATIM_SPACING)
+    url = NOMINATIM_API + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        results = json.loads(resp.read().decode("utf-8"))
+    best = None
+    for r in results:
+        name = (r.get("display_name") or "").lower()
+        if stems and not any(x in name for x in stems):
+            continue
+        lat, lng = float(r["lat"]), float(r["lon"])
+        dist = haversine_m(est[0], est[1], lat, lng) if None not in est else 0
+        if dist <= max_m and in_bbox(lat, lng, bbox) and (best is None or dist < best[0]):
+            best = (dist, lat, lng, r.get("display_name", ""), f"{r.get('osm_type')}/{r.get('osm_id')}")
+    if not best:
+        return None
+    return {"ok": True, "lat": round(best[1], 6), "lng": round(best[2], 6), "osm": best[4],
+            "label": best[3].split(",")[0], "source": "openstreetmap", "searched": term,
+            "distance_from_estimate_m": round(best[0])}
 
 
 def _key(setting_key, kind, place_id):
     return f"{setting_key}:{kind}:{place_id}"
 
 
-def _needs_lookup(cache, key):
+def _needs_lookup(cache, key, entry=None):
     rec = cache.get(key)
     if rec is None:
         return True
-    return not rec.get("ok") and time.time() - rec.get("checked_at", 0) > MISS_RETRY_SECONDS
+    if rec.get("ok"):
+        return False
+    # A miss is retried weekly - or straight away if the place's search terms changed since.
+    if entry is not None and rec.get("terms") != terms_signature(entry):
+        return True
+    return time.time() - rec.get("checked_at", 0) > MISS_RETRY_SECONDS
 
 
 def _places(map_data):
@@ -179,7 +259,7 @@ def resolve_all(setting_key, map_data):
         bbox = map_data.get("bbox")
         for kind, pid, entry in _places(map_data):
             key = _key(setting_key, kind, pid)
-            if not _needs_lookup(cache, key):
+            if entry.get("pinned") or not _needs_lookup(cache, key, entry):
                 continue
             if not entry.get("search"):
                 cache[key] = {"ok": False, "checked_at": time.time(), "reason": "no search terms"}
@@ -207,23 +287,25 @@ def map_status(setting_key, map_data):
     landmarks, units, unplaced, pending = [], {}, [], 0
     for kind, pid, entry in _places(map_data):
         key = _key(setting_key, kind, pid)
-        rec = cache.get(key)
-        if rec is None:
+        rec = {"ok": True, **entry["pinned"]} if entry.get("pinned") else cache.get(key)
+        if rec is None or (not rec.get("ok") and _needs_lookup(cache, key, entry)):
             pending += 1
             continue
         if not rec.get("ok"):
             unplaced.append(entry.get("name") or pid)
             continue
-        placed = {"lat": rec["lat"], "lng": rec["lng"], "source": rec.get("source"), "qid": rec.get("qid")}
+        placed = {"lat": rec["lat"], "lng": rec["lng"], "source": rec.get("source"), "qid": rec.get("qid"),
+                  "osm": rec.get("osm"), "label": rec.get("label"), "precision": rec.get("precision", "building")}
         if kind == "landmark":
-            landmarks.append({**{k: entry[k] for k in ("id", "name", "note", "kind", "label") if k in entry}, **placed})
+            landmarks.append({**{k: entry[k] for k in ("id", "name", "note", "kind", "label_side") if k in entry}, **placed})
         else:
             units[pid] = {**placed, "where": entry.get("where", "")}
     n_lm = len(map_data.get("landmarks") or [])
     n_un = len(map_data.get("units") or {})
     layers = map_data.get("layers") or []
+    # Pending lookups don't block the map once enough places are already placed (pinned ones count).
     viable = (
-        bool(layers) and pending == 0
+        bool(layers)
         and (n_lm == 0 or len(landmarks) / n_lm >= VIABILITY_LANDMARKS)
         and (n_un == 0 or len(units) / n_un >= VIABILITY_UNITS)
     )
