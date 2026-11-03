@@ -883,7 +883,7 @@
 <div id="map-panel" role="dialog" aria-label="Map">
   <div class="map-head">
     <h3 id="map-title">Petrograd</h3>
-    <div class="map-legend"><span><i style="background:#7a9b5f"></i>fights for you</span><span><i style="background:#8a9c86"></i>stays in barracks</span><span><i style="background:#b5482f"></i>fights against you</span></div>
+    <div class="map-legend"><span><i style="background:#a6d872"></i>fights for you</span><span><i style="background:#e2dbc6"></i>stays in barracks</span><span><i style="background:#ff6a45"></i>fights against you</span><span>dashed = area, not exact building</span></div>
     <button id="map-close" title="Close (Esc)">&times;</button>
   </div>
   <div id="map-canvas"></div>
@@ -1832,12 +1832,15 @@ function loadLeaflet() {
     document.head.appendChild(js);
   });
 }
-function loyaltyColor(l) { return l >= 2 ? '#7a9b5f' : l <= -2 ? '#b5482f' : '#8a9c86'; }
+// Brighter than the UI's own greens/reds so units read clearly over the dark base map.
+function loyaltyColor(l) { return l >= 2 ? '#a6d872' : l <= -2 ? '#ff6a45' : '#e2dbc6'; }
+const PRECISION_WORDS = { street: 'street-level position', quarter: "the regiment's quarter, not the exact building", district: 'district-level position', town: 'town-level position' };
 function sourceNote(p) {
   const matched = p.label ? ` (${escapeHtml(p.label)})` : '';
-  if (p.qid) return `<br><a href="https://www.wikidata.org/wiki/${encodeURIComponent(p.qid)}" target="_blank" rel="noopener">location: Wikidata${matched}</a>`;
-  if (p.osm) return `<br><a href="https://www.openstreetmap.org/${encodeURI(p.osm)}" target="_blank" rel="noopener">location: OpenStreetMap${matched}</a>`;
-  return '';
+  const prec = PRECISION_WORDS[p.precision] ? `<br><span style="color:var(--muted)">${PRECISION_WORDS[p.precision]}</span>` : '';
+  if (p.qid) return `<br><a href="https://www.wikidata.org/wiki/${encodeURIComponent(p.qid)}" target="_blank" rel="noopener">location: Wikidata${matched}</a>${prec}`;
+  if (p.osm) return `<br><a href="https://www.openstreetmap.org/${encodeURI(p.osm)}" target="_blank" rel="noopener">location: OpenStreetMap${matched}</a>${prec}`;
+  return prec;
 }
 function drawMapUnits() {
   if (!MAP_OBJ || !MAP_DATA) return;
@@ -1855,8 +1858,9 @@ function drawMapUnits() {
     const pos = (MAP_DATA.units || {})[u.id];
     if (!pos) return;
     const word = u.loyalty >= 2 ? 'Fights for you' : u.loyalty <= -2 ? 'Fights against you' : 'Stays in barracks';
+    const exact = !pos.precision || pos.precision === 'building';
     L.circleMarker([pos.lat, pos.lng], { radius: 6 + Math.sqrt(u.strength || 0) / 12, color: loyaltyColor(u.loyalty), weight: 3,
-      fillColor: loyaltyColor(u.loyalty), fillOpacity: 0.5 })
+      fillColor: loyaltyColor(u.loyalty), fillOpacity: 0.5, dashArray: exact ? null : '4 4' })
       .bindPopup(`<b>${escapeHtml(u.name)}</b><br>${(u.strength || 0).toLocaleString()} men · readiness ${u.readiness}/5<br>${word} (loyalty ${u.loyalty > 0 ? '+' : ''}${u.loyalty})<br><span style="color:var(--muted)">${escapeHtml(pos.where || '')}</span>${sourceNote(pos)}`)
       .addTo(MAP_LAYER);
   }));

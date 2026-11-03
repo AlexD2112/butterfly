@@ -1,3 +1,16 @@
+# Map positions pinned by hand; Esri base maps (2026-11-03, via the user's Chrome)
+
+- Ran the lookups in the user's browser (Wikidata search + geosearch + SPARQL over every
+  barracks/school/manege item in the city, plus Nominatim). 32 of 34 places now carry a `pinned`
+  position in map.json with its Wikidata QID or OSM id, the matched name, and a precision
+  (building / street / quarter / district / town). Several earlier "misses" were my rough estimates
+  being too far off for the distance check (Kresty was 1.3 km out), not missing data. Litovsky and
+  Keksgolmsky have no barracks entry in either source; left unpinned. Imprecise positions draw as
+  dashed circles and say so in their popups. Viability no longer waits on pending lookups.
+- CARTO basemaps now render an "API KEY REQUIRED" watermark without a key - dropped. OpenTopoMap
+  dropped as too busy even filtered. Default is Esri World Dark Gray Base with a sepia filter;
+  Esri Light Gray with a parchment filter is the alternative. Checked visually in Chrome.
+
 # Map lookups widened, muted base maps, Memory panel (2026-11-03, later)
 
 - Map: places that miss on Wikidata search now get two more tries - Wikidata items physically near

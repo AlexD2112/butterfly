@@ -80,6 +80,11 @@ class TestMapStatus(unittest.TestCase):
         self.cache = patch.object(geodata, "cache_path", return_value=Path(self.tmp.name) / "geo.json")
         self.cache.start()
         self.data = geodata.setting_map_data(engine.setting_dir("petrograd_1917"))
+        # These tests exercise the lookup cache, so drop the hand-pinned positions.
+        for lm in self.data["landmarks"]:
+            lm.pop("pinned", None)
+        for u in self.data["units"].values():
+            u.pop("pinned", None)
 
     def tearDown(self):
         self.cache.stop()
@@ -116,7 +121,7 @@ class TestMapStatus(unittest.TestCase):
 
     def test_historic_layer_only_when_tiles_exist(self):
         self.assertNotIn("historic", [l["id"] for l in self.data["layers"]])
-        self.assertEqual(self.data["default_layer"], "streets")
+        self.assertEqual(self.data["default_layer"], "dark")
         self.assertTrue(all(l.get("filter") for l in self.data["layers"]))  # base maps are muted
 
     def test_changed_search_terms_retry_a_miss(self):
@@ -140,6 +145,19 @@ class TestMapStatus(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPinned(unittest.TestCase):
+    def test_petrograd_map_is_viable_from_pinned_positions_alone(self):
+        with TemporaryDirectory() as tmp, patch.object(geodata, "cache_path", return_value=Path(tmp) / "geo.json"):
+            data = geodata.setting_map_data(engine.setting_dir("petrograd_1917"))
+            status = geodata.map_status("petrograd_1917", data)
+        self.assertTrue(status["viable"])
+        self.assertEqual(len(status["landmarks"]), len(data["landmarks"]))
+        self.assertGreaterEqual(len(status["units"]), len(data["units"]) - 2)
+        for lm in status["landmarks"]:
+            self.assertTrue(lm["qid"] or lm["osm"], lm["name"])
+            self.assertTrue(geodata.in_bbox(lm["lat"], lm["lng"], data["bbox"]), lm["name"])
 
 
 class TestGeoreferenceTool(unittest.TestCase):

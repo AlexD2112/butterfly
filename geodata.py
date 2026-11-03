@@ -11,7 +11,9 @@ it against Wikidata - search, then fetch the item's coordinate (P625) - acceptin
   - it lies within the setting's bounding box, and
   - it lies within `max_m` metres of the rough estimate (so a same-named place elsewhere can't win).
 
-Anything that fails all three tests stays unplaced and is simply not drawn - a missing marker is
+Places can also carry a `pinned` position in map.json - one found and checked by hand against the
+same sources - which is used as-is and never looked up. Anything else that fails all three tests
+stays unplaced and is simply not drawn - a missing marker is
 better than a confidently wrong one. Results (hits and misses) are cached in a JSON file next to the
 database, so each place is looked up once per deploy disk, not once per page view.
 
@@ -257,7 +259,7 @@ def resolve_all(setting_key, map_data):
         bbox = map_data.get("bbox")
         for kind, pid, entry in _places(map_data):
             key = _key(setting_key, kind, pid)
-            if not _needs_lookup(cache, key, entry):
+            if entry.get("pinned") or not _needs_lookup(cache, key, entry):
                 continue
             if not entry.get("search"):
                 cache[key] = {"ok": False, "checked_at": time.time(), "reason": "no search terms"}
@@ -285,7 +287,7 @@ def map_status(setting_key, map_data):
     landmarks, units, unplaced, pending = [], {}, [], 0
     for kind, pid, entry in _places(map_data):
         key = _key(setting_key, kind, pid)
-        rec = cache.get(key)
+        rec = {"ok": True, **entry["pinned"]} if entry.get("pinned") else cache.get(key)
         if rec is None or (not rec.get("ok") and _needs_lookup(cache, key, entry)):
             pending += 1
             continue
@@ -293,7 +295,7 @@ def map_status(setting_key, map_data):
             unplaced.append(entry.get("name") or pid)
             continue
         placed = {"lat": rec["lat"], "lng": rec["lng"], "source": rec.get("source"), "qid": rec.get("qid"),
-                  "osm": rec.get("osm"), "label": rec.get("label")}
+                  "osm": rec.get("osm"), "label": rec.get("label"), "precision": rec.get("precision", "building")}
         if kind == "landmark":
             landmarks.append({**{k: entry[k] for k in ("id", "name", "note", "kind", "label_side") if k in entry}, **placed})
         else:
@@ -301,8 +303,9 @@ def map_status(setting_key, map_data):
     n_lm = len(map_data.get("landmarks") or [])
     n_un = len(map_data.get("units") or {})
     layers = map_data.get("layers") or []
+    # Pending lookups don't block the map once enough places are already placed (pinned ones count).
     viable = (
-        bool(layers) and pending == 0
+        bool(layers)
         and (n_lm == 0 or len(landmarks) / n_lm >= VIABILITY_LANDMARKS)
         and (n_un == 0 or len(units) / n_un >= VIABILITY_UNITS)
     )

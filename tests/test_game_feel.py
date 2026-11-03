@@ -122,12 +122,11 @@ class TestServerMemoryAndLogin(unittest.TestCase):
         self.assertEqual(sugg[0]["options"], ["Tell Kamenev no", "Go to Smolny"])
         self.assertIn("suggest_actions", {s["name"] for s in provider.specs[0]})
 
-    def test_map_endpoint_hides_the_map_until_places_verify(self):
+    def test_map_endpoint_serves_only_verified_places(self):
         with patch.object(geodata, "cache_path", return_value=Path(self._tmpdir.name) / "geo.json"):
             data = self.client.get("/api/settings/petrograd_1917/map").get_json()
-        self.assertFalse(data["viable"])
-        self.assertTrue(data["resolving"])
-        self.assertEqual(data["landmarks"], [])
+        self.assertTrue(data["viable"])  # the hand-pinned positions are enough
+        self.assertTrue(all(lm.get("qid") or lm.get("osm") for lm in data["landmarks"]))
         self.assertEqual(self.client.get("/api/settings/rome_59_bce/map").status_code, 404)
 
     def test_state_route_includes_the_clock_for_a_new_game(self):
