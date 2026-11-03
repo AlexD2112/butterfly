@@ -1,4 +1,8 @@
 """
+Bridge ends (2026-11-03) are the ends of each bridge's way in OpenStreetMap. These bridges all
+stand where their 1917 predecessors did (most were rebuilt in place), so the modern line is the
+one to use.
+
 Builds settings/petrograd_1917/geography.json - the movement graph the game's code routes over
 (2026-11-03). Run it again after editing the tables below:
 
@@ -60,25 +64,26 @@ EXTRA_CITY = {
     "arsenal": ("Petrograd Arsenal", "factory", "vyborg_side", 59.9537, 30.3755, "Arms works on the Vyborg embankment."),
     "nobel_works": ("Nobel works", "factory", "vyborg_side", 59.9592, 30.3446, "Ludwig Nobel engineering works."),
     "okhta": ("Okhta", "district", "vyborg_side", 59.9480, 30.4150, "Workers' district across the Neva from the Smolny; the Okhta powder works."),
-    "okhtinsky_bridge_s": ("Okhtinsky Bridge (Smolny end)", "bridgehead", "left_bank", 59.9420, 30.4010, ""),
-    "okhtinsky_bridge_n": ("Okhtinsky Bridge (Okhta end)", "bridgehead", "vyborg_side", 59.9455, 30.4100, ""),
-    "grenadersky_bridge_w": ("Grenadersky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.9705, 30.3325, ""),
-    "grenadersky_bridge_e": ("Grenadersky Bridge (Vyborg end)", "bridgehead", "vyborg_side", 59.9712, 30.3375, ""),
-    "tuchkov_bridge_s": ("Tuchkov Bridge (island end)", "bridgehead", "vasilievsky", 59.9498, 30.2858, ""),
-    "tuchkov_bridge_n": ("Tuchkov Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.9522, 30.2895, ""),
-    "palace_bridge_s": ("Palace Bridge (Admiralty end)", "bridgehead", "left_bank", 59.9398, 30.3090, ""),
-    "palace_bridge_n": ("Palace Bridge (Strelka end)", "bridgehead", "vasilievsky", 59.9431, 30.3070, ""),
-    "nikolaevsky_bridge_s": ("Nikolaevsky Bridge (Admiralty end)", "bridgehead", "left_bank", 59.9331, 30.2930, ""),
-    "nikolaevsky_bridge_n": ("Nikolaevsky Bridge (island end)", "bridgehead", "vasilievsky", 59.9364, 30.2862, ""),
-    "troitsky_bridge_s": ("Troitsky Bridge (Field of Mars end)", "bridgehead", "left_bank", 59.9460, 30.3297, ""),
-    "troitsky_bridge_n": ("Troitsky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.9518, 30.3253, ""),
-    "liteyny_bridge_s": ("Liteyny Bridge (Liteyny end)", "bridgehead", "left_bank", 59.9498, 30.3492, ""),
-    "liteyny_bridge_n": ("Liteyny Bridge (Vyborg end)", "bridgehead", "vyborg_side", 59.9538, 30.3500, ""),
-    "birzhevoy_bridge_w": ("Birzhevoy Bridge (Strelka end)", "bridgehead", "vasilievsky", 59.9458, 30.3040, ""),
-    "birzhevoy_bridge_e": ("Birzhevoy Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.9483, 30.3058, ""),
-    "sampsonievsky_bridge_w": ("Sampsonievsky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.9562, 30.3365, ""),
-    "sampsonievsky_bridge_e": ("Sampsonievsky Bridge (Vyborg end)", "bridgehead", "vyborg_side", 59.9575, 30.3405, ""),
-    "ioannovsky_bridge_n": ("Ioannovsky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.9526, 30.3209, ""),
+    "okhtinsky_bridge_s": ("Okhtinsky Bridge (Smolny end)", "bridgehead", "left_bank", 59.94270, 30.39820, ""),
+    "okhtinsky_bridge_n": ("Okhtinsky Bridge (Okhta end)", "bridgehead", "vyborg_side", 59.94270, 30.40420, ""),
+    "grenadersky_bridge_w": ("Grenadersky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.96759, 30.33266, ""),
+    "grenadersky_bridge_e": ("Grenadersky Bridge (Vyborg end)", "bridgehead", "vyborg_side", 59.96819, 30.33625, ""),
+    "tuchkov_bridge_s": ("Tuchkov Bridge (island end)", "bridgehead", "vasilievsky", 59.94810, 30.28454, ""),
+    "tuchkov_bridge_n": ("Tuchkov Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.94972, 30.28678, ""),
+    "palace_bridge_s": ("Palace Bridge (Admiralty end)", "bridgehead", "left_bank", 59.94000, 30.30969, ""),
+    "palace_bridge_n": ("Palace Bridge (Strelka end)", "bridgehead", "vasilievsky", 59.94208, 30.30665, ""),
+    "nikolaevsky_bridge_s": ("Nikolaevsky Bridge (Admiralty end)", "bridgehead", "left_bank", 59.93328, 30.29087, ""),
+    "nikolaevsky_bridge_n": ("Nikolaevsky Bridge (island end)", "bridgehead", "vasilievsky", 59.93616, 30.28845, ""),
+    "troitsky_bridge_s": ("Troitsky Bridge (Field of Mars end)", "bridgehead", "left_bank", 59.94649, 30.32951, ""),
+    "troitsky_bridge_n": ("Troitsky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.95103, 30.32544, ""),
+    "liteyny_bridge_s": ("Liteyny Bridge (Liteyny end)", "bridgehead", "left_bank", 59.95010, 30.34920, ""),
+    "liteyny_bridge_n": ("Liteyny Bridge (Vyborg end)", "bridgehead", "vyborg_side", 59.95360, 30.35000, ""),
+    "birzhevoy_bridge_w": ("Birzhevoy Bridge (Strelka end)", "bridgehead", "vasilievsky", 59.94522, 30.30317, ""),
+    "birzhevoy_bridge_e": ("Birzhevoy Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.94736, 30.30346, ""),
+    "sampsonievsky_bridge_w": ("Sampsonievsky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.95795, 30.33513, ""),
+    "sampsonievsky_bridge_e": ("Sampsonievsky Bridge (Vyborg end)", "bridgehead", "vyborg_side", 59.95800, 30.33915, ""),
+    "ioannovsky_gate": ("Ioannovsky Gate (fortress end)", "bridgehead", "fortress", 59.95142, 30.32191, ""),
+    "ioannovsky_bridge_n": ("Ioannovsky Bridge (Petrograd-side end)", "bridgehead", "petrograd_side", 59.95263, 30.32267, ""),
 }
 BRIDGES = [  # (edge id, name, end a, end b, raisable)
     ("palace_bridge", "Palace Bridge", "palace_bridge_s", "palace_bridge_n", True),
@@ -90,7 +95,7 @@ BRIDGES = [  # (edge id, name, end a, end b, raisable)
     ("okhtinsky_bridge", "Okhtinsky Bridge", "okhtinsky_bridge_s", "okhtinsky_bridge_n", True),
     ("grenadersky_bridge", "Grenadersky Bridge", "grenadersky_bridge_w", "grenadersky_bridge_e", False),
     ("tuchkov_bridge", "Tuchkov Bridge", "tuchkov_bridge_s", "tuchkov_bridge_n", False),
-    ("ioannovsky_bridge", "Ioannovsky Bridge (to the fortress)", "ioannovsky_bridge_n", "peter_and_paul_fortress", False),
+    ("ioannovsky_bridge", "Ioannovsky Bridge (to the fortress)", "ioannovsky_bridge_n", "ioannovsky_gate", False),
 ]
 
 # ---------------------------------------------------------------- the region and country (approximate)
