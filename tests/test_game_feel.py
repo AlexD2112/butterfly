@@ -289,5 +289,26 @@ class TestWriteTheScene(unittest.TestCase):
         self.assertIn("never written", conv[1]["content"])
 
 
+class TestAdminBudget(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = TemporaryDirectory()
+        self._orig_db_file = db.DB_FILE
+        db.DB_FILE = Path(self._tmpdir.name) / "t.db"
+        db.init_db()
+
+    def tearDown(self):
+        db.DB_FILE = self._orig_db_file
+        self._tmpdir.cleanup()
+
+    def test_admins_get_forty_dollars_others_keep_the_default(self):
+        owner = db.get_or_create_discord_user("1", "Owner", None)
+        other = db.get_or_create_discord_user("2", "Other", None)
+        db.record_usage(owner["id"], None, "openai", "m", 1, 1, 0, 0, 0.10)
+        self.assertEqual(db.get_budget_status(owner["id"])["remaining_usd"], 0.0)
+        db.set_is_admin(owner["id"], True)
+        self.assertAlmostEqual(db.get_budget_status(owner["id"])["remaining_usd"], 39.9)
+        self.assertEqual(db.get_budget_status(other["id"])["budget_usd"], db.DEFAULT_BUDGET_USD)
+
+
 if __name__ == "__main__":
     unittest.main()

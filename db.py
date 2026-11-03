@@ -36,6 +36,9 @@ DB_FILE = Path(os.environ.get("BUTTERFLY_DB_PATH") or (Path(__file__).parent / "
 _LOCAL_USER_DISCORD_ID = "__local__"  # sentinel, never a real Discord snowflake
 
 DEFAULT_BUDGET_USD = 0.10  # starting LLM usage budget granted to every new account
+# Admin accounts (unlocked with server.py's ADMIN_UNLOCK_CODE) get this lifetime budget instead -
+# the owner's own play. Spend is a lifetime sum, so this is $40 total, not $40 more each time.
+ADMIN_BUDGET_USD = 40.0
 
 
 def get_db():
@@ -1626,12 +1629,14 @@ def get_budget_status(user_id):
     over usage_events rather than a separately-maintained running counter, so there's exactly one
     source of truth for spend - no risk of the two drifting out of sync."""
     conn = get_db()
-    user_row = conn.execute("SELECT budget_usd FROM users WHERE id = ?", (user_id,)).fetchone()
+    user_row = conn.execute("SELECT budget_usd, is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
     spent_row = conn.execute(
         "SELECT COALESCE(SUM(cost_usd), 0) AS spent FROM usage_events WHERE user_id = ?", (user_id,)
     ).fetchone()
     conn.close()
     budget = user_row["budget_usd"] if user_row else DEFAULT_BUDGET_USD
+    if user_row and user_row["is_admin"]:
+        budget = max(budget, ADMIN_BUDGET_USD)  # the owner's own play (2026-11-03)
     spent = spent_row["spent"]
     return {"budget_usd": budget, "spent_usd": spent, "remaining_usd": max(0.0, budget - spent)}
 
