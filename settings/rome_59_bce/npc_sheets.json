@@ -1,5 +1,5 @@
 {
- "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py).",
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py). location / default_location (2026-11-03): where they are, a place in geography.json - letters and couriers take real travel time to reach them (couriers.py).",
  "sheets": {
   "pompey": {
    "name": "Gnaeus Pompeius Magnus",
@@ -255,7 +255,9 @@
     "swordsmanship"
    ],
    "familiarity": 0,
-   "faction": "suebi"
+   "faction": "suebi",
+   "location": "vesontio"
   }
- }
+ },
+ "default_location": "roma"
 }

@@ -384,6 +384,8 @@ def main():
         "long_march_km": 15,
         "freeze": {"river": ["12", "01", "02", "03"], "sea_ice_walk": ["01", "02", "03"]},
         "same_scene_hours": 12,
+        # couriers.py: a telegram is fast but goes through the government's own Telegraph
+        "telegraph": {"hours": 2, "read_by": ["government"], "from": ["central_telegraph"]},
         "areas": {
             "left_bank": "The centre and south (Admiralty, Liteyny, Smolny, Moscow and Narva districts)",
             "vasilievsky": "Vasilievsky Island", "petrograd_side": "The Petrograd side",

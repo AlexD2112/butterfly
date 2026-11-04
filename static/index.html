@@ -2454,6 +2454,7 @@ function degreeClass(degree) { return degree.replace(/_/g, '-'); }
 function renderChangeLine(c) {
     if (c.gm_only) return '';  // who-knows-what leaks between other factions stay off the player's screen
     if (c.kind === 'knowledge_public') return `RUMOUR — ${escapeHtml(c.message || '')}`;
+    if (c.kind === 'mail_delivered') return `MAIL — ${escapeHtml(c.message || '')}`;
     if (c.kind === 'resource') {
       const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
       const why = c.cause ? ` (${escapeHtml(c.cause)})` : ` [requested ${c.requested_delta > 0 ? '+' : ''}${c.requested_delta}]`;
@@ -2535,6 +2536,12 @@ function renderMechanics(debugEvents) {
     if (ev.type === 'timing') {
       const parts = (ev.rounds || []).map(r => `${r.seconds}s ${r.tools.length ? r.tools.join(', ') : (r.text ? 'writing' : 'nothing')}`);
       return `<div class="line">TIMING — ${ev.seconds}s over ${(ev.rounds || []).length} call(s): ${escapeHtml(parts.join(' · '))}</div>`;
+    }
+    if (ev.type === 'mail') {
+      const r = ev.result || {};
+      if (ev.operation === 'send_message') return `<div class="line">SENT — ${escapeHtml(r.means || '')} to ${escapeHtml(r.to || '')} at ${escapeHtml(r.where || '')}: ${r.delivered ? 'delivered within the hour' : `on the road, ${escapeHtml(r.travel || '')}`}</div>`;
+      if (ev.operation === 'npc_message') return r.delivered ? '<div class="line">A NOTE ARRIVES</div>' : '';  // a letter on its way to you is a surprise
+      return '';
     }
     if (ev.type === 'knowledge') {
       const r = ev.result || {};
@@ -2672,6 +2679,7 @@ function renderOutcomeCards(debugEvents, fresh) {
       }
       if (c.kind === 'canon_event' && c.message) dispatch('History', c.message);
       if (c.kind === 'knowledge_public' && c.message) dispatch('Rumour', c.message);
+      if (c.kind === 'mail_delivered' && !c.gm_only && c.message) dispatch('A letter arrives', c.message);
       if ((c.kind === 'resource' || c.kind === 'world') && typeof c.before === 'number' && c.after !== c.before) {
         const key = (c.kind === 'world' ? 'world.' : '') + c.key;
         net[key] = (net[key] || 0) + (c.after - c.before);

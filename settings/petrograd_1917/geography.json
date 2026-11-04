@@ -34,6 +34,15 @@
   ]
  },
  "same_scene_hours": 12,
+ "telegraph": {
+  "hours": 2,
+  "read_by": [
+   "government"
+  ],
+  "from": [
+   "central_telegraph"
+  ]
+ },
  "areas": {
   "left_bank": "The centre and south (Admiralty, Liteyny, Smolny, Moscow and Narva districts)",
   "vasilievsky": "Vasilievsky Island",

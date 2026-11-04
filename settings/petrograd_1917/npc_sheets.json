@@ -1,5 +1,5 @@
 {
- "_comment": "NPC sheets (2026-11-03), read by npcs.py. Same six attributes and skill tiers as the player (Red Admiral). The first 15 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale, not measured quantities. familiarity 0-3 is how well Trotsky knows the person at the start (0 never met / 1 by reputation / 2 worked with / 3 knows well) - it sets how much of the sheet the player can see. Expertise = proficiency added twice; proficient = once. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py).",
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. Same six attributes and skill tiers as the player (Red Admiral). The first 15 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale, not measured quantities. familiarity 0-3 is how well Trotsky knows the person at the start (0 never met / 1 by reputation / 2 worked with / 3 knows well) - it sets how much of the sheet the player can see. Expertise = proficiency added twice; proficient = once. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py). location / default_location (2026-11-03): where they are, a place in geography.json - letters and couriers take real travel time to reach them (couriers.py).",
  "sheets": {
   "lenin": {
    "name": "Vladimir Lenin",
@@ -25,7 +25,8 @@
     "operational_security"
    ],
    "familiarity": 3,
-   "faction": "bolsheviks"
+   "faction": "bolsheviks",
+   "location": "helsingfors"
   },
   "stalin": {
    "name": "Joseph Stalin",
@@ -115,7 +116,8 @@
     "negotiation"
    ],
    "familiarity": 1,
-   "faction": "government"
+   "faction": "government",
+   "location": "winter_palace"
   },
   "kollontai": {
    "name": "Alexandra Kollontai",
@@ -223,7 +225,8 @@
     "inspiring_loyalty"
    ],
    "familiarity": 1,
-   "faction": "bolsheviks"
+   "faction": "bolsheviks",
+   "location": "helsingfors"
   },
   "krasnov": {
    "name": "Pyotr Krasnov",
@@ -245,7 +248,8 @@
     "endurance_and_travel"
    ],
    "familiarity": 0,
-   "faction": "generals"
+   "faction": "generals",
+   "location": "ostrov"
   },
   "dan": {
    "name": "Fyodor Dan",
@@ -355,7 +359,8 @@
     "languages_and_translation"
    ],
    "familiarity": 3,
-   "faction": "family"
+   "faction": "family",
+   "location": "kresty_prison"
   },
   "sverdlov": {
    "name": "Yakov Sverdlov",
@@ -489,7 +494,8 @@
     "debate_and_public_argument"
    ],
    "familiarity": 2,
-   "faction": "bolsheviks"
+   "faction": "bolsheviks",
+   "location": "moscow"
   },
   "uritsky": {
    "name": "Moisei Uritsky",
@@ -531,7 +537,8 @@
     "physical_confrontation"
    ],
    "familiarity": 1,
-   "faction": "bolsheviks"
+   "faction": "bolsheviks",
+   "location": "kronstadt"
   },
   "lazimir": {
    "name": "Pavel Lazimir",
@@ -574,7 +581,8 @@
     "endurance_and_travel"
    ],
    "familiarity": 0,
-   "faction": "generals"
+   "faction": "generals",
+   "location": "bykhov"
   },
   "alekseev": {
    "name": "Mikhail Alekseev",
@@ -597,7 +605,8 @@
     "cultivating_allies"
    ],
    "familiarity": 0,
-   "faction": "generals"
+   "faction": "generals",
+   "location": "mogilev"
   },
   "kaledin": {
    "name": "Alexei Kaledin",
@@ -618,7 +627,8 @@
     "crisis_command"
    ],
    "familiarity": 0,
-   "faction": "generals"
+   "faction": "generals",
+   "location": "novocherkassk"
   },
   "polkovnikov": {
    "name": "Georgy Polkovnikov",
@@ -638,7 +648,8 @@
     "crisis_command"
    ],
    "familiarity": 0,
-   "faction": "government"
+   "faction": "government",
+   "location": "general_staff"
   },
   "verkhovsky": {
    "name": "Alexander Verkhovsky",
@@ -658,7 +669,8 @@
     "situation_analysis"
    ],
    "familiarity": 0,
-   "faction": "government"
+   "faction": "government",
+   "location": "general_staff"
   },
   "buchanan": {
    "name": "Sir George Buchanan",
@@ -681,7 +693,9 @@
     "cultivating_allies"
    ],
    "familiarity": 0,
-   "faction": "allied_embassies"
+   "faction": "allied_embassies",
+   "location": "nevsky_prospekt"
   }
- }
+ },
+ "default_location": "smolny_institute"
 }

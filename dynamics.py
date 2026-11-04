@@ -39,6 +39,7 @@ import datetime
 import json
 from pathlib import Path
 
+import couriers
 import geography
 import knowledge
 import random
@@ -305,6 +306,9 @@ def advance_time(state, dyn, resource_schema, system, days, rng=None):
             for c in geography.tick_day(geo, state):
                 changes.append(c)
                 add_notice(state, c["message"], "movement")
+        for c in couriers.deliver_due(state, state.get("setting_pack")):
+            changes.append(c)
+            add_notice(state, c["message"], "mail")
         for c in knowledge.spread_one_day(state, state.get("setting_pack"), rng=rng or random):
             changes.append(c)
             if not c.get("gm_only"):
