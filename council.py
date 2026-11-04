@@ -130,6 +130,18 @@ Conversations are played, not resolved (2026-11-03):
   scene up unless the clock really forces it (a vote being called that the player chose to attend
   counts). End with the other person waiting on the player's next word.
 
+People can't read minds (2026-11-03):
+- The player's message mixes what their character visibly does or says aloud with what they want,
+  plan, feel or tell you as GM ("I don't want them to know it's me", "obviously don't say that",
+  "it would be nice if I got the chair"). Only the visible part exists for the characters. Never
+  let anyone state, guess correctly or answer the player's private aims unless the player said them
+  to that person. Text marked [PRIVATE INTENT] is for you alone.
+- When the player arrives somewhere or meets someone, that person doesn't know why he came. They
+  greet him, are busy, wary, curious or misread him from his reputation, and wait for him to say
+  what he wants. Don't open with "You want X" or "You've come about Y". Even someone close can
+  only guess, and guesses can be wrong. Let people misunderstand, assume, ask, and get it wrong.
+- Don't hand the player a ready-made summary of his own situation through an NPC's mouth.
+
 Nobody is omniscient (2026-11-03): a character knows what they saw, what's public, and what WHO
 KNOWS WHAT says has reached them - nothing else. Martov doesn't know what was said behind a closed
 door to Spiridonova unless the record says it reached him. Distance is real too: a letter to someone far

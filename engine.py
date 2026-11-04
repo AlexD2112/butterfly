@@ -354,6 +354,22 @@ level-up options from the system rules before proceeding.
 {council.VOICE_GUIDANCE}"""
 
 
+# ==================== private intent (2026-11-03) ====================
+# The player can write what their character intends or thinks in ((double parentheses)): it reaches
+# the GM labelled as private, so no character "hears" it. (Characters reading the player's mind -
+# answering aims he never voiced - was reported as the most unnatural thing in play.)
+_INTENT = re.compile(r"\(\((.+?)\)\)", re.S)
+
+
+def mark_private_intent(text):
+    parts = [p.strip() for p in _INTENT.findall(text or "") if p.strip()]
+    if not parts:
+        return text
+    visible = _INTENT.sub("", text).strip()
+    visible = re.sub(r"\s{2,}", " ", visible)
+    return (visible or "(no visible action)") + "\n\n[PRIVATE INTENT - for the GM only; no character sees or hears this: " + " / ".join(parts) + "]"
+
+
 # ==================== narration guard (2026-11-03) ====================
 # Tools whose results the player can only learn through narration: dice, votes, appeals, fights.
 MAX_TOOL_ROUNDS = 6  # model calls with tools per turn, before the forced write-up
@@ -618,7 +634,7 @@ def rebuild_conversation(provider, turns, memory_turns=MEMORY_TURNS, opening=Non
         except (TypeError, ValueError):
             events = []
         outcome = summarize_outcomes(events)
-        provider.append_user_message(conversation, player)
+        provider.append_user_message(conversation, mark_private_intent(player))
         conversation.append({"role": "assistant", "content": narration + (f"\n\n[Rules resolved: {outcome}]" if outcome else "")})
     return conversation
 
@@ -686,7 +702,7 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
                                   npc_sheets=bool(npc_sheets_mod.load(setting_key)))
     if suggestions:
         tool_specs.append(SUGGEST_ACTIONS_SPEC)
-    provider.append_user_message(conversation, user_input)
+    provider.append_user_message(conversation, mark_private_intent(user_input))
     system_prompt = build_system_prompt(
         state, setting_key, system_key, extra_context=extra_context, allow_time_advance=allow_time_advance,
     )

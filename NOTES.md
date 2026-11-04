@@ -1,3 +1,15 @@
+# No mind-reading (2026-11-03)
+
+- Reported: characters greet the player already knowing what he wants (Natalia: "You want the
+  soldiers warned before ... a procedural victory for Kamenev" - lifted from the player's own
+  instructions to the GM, including the part he said to keep quiet).
+- VOICE_GUIDANCE "People can't read minds": only the visible part of a move exists for characters;
+  nobody answers aims the player didn't voice to them; people met don't know why he came, they
+  guess, misread and ask; no NPC summaries of the player's own situation.
+- ((double parentheses)) in a move = private intent: sent to the model labelled [PRIVATE INTENT -
+  for the GM only] (also in rebuilt memory), shown muted in the log; works in Say mode too.
+- open_negotiation only once the player has actually asked.
+
 # Couriers and distance (2026-11-03)
 
 - Reported: the player wrote to Lenin (Helsingfors) and in the same scene Lenin's courier arrived

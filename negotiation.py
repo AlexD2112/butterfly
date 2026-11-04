@@ -198,7 +198,7 @@ def prompt_section(state):
 def tool_specs():
     return [
         {"name": "open_negotiation",
-         "description": "Start a negotiation when the player tries to win a person over to a real commitment (their votes, an alliance, a deal, a betrayal). Write down what THEY want - offers are judged against it. Not for small favours or information (request_check is fine for those).",
+         "description": "Start a negotiation once the player has actually asked a person for a real commitment (their votes, an alliance, a deal, a betrayal) - not when he walks in, and not from his private intent. Write down what THEY want, as they'd come to say it - offers are judged against it. Not for small favours or information (request_check is fine for those).",
          "parameters": {"type": "object", "properties": {
              "npc": {"type": "string", "description": "The NPC's id or name."},
              "topic": {"type": "string", "description": "What is being negotiated, a few words."},

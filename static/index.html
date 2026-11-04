@@ -350,6 +350,7 @@
   .redo-scene { margin-top: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent, #b8954a); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .redo-scene:disabled { opacity: .5; cursor: default; }
   .redo-note { color: var(--muted); font-size: .9em; }
+  .player .intent { margin-left: 8px; color: var(--muted); font-style: italic; }
   .ng-track { display: flex; gap: 4px; margin: 6px 0 4px; }
   .ng-step { width: 26px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); }
   .ng-step.on { background: var(--accent-2); opacity: .55; }
@@ -896,7 +897,7 @@
         <button type="button" data-mode="do" class="active" title="Describe what you do">Do</button>
         <button type="button" data-mode="say" title="Say something out loud, in character">Say</button>
       </div>
-      <textarea id="inputbox" placeholder="What do you do?" rows="1"></textarea>
+      <textarea id="inputbox" placeholder="What do you do?  ((private intent))" rows="1" title="Put what your character is thinking or planning in ((double parentheses)) - only the game master sees it."></textarea>
       <button id="send-btn">Send</button>
     </div>
   </div>
@@ -2607,10 +2608,18 @@ function formatNarration(text) {
   }).join('');
 }
 
+// ((double parentheses)) = private intent (2026-11-03): only the GM sees it; shown muted here.
+function splitIntent(text) {
+  const intents = [];
+  const visible = (text || '').replace(/\(\(([\s\S]+?)\)\)/g, (_, t) => { intents.push(t.trim()); return ''; }).replace(/\s{2,}/g, ' ').trim();
+  return { visible, intents };
+}
 function renderPlayerLine(text) {
-  const m = /^I say:\s*"([\s\S]*)"\s*$/.exec(text || '');
-  if (m) return `<div class="player say"><span class="tag">Say</span><span class="said">"${escapeHtml(m[1])}"</span></div>`;
-  return `<div class="player do"><span class="tag">Do</span><span>${escapeHtml(text)}</span></div>`;
+  const { visible, intents } = splitIntent(text);
+  const intentHtml = intents.length ? `<span class="intent" title="Private - only the game master sees this">(${escapeHtml(intents.join(' / '))})</span>` : '';
+  const m = /^I say:\s*"([\s\S]*)"\s*$/.exec(visible);
+  if (m) return `<div class="player say"><span class="tag">Say</span><span class="said">"${escapeHtml(m[1])}"</span>${intentHtml}</div>`;
+  return `<div class="player do"><span class="tag">Do</span><span>${escapeHtml(visible)}</span>${intentHtml}</div>`;
 }
 
 const NEG_WORDS = { '-2': 'hostile', '-1': 'wary', 0: 'listening', 1: 'interested', 2: 'close to a deal', 3: 'agreed' };
@@ -2942,7 +2951,7 @@ let INPUT_MODE = 'do';
 function setInputMode(mode) {
   INPUT_MODE = mode;
   document.querySelectorAll('#inputbar .mode-toggle button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-  inputBox.placeholder = mode === 'say' ? 'What do you say?' : 'What do you do?';
+  inputBox.placeholder = mode === 'say' ? 'What do you say?  ((private intent))' : 'What do you do?  ((private intent))';
 }
 document.querySelectorAll('#inputbar .mode-toggle button').forEach(b =>
   b.addEventListener('click', () => { setInputMode(b.dataset.mode); inputBox.focus(); }));
@@ -2956,7 +2965,8 @@ async function sendTurn(presetText) {
   let text = (typeof presetText === 'string' ? presetText : inputBox.value).trim();
   if (!text || !CURRENT_CHARACTER_ID || sendBtn.disabled) return;
   if (typeof presetText !== 'string' && INPUT_MODE === 'say' && !/^I say:/i.test(text)) {
-    text = `I say: "${text.replace(/^"|"$/g, '')}"`;
+    const { visible, intents } = splitIntent(text);
+    text = `I say: "${visible.replace(/^"|"$/g, '')}"` + intents.map(t => ` ((${t}))`).join('');
   }
   inputBox.value = '';
   autoGrowInput();
