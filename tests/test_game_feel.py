@@ -335,9 +335,46 @@ class TestResendAfterUpdate(TestWriteTheScene):
             after = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
             self.assertEqual(after["turn_number"], mid["turn_number"] - 1)
             self.assertEqual(len(db.get_turns(self.cid)), 1)
-            # only the latest turn keeps a snapshot, so a second resend isn't possible
-            self.assertFalse(self.client.get(f"/api/character/{self.cid}/turns").get_json()["resend_available"])
+            # only the latest turn keeps a snapshot; the one before it is undone from its record instead
+            self.assertIsNone(db.get_turns(self.cid)[0]["state_before_json"])
         self.assertEqual(before["turn_number"], 0)
+
+
+class TestUndoOldTurns(TestWriteTheScene):
+    def test_a_turn_from_before_snapshots_is_undone_from_its_record(self):
+        state0 = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
+        check = ("request_check", {"attribute": "presence", "skill": "personal_persuasion", "dc": 14,
+                                   "target_npc": "spiridonova", "at_stake": "left_sr_alliance", "description": "Win her"})
+        upd = ("propose_state_update", {"reasoning": "trust", "relationship_deltas": {"kollontai": 1}, "xp_award": 20,
+                                        "days_elapsed": 1, "divergence_note": "Left SRs courted early",
+                                        "commitments_upserted": {"land_words": {"status": "active", "description": "Bring words on land"}}})
+        provider = RecordingProvider([tools_turn(check, upd, text="She listens."), text_turn("She agrees.")])
+        with patch.object(providers, "get_provider", return_value=(provider, "m")):
+            self.client.post(f"/api/character/{self.cid}/turn", json={"input": "We're allies.", "model_key": "luna"})
+        conn = db.get_db()  # make it look like a turn from before this feature
+        conn.execute("UPDATE turns SET state_before_json = NULL, app_version = NULL")
+        conn.commit(); conn.close()
+        self.assertTrue(self.client.get(f"/api/character/{self.cid}/turns").get_json()["resend_available"])
+        res = self.client.post(f"/api/character/{self.cid}/resend_last").get_json()
+        self.assertEqual(res["input"], "We're allies.")
+        after = self.client.get(f"/api/character/{self.cid}/state").get_json()["state"]
+        for k in ("resources", "world", "relationships", "enmity", "date", "turn_number", "commitments", "divergence_log"):
+            self.assertEqual(after[k], state0[k], k)
+        self.assertEqual(after["character"]["xp"], state0["character"]["xp"])
+        self.assertEqual(db.get_turns(self.cid), [])
+
+    def test_turns_that_cannot_be_undone_exactly_say_so(self):
+        vote = ("call_vote", {"instance_id": "petrograd_soviet", "motion": "x", "player_position": "for"})
+        provider = RecordingProvider([tools_turn(vote, text="They vote."), text_turn("Done.")])
+        with patch.object(providers, "get_provider", return_value=(provider, "m")):
+            self.client.post(f"/api/character/{self.cid}/turn", json={"input": "Call the vote.", "model_key": "luna"})
+        conn = db.get_db()
+        conn.execute("UPDATE turns SET state_before_json = NULL, app_version = NULL")
+        conn.commit(); conn.close()
+        self.assertFalse(self.client.get(f"/api/character/{self.cid}/turns").get_json()["resend_available"])
+        res = self.client.post(f"/api/character/{self.cid}/resend_last")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("call_vote", res.get_json()["error"])
 
 
 if __name__ == "__main__":
