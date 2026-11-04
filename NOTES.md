@@ -1,3 +1,16 @@
+# Couriers and distance (2026-11-03)
+
+- Reported: the player wrote to Lenin (Helsingfors) and in the same scene Lenin's courier arrived
+  answering it. couriers.py: every NPC sheet has a location (location / default_location, all four
+  settings; npc_location moves someone). send_message routes a courier over the geography graph
+  (+2 h handling) - under 12 h it arrives within the scene, otherwise on a date, and only then is
+  the recipient added to the letter's WHO KNOWS WHAT fact. npc_message sends a distant NPC's letter
+  to the player: it leaves now, arrives after the same travel time, and is refused if it answers a
+  fact the sender doesn't know yet. Petrograd has telegrams: 2 h, but the government faction learns
+  the contents. Delivery happens in the day loop; the prompt lists who is far away (with courier
+  times) and every letter on the road. Player-sent deliveries are GM-only; letters arriving for the
+  player show as a dispatch.
+
 # Who knows what: fog of war for information (2026-11-03)
 
 - Reported: Martov knew about a private conversation with Spiridonova. knowledge.py keeps private

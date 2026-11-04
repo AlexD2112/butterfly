@@ -36,11 +36,25 @@ BANDS = [(8, "weak"), (11, "ordinary"), (14, "capable"), (17, "formidable"), (99
 _CACHE = {}
 
 
-def load(setting_key):
+def _raw(setting_key):
     if setting_key not in _CACHE:
         path = SETTINGS_DIR / str(setting_key) / "npc_sheets.json"
-        _CACHE[setting_key] = json.loads(path.read_text(encoding="utf-8"))["sheets"] if path.exists() else None
+        _CACHE[setting_key] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
     return _CACHE[setting_key]
+
+
+def load(setting_key):
+    raw = _raw(setting_key)
+    return raw["sheets"] if raw else None
+
+
+def location(state, setting_key, key):
+    """Where an NPC is now (a geography node): moved in play, else their sheet, else the setting's default."""
+    moved = (state.get("_npc_locations") or {}).get(key)
+    if moved:
+        return moved
+    sheet = all_sheets(state, setting_key).get(key) or {}
+    return sheet.get("location") or (_raw(setting_key) or {}).get("default_location")
 
 
 def all_sheets(state, setting_key):

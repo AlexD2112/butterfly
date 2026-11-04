@@ -132,7 +132,9 @@ Conversations are played, not resolved (2026-11-03):
 
 Nobody is omniscient (2026-11-03): a character knows what they saw, what's public, and what WHO
 KNOWS WHAT says has reached them - nothing else. Martov doesn't know what was said behind a closed
-door to Spiridonova unless the record says it reached him.
+door to Spiridonova unless the record says it reached him. Distance is real too: a letter to someone far
+away arrives when MAIL AND DISTANCE says, and their answer takes as long again - no courier turns up
+with a reply to something sent minutes ago.
 
 The player's character belongs to the player:
 - Never write what the player character says, decides, thinks or feels beyond what the player
