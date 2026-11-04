@@ -112,7 +112,8 @@ def opposed_dc(state, setting_key, system, target, player_attribute, player_skil
         skill_attr = player_attribute if player_attribute in ATTRS else None
         if player_skill:
             skill_attr = next((a for a, sk in system.SKILLS.items() if player_skill in sk), skill_attr)
-        will = modifier(sheet, "resolve", system)
+        # their will: Resolve, or a trained Resolve skill (Cato's Unbending Will) if that's better
+        will = max([modifier(sheet, "resolve", system)] + [modifier(sheet, sk, system) for sk in system.SKILLS.get("resolve", [])])
         if skill_attr in SOCIAL_ATTRS and will > mod:
             resist, mod = "resolve", will
     extra = ASK_DC.get(ask or "minor", 0)

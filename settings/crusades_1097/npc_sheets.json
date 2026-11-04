@@ -1,0 +1,272 @@
+{
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see.",
+ "sheets": {
+  "godfrey_of_bouillon": {
+   "name": "Godfrey of Bouillon",
+   "role": "Duke of Lower Lorraine, leader of the Lotharingians",
+   "attributes": {
+    "oration": 13,
+    "intellect": 14,
+    "resolve": 17,
+    "presence": 15,
+    "cunning": 11,
+    "physique": 16
+   },
+   "proficiency": 2,
+   "expertise": [
+    "unyielding_oath",
+    "battle_nerve"
+   ],
+   "proficient": [
+    "arms_and_armor",
+    "chivalrous_bearing",
+    "sermon_and_preaching"
+   ],
+   "familiarity": 2
+  },
+  "raymond_of_toulouse": {
+   "name": "Raymond IV of Toulouse",
+   "role": "Count of Toulouse, richest and proudest of the princes",
+   "attributes": {
+    "oration": 13,
+    "intellect": 14,
+    "resolve": 15,
+    "presence": 14,
+    "cunning": 13,
+    "physique": 12
+   },
+   "proficiency": 3,
+   "expertise": [
+    "statecraft_and_law",
+    "terrain_and_logistics"
+   ],
+   "proficient": [
+    "courtly_grace",
+    "unyielding_oath",
+    "court_rhetoric"
+   ],
+   "familiarity": 2
+  },
+  "alexios_i": {
+   "name": "Emperor Alexios I Komnenos",
+   "role": "Byzantine emperor",
+   "attributes": {
+    "oration": 15,
+    "intellect": 18,
+    "resolve": 15,
+    "presence": 16,
+    "cunning": 18,
+    "physique": 12
+   },
+   "proficiency": 4,
+   "expertise": [
+    "intrigue_and_plot",
+    "statecraft_and_law",
+    "reading_intentions"
+   ],
+   "proficient": [
+    "court_rhetoric",
+    "spycraft",
+    "tongues_of_the_realm"
+   ],
+   "familiarity": 2
+  },
+  "tancred": {
+   "name": "Tancred",
+   "role": "Bohemond's nephew, hot-headed and brave",
+   "attributes": {
+    "oration": 12,
+    "intellect": 12,
+    "resolve": 14,
+    "presence": 13,
+    "cunning": 13,
+    "physique": 17
+   },
+   "proficiency": 2,
+   "expertise": [
+    "arms_and_armor"
+   ],
+   "proficient": [
+    "horsemanship",
+    "battle_nerve",
+    "rallying_the_host"
+   ],
+   "familiarity": 3
+  },
+  "adhemar_of_le_puy": {
+   "name": "Adhemar of Le Puy",
+   "role": "Bishop of Le Puy, papal legate",
+   "attributes": {
+    "oration": 15,
+    "intellect": 15,
+    "resolve": 16,
+    "presence": 16,
+    "cunning": 11,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [
+    "sermon_and_preaching",
+    "unyielding_oath"
+   ],
+   "proficient": [
+    "statecraft_and_law",
+    "courtly_grace",
+    "chronicle_and_scripture"
+   ],
+   "familiarity": 2
+  },
+  "yaghi_siyan": {
+   "name": "Yaghi-Siyan",
+   "role": "Seljuk governor of Antioch",
+   "attributes": {
+    "oration": 12,
+    "intellect": 14,
+    "resolve": 14,
+    "presence": 12,
+    "cunning": 15,
+    "physique": 13
+   },
+   "proficiency": 3,
+   "expertise": [
+    "siegecraft_and_engineering"
+   ],
+   "proficient": [
+    "intrigue_and_plot",
+    "reading_intentions",
+    "battle_nerve"
+   ],
+   "familiarity": 0
+  },
+  "kerbogha": {
+   "name": "Kerbogha of Mosul",
+   "role": "Atabeg of Mosul",
+   "attributes": {
+    "oration": 13,
+    "intellect": 13,
+    "resolve": 15,
+    "presence": 14,
+    "cunning": 12,
+    "physique": 16
+   },
+   "proficiency": 3,
+   "expertise": [
+    "rallying_the_host"
+   ],
+   "proficient": [
+    "horsemanship",
+    "arms_and_armor",
+    "blustering_threats"
+   ],
+   "familiarity": 0
+  },
+  "firuz": {
+   "name": "Firuz",
+   "role": "Armenian commander of towers on Antioch's walls",
+   "attributes": {
+    "oration": 11,
+    "intellect": 13,
+    "resolve": 12,
+    "presence": 12,
+    "cunning": 16,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [
+    "intrigue_and_plot"
+   ],
+   "proficient": [
+    "disguise_and_subterfuge",
+    "tongues_of_the_realm",
+    "reading_intentions"
+   ],
+   "familiarity": 0
+  },
+  "stephen_of_blois": {
+   "name": "Stephen of Blois",
+   "role": "Count of Blois, the army's chancellor, a reluctant crusader",
+   "attributes": {
+    "oration": 14,
+    "intellect": 14,
+    "resolve": 9,
+    "presence": 14,
+    "cunning": 12,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [
+    "court_rhetoric"
+   ],
+   "proficient": [
+    "courtly_grace",
+    "statecraft_and_law"
+   ],
+   "familiarity": 2
+  },
+  "robert_of_normandy": {
+   "name": "Robert Curthose",
+   "role": "Duke of Normandy, a fine knight and a careless lord",
+   "attributes": {
+    "oration": 12,
+    "intellect": 11,
+    "resolve": 12,
+    "presence": 15,
+    "cunning": 10,
+    "physique": 16
+   },
+   "proficiency": 2,
+   "expertise": [
+    "arms_and_armor"
+   ],
+   "proficient": [
+    "horsemanship",
+    "chivalrous_bearing",
+    "kinship_ties"
+   ],
+   "familiarity": 2
+  },
+  "baldwin_of_boulogne": {
+   "name": "Baldwin of Boulogne",
+   "role": "Godfrey's ambitious younger brother",
+   "attributes": {
+    "oration": 12,
+    "intellect": 14,
+    "resolve": 15,
+    "presence": 13,
+    "cunning": 16,
+    "physique": 15
+   },
+   "proficiency": 2,
+   "expertise": [
+    "intrigue_and_plot"
+   ],
+   "proficient": [
+    "arms_and_armor",
+    "wooing_and_alliance",
+    "horsemanship"
+   ],
+   "familiarity": 2
+  },
+  "peter_the_hermit": {
+   "name": "Peter the Hermit",
+   "role": "Preacher who led the People's Crusade",
+   "attributes": {
+    "oration": 17,
+    "intellect": 10,
+    "resolve": 14,
+    "presence": 15,
+    "cunning": 9,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [
+    "sermon_and_preaching"
+   ],
+   "proficient": [
+    "rallying_the_host",
+    "penance_and_fasting"
+   ],
+   "familiarity": 1
+  }
+ }
+}

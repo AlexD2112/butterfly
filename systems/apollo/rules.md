@@ -119,9 +119,13 @@ campaign has departed from the historical record.
 
 ## 11. Opposed checks and NPCs
 
-NPCs carry the same six attributes and skill-tier structure - see the setting pack's `npcs.md`.
-The application never rolls for NPCs directly; their sheet is GM reference material for setting a
-believable DC or narrating a contested scene.
+NPCs carry the same six attributes and skill-tier structure as the player character. Where a setting
+has NPC sheets (`npc_sheets.json`, see npcs.py) the application uses them: a request_check whose
+target_npc has a sheet gets DC = 10 + that NPC's modifier in the skill or attribute that resists (by
+default the same skill the player uses, or their Resolve when they're being talked round;
+`opposed_by` names another, or 'none' when they aren't actively resisting). The NPC still doesn't
+roll. Real bargaining over a commitment runs as a negotiation (open_negotiation /
+negotiation_offer). New important figures get a sheet via create_npc_sheet.
 
 ## 12. State update protocol (tool reference)
 

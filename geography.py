@@ -811,6 +811,9 @@ def prompt_section(geo, state):
              "to raise a bridge, cut a line or put a picket on a road, reorganize_units to raise, merge, split or disband",
              "units, and give resolve_confrontation the place: only units within about "
              f"{fmt_hours(REACH_HOURS)} of it can fight. Units are listed by id; details are in the forces trackers.)"]
+    if not units:  # a setting whose armies aren't forces trackers: only the player moves on this map
+        lines = ["GEOGRAPHY (code-owned. Travel times come from here; never invent them. Use route_info to ask how long a",
+                 "ride, march or crossing takes, and move_unit with unit 'player' when the player travels.)"]
     if g.get("player"):
         lines.append(f"The player is at {place_name(geo, g['player'])} ({area_name(geo, g['player'])}).")
     by_area = {}
@@ -848,12 +851,13 @@ def prompt_section(geo, state):
     for nid, n in geo["nodes"].items():
         if n["scale"] == "city" and n["kind"] not in ("bridgehead", "barracks"):
             city.setdefault(n["area"], []).append(n["name"])
-    lines.append("City places: " + " | ".join(f"{(geo.get('areas') or {}).get(a, a)}: {', '.join(v)}" for a, v in city.items()) + ".")
+    if city:
+        lines.append("City places: " + " | ".join(f"{(geo.get('areas') or {}).get(a, a)}: {', '.join(v)}" for a, v in city.items()) + ".")
     far = {}
     for n in geo["nodes"].values():
         if n["scale"] == "country":
             far.setdefault(n["area"], []).append(n["name"])
-    lines.append("Beyond the city (by rail, road, river or sea): " + " | ".join(
+    lines.append(("Beyond the city (by rail, road, river or sea): " if city else "Places (by road or sea): ") + " | ".join(
         f"{(geo.get('areas') or {}).get(a, a)}: {', '.join(v)}" for a, v in far.items()) + ".")
     return "\n".join(lines)
 
