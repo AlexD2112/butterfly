@@ -210,10 +210,14 @@ class TestVotes(unittest.TestCase):
         for seed in range(200):
             state = fresh_petrograd()
             result, _ = operations.call_vote(state, red_admiral, {
-                "instance_id": "petrograd_soviet", "motion": "No confidence", "player_position": "for"},
+                "instance_id": "petrograd_soviet", "motion": "No confidence", "player_position": "for",
+                "bloc_stances": {"Bolsheviks (district militants)": 2, "Bolsheviks (Kamenev's moderates)": 1,
+                                 "Non-party soldiers' delegates": 1, "Left Socialist-Revolutionaries": 1,
+                                 "Menshevik-Internationalists": 0, "Socialist-Revolutionaries (leadership)": -2,
+                                 "Mensheviks (defensist)": -2}},
                 influence_value=44, rng=random.Random(seed))
             passes += result["passed"]
-        self.assertGreater(passes, 150)
+        self.assertGreater(passes, 150)  # historically it carried 519-414 on 9 September
 
     def test_the_same_room_votes_down_the_players_opponents(self):
         result, _ = operations.call_vote(self.state, red_admiral, {

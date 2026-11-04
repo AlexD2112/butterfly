@@ -44,6 +44,18 @@ PERSUADABILITY = {0: 1.0, 1: 1.0, 2: 0.5, 3: 0.0}
 LEAN_WEIGHT = 0.16
 ABSTAIN_RATE = {0: 0.15, 1: 0.06, 2: 0.03, 3: 0.02}
 BLOC_NOISE = 0.06
+# Contested votes (2026-11-03). Reported: every motion carried ~600-350 because a bloc's lean toward
+# the player decided everything - the Bolsheviks voted as one for Martov as vice-chair. Now each
+# vote also takes the bloc's stance on THIS motion (does it serve them?), party loyalty counts for
+# less, members pulled two ways split and abstain, and a motion put cold to the body finds many
+# delegates undecided - who mostly abstain or stick with the status quo - until it's been debated
+# and voted on again.
+STANCE_LEAN_WEIGHT = 0.08         # loyalty to the player's camp, when the motion's merits are also known
+STANCE_WEIGHT = 0.15              # the motion's merits for that bloc, -2..+2
+CROSS_PRESSURE_NOISE = 0.15
+CROSS_PRESSURE_ABSTAIN = 0.08
+UNDECIDED_BY_ROUND = [0.22, 0.11, 0.05]   # share of a bloc still making up its mind, first vote on a motion, second, third
+UNDECIDED_SPLIT = (0.5, 0.35, 0.15)       # how the undecided go: abstain, no (status quo), yes
 
 
 def vote_tool_spec():
@@ -71,8 +83,14 @@ def vote_tool_spec():
                     "Only for a chart whose data has lean_toward (its own axis, e.g. 'immediate armed insurrection'): "
                     "1 if a YES vote on this motion moves in that direction, -1 if it moves against it. Ignored otherwise.")},
                 "canon_event": {"type": ["string", "null"], "description": "Canon event key this vote fires if it passes (subject to that event's requirements)."},
+                "bloc_stances": {"type": "object", "description": (
+                    "For EVERY bloc on the chart: how this particular motion squares with that bloc's own interests and "
+                    "programme, -2 (against everything they stand for) .. +2 (exactly what they want) - judged on the "
+                    "motion, not on who proposes it. Allies often dislike particular motions (a Bolshevik majority won't "
+                    "love a vice-chair for Martov). Keys are bloc names as on the chart.")},
+                "motion_key": {"type": "string", "description": "Short id for this question, reused when it's put to a vote again after more debate (a re-vote finds fewer undecided)."},
             },
-            "required": ["instance_id", "motion", "player_position"],
+            "required": ["instance_id", "motion", "player_position", "bloc_stances"],
         },
     }
 
@@ -123,21 +141,45 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
     if influence_value is not None:
         influence = max(-0.1, min(0.1, (influence_value - 50) / 500))
 
+    stances = {str(k).lower(): v for k, v in (inp.get("bloc_stances") or {}).items()}
+    def stance_for(name):
+        v = stances.get(name.lower())
+        if v is None:
+            v = next((val for k, val in stances.items() if k in name.lower() or name.lower() in k), 0)
+        try:
+            return max(-2, min(2, int(round(float(v)))))
+        except (TypeError, ValueError):
+            return 0
+    missing = [f["name"] for f in factions if f["name"].lower() not in stances]
+    key = (inp.get("motion_key") or inp.get("motion") or "").strip().lower()[:80]
+    history = data.setdefault("motion_rounds", {})
+    round_no = history.get(key, 0)
+    undecided_share = UNDECIDED_BY_ROUND[round_no] if round_no < len(UNDECIDED_BY_ROUND) else 0.0
+    if speech and speech["degree"] in core.SUCCESS_DEGREES:
+        undecided_share /= 2  # a good speech settles minds
+
     bloc_results = []
     yes_total = no_total = abstain_total = 0
     for f in factions:
         lean = f.get("lean", 0)
         seats = f["seats"]
+        stance = stance_for(f["name"])
         # Probability a member of this bloc votes YES on the motion. lean is toward the player, so it
         # pushes toward the player's position on the motion; when the player abstains it still counts
         # as "the player's camp's" default view (lean > 0 means inclined to vote the way the player's
         # allies generally would, i.e. for).
         toward_yes = lean * alignment
-        p = 0.5 + LEAN_WEIGHT * toward_yes
+        p = 0.5 + STANCE_LEAN_WEIGHT * toward_yes + STANCE_WEIGHT * stance
         p += sign * shift * PERSUADABILITY[abs(lean)]
         p += sign * influence * PERSUADABILITY[abs(lean)] if position != "abstain" else 0
         p = max(0.03, min(0.97, p))
         abstain_rate = ABSTAIN_RATE[abs(lean)]
+        noise = BLOC_NOISE
+        torn = toward_yes * stance < 0  # their camp says one thing, their interests another
+        if torn:
+            noise = CROSS_PRESSURE_NOISE
+            abstain_rate += CROSS_PRESSURE_ABSTAIN
+        undecided = undecided_share * (1 - abs(stance) / 3)
         if seats <= 3:
             yes = no = ab = 0
             for _ in range(seats):
@@ -149,15 +191,21 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
                 else:
                     no += 1
         else:
-            ab = round(seats * abstain_rate * rng.uniform(0.5, 1.5))
-            voting = seats - ab
-            frac = max(0.0, min(1.0, p + rng.uniform(-BLOC_NOISE, BLOC_NOISE)))
+            unsure = round(seats * undecided * rng.uniform(0.7, 1.3))
+            ab = round((seats - unsure) * abstain_rate * rng.uniform(0.5, 1.5))
+            voting = seats - unsure - ab
+            frac = max(0.0, min(1.0, p + rng.uniform(-noise, noise)))
             yes = round(voting * frac)
             no = voting - yes
+            u_ab, u_no = round(unsure * UNDECIDED_SPLIT[0]), round(unsure * UNDECIDED_SPLIT[1])
+            ab += u_ab
+            no += u_no
+            yes += unsure - u_ab - u_no
         yes_total += yes
         no_total += no
         abstain_total += ab
-        bloc_results.append({"name": f["name"], "yes": yes, "no": no, "abstain": ab})
+        bloc_results.append({"name": f["name"], "yes": yes, "no": no, "abstain": ab, "stance": stance,
+                             **({"split": True} if torn or min(yes, no) >= 0.2 * max(1, yes + no) else {})})
 
     if data.get("includes_player") and position in ("for", "against"):
         if position == "for":
@@ -181,18 +229,115 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
         "player_position": position,
         "blocs": bloc_results,
         "speech": speech,
+        "round": round_no + 1,
         "gm_instruction": (
             "Narrate this exact result. The tallies are final; do not change them or narrate a "
             "different outcome." + (" The speech's own result (see speech.degree) shapes how the "
-            "room received it." if speech else "")
+            "room received it." if speech else "") + " Blocs marked split divided - show who broke ranks and why." + (
+            " This question was put cold: many delegates hadn't made up their minds, and most of them abstained or "
+            "stuck with the way things are. Debate and a second vote would find fewer undecided." if round_no == 0 else "")
         ),
     }
+    history[key] = round_no + 1
+    if missing:
+        result["assumed_neutral"] = missing  # stance not given: taken as 0 (the motion neither helps nor hurts them)
     data["last_vote"] = {
         "motion": result["motion"], "passed": passed, "yes": yes_total, "no": no_total,
         "abstain": abstain_total, "date": state.get("date"), "turn": state.get("turn_number", 0),
     }
     changes = [{"kind": "vote", "instance_id": instance_id, **{k: result[k] for k in ("motion", "passed", "yes", "no", "abstain")}}]
     return result, changes
+
+
+# ---------------------------------------------------------------- elections (2026-11-03)
+# Choosing a person is not a yes/no motion: several candidates, blocs that split between them, and
+# often no majority on the first ballot - historically chairmen were made over several rounds.
+
+def election_tool_spec():
+    return {
+        "name": "call_election",
+        "description": (
+            "Elect someone to an office in a body with a seat_chart (chairman, presidium seats, a delegate). "
+            "Several candidates; each bloc's support for each candidate is set by you, judged on politics "
+            "and personalities, not on who the player backs. The application counts the ballot: blocs split, "
+            "and a winner needs a majority of votes cast - otherwise nobody is elected this round and the "
+            "body debates and votes again (call it again with the same office)."),
+        "parameters": {"type": "object", "properties": {
+            "instance_id": {"type": "string"},
+            "office": {"type": "string", "description": "e.g. 'Chairman of the Petrograd Soviet'."},
+            "candidates": {"type": "array", "items": {"type": "string"}, "description": "2-6 names."},
+            "bloc_support": {"type": "object", "description": (
+                "For every bloc: {candidate: -2..+2} - how much that bloc wants each candidate. Be honest about "
+                "splits: Bolsheviks may not agree on one of their own; others may prefer a compromise figure.")},
+            "ballot": {"type": "string", "enum": ["open", "secret"], "description": "Secret ballots weaken party discipline."},
+            "player_backs": {"type": "string", "description": "The candidate the player openly supports, if any (the player's camp follows a little, more in an open ballot)."},
+        }, "required": ["instance_id", "office", "candidates", "bloc_support"]},
+    }
+
+
+def call_election(state, system, inp, rng=random):
+    m = (state.get("mechanics") or {}).get(inp.get("instance_id"))
+    if not m or m.get("render_primitive") != "seat_chart":
+        return {"error": f"No seat_chart mechanic '{inp.get('instance_id')}'."}, []
+    cands = [str(c).strip() for c in (inp.get("candidates") or []) if str(c).strip()][:6]
+    if len(cands) < 1:
+        return {"error": "Name the candidates."}, []
+    data = m["data"]
+    support = {str(k).lower(): v for k, v in (inp.get("bloc_support") or {}).items()}
+    office = (inp.get("office") or "office").strip()
+    rounds = data.setdefault("election_rounds", {})
+    round_no = rounds.get(office.lower(), 0)
+    undecided_share = UNDECIDED_BY_ROUND[round_no] if round_no < len(UNDECIDED_BY_ROUND) else 0.0
+    secret = inp.get("ballot") == "secret"
+    backs = inp.get("player_backs")
+    totals = {c: 0 for c in cands}
+    abstain = 0
+    blocs = []
+    for f in data["factions"]:
+        prefs = support.get(f["name"].lower()) or next((v for k, v in support.items() if k in f["name"].lower()), {}) or {}
+        prefs = {str(k).lower(): v for k, v in prefs.items()} if isinstance(prefs, dict) else {}
+        scores = []
+        for c in cands:
+            try:
+                sc = max(-2.0, min(2.0, float(prefs.get(c.lower(), 0))))
+            except (TypeError, ValueError):
+                sc = 0.0
+            if backs and c.lower() == str(backs).lower():
+                sc += f.get("lean", 0) * (0.15 if secret else 0.3)
+            sc += rng.gauss(0, 0.7 if secret else 0.45)  # people differ; secrecy loosens the whip
+            scores.append(sc)
+        weights = [math.exp(1.3 * x) for x in scores]
+        wsum = sum(weights) or 1
+        seats = f["seats"]
+        unsure = round(seats * undecided_share * rng.uniform(0.7, 1.3))
+        ab = unsure + round((seats - unsure) * ABSTAIN_RATE[abs(f.get("lean", 0))] * rng.uniform(0.5, 1.5))
+        voting = seats - ab
+        alloc = [voting * w / wsum for w in weights]
+        ints = [int(x) for x in alloc]
+        for i in sorted(range(len(alloc)), key=lambda i: alloc[i] - ints[i], reverse=True)[:voting - sum(ints)]:
+            ints[i] += 1
+        for c, n in zip(cands, ints):
+            totals[c] += n
+        abstain += ab
+        blocs.append({"name": f["name"], "votes": dict(zip(cands, ints)), "abstain": ab})
+    cast = sum(totals.values())
+    ranking = sorted(totals.items(), key=lambda kv: -kv[1])
+    winner = ranking[0][0] if cast and ranking[0][1] * 2 > cast else None
+    rounds[office.lower()] = round_no + 1
+    result = {
+        "office": office, "round": round_no + 1, "ballot": "secret" if secret else "open",
+        "results": [{"candidate": c, "votes": v} for c, v in ranking], "abstain": abstain, "cast": cast,
+        "elected": winner, "blocs": blocs,
+        "gm_instruction": ("Narrate this exact count. " + (f"{winner} is elected." if winner else
+            "Nobody has a majority: no one is elected this round. Show the room reacting - deals in the corridor, a "
+            "candidate under pressure to withdraw, a debate before the next ballot (call_election again).")
+            + " Show where blocs split between candidates."),
+    }
+    data["last_vote"] = {"motion": f"Election: {office} (round {round_no + 1})", "passed": bool(winner),
+                         "yes": ranking[0][1] if ranking else 0, "no": cast - (ranking[0][1] if ranking else 0),
+                         "abstain": abstain, "date": state.get("date"), "turn": state.get("turn_number", 0)}
+    return result, [{"kind": "election", "instance_id": inp.get("instance_id"), "office": office, "elected": winner,
+                     "results": result["results"]}]
 
 
 # ---------------------------------------------------------------- swaying units
