@@ -771,6 +771,24 @@ def api_character_resend_last(character_id):
     return jsonify({"input": last["player_input"]})
 
 
+@app.route("/api/character/<int:character_id>/pace", methods=["POST"])
+def api_character_pace(character_id):
+    """Pace (2026-11-03): "debate" - assemblies argue over several turns before they vote - or "quick" -
+    make the case, roll, vote in one exchange. A per-game choice; takes effect on the next turn."""
+    import debate
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    pace = (request.get_json(silent=True) or {}).get("pace")
+    if pace not in debate.PACES:
+        return jsonify({"error": f"Pace must be one of {', '.join(debate.PACES)}."}), 400
+    state = row["state"]
+    state["pace"] = pace
+    db.save_character_state(character_id, user["id"], state)
+    return jsonify({"pace": pace})
+
+
 REROLL_WINDOW_TURNS = 10
 REROLL_MOCK_AFTER = 3          # rerolls within the window before the game starts saying something
 REROLL_MOCKS = {

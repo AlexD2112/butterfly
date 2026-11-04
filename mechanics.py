@@ -225,6 +225,9 @@ def validate_seat_chart(data, previous=None):
                 notes.append(f"{f['name']} lean {prev_lean}->{lean} limited to {stepped}")
                 lean = stepped
         clean = {"name": f["name"], "seats": seats, "lean": lean, "note": str(f.get("note", ""))}
+        party = f.get("party") or (prev or {}).get("party")
+        if party:
+            clean["party"] = str(party)  # a sub-group of a party (2026-11-03): shown and addressed under it
         clean_factions.append(clean)
     if errors:
         return None, errors, notes
@@ -250,6 +253,13 @@ def validate_seat_chart(data, previous=None):
             clean[key] = previous[key]
         elif previous is None and key in data:
             clean[key] = data[key]
+    # Code-owned bookkeeping (2026-11-03): sittings, agenda, debates, ballot rounds - an update from the
+    # GM never resets these.
+    for key in ("motion_rounds", "election_rounds", "sitting", "tabled", "debates", "parties"):
+        if previous is not None and key in previous:
+            clean[key] = previous[key]
+        elif key == "parties" and isinstance(data.get("parties"), dict):
+            clean[key] = {str(k): str(v) for k, v in data["parties"].items()}
     return clean, errors, notes
 
 
@@ -373,9 +383,13 @@ def split_old_blocs(state, catalog):
             f = factions[i]
             seats = [int(round(f["seats"] * share)) for _, share, _, _ in parts]
             seats[-1] = f["seats"] - sum(seats[:-1])
-            factions[i:i + 1] = [{"name": name, "seats": n, "lean": max(-3, min(3, f.get("lean", 0) + off)), "note": note}
+            factions[i:i + 1] = [{"name": name, "seats": n, "lean": max(-3, min(3, f.get("lean", 0) + off)), "note": note, "party": old}
                                  for (name, _, off, note), n in zip(parts, seats)]
             changes.append({"kind": "mechanic_updated", "instance_id": iid, "note": f"split '{old}'"})
+        for f in factions:  # saves split before parties existed: put the wings back under their party
+            for old, parts in rule.items():
+                if not f.get("party") and f["name"] in {p[0] for p in parts}:
+                    f["party"] = old
     return changes
 
 

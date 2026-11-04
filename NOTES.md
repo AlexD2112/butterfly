@@ -1,3 +1,23 @@
+# Debate pace, parties with wings, the player's own words (2026-11-03)
+
+- Reported: the chairman ballot moved too fast, the GM wrote the player's speech when he only
+  asked for the floor, and the Bolsheviks showed up as two unrelated blocs.
+- Pace, per game (header select, POST /api/character/<id>/pace, state["pace"]):
+  - debate (default): debate.py. Each speech is debate_speech (player only once he's given his
+    words, or an NPC with a sheet), rolled at the vote's speech DC. Good speeches push the room's
+    swing for the motion (same speaker counts less each time, capped at 0.30); each speech
+    settles 15% of the undecided. call_vote refuses until the question has been argued:
+    procedural 0, substantive 2, major 4. call_election needs 2 speeches between ballots, and
+    speeches for/against a candidate shift that candidate's support. Card: speaker, degree, the
+    hall's mood, speech count; "Not yet put - the debate goes on".
+  - quick: no speech minimum, no sittings or tabling - make the case, roll, vote in one turn.
+- Parties: seat-chart factions can carry "party" and the chart a "parties" note. The tracker shows
+  the party (total seats, note) with its wings indented; vote and ballot cards show the party's
+  total and each wing. Stances/support given for the party cover all wings. GM chart updates keep
+  party, parties and the code-owned bookkeeping (debates, rounds, sittings, tabled).
+- VOICE_GUIDANCE "The player speaks for himself": asked for the floor without words -> give him
+  the floor and end the turn waiting; with words -> use them, roll on them, add nothing.
+
 # Sittings: assemblies take days (2026-11-03)
 
 - Reported: one evening's Soviet session voted power, peace and land, land committees, no

@@ -104,7 +104,7 @@ def _speech_dc(factions, player_position):
     return 12 + round(6 * opposed / total)
 
 
-def call_vote(state, system, inp, influence_value=None, rng=random, speech_roller=None):
+def call_vote(state, system, inp, influence_value=None, rng=random, speech_roller=None, debate=None):
     """Returns (result, changes). result is what the GM gets back; changes are for the turn log."""
     from mechanics import find_instances  # local import: mechanics imports nothing from here
     mechanics_by_id = state.get("mechanics") or {}
@@ -142,21 +142,28 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
         influence = max(-0.1, min(0.1, (influence_value - 50) / 500))
 
     stances = {str(k).lower(): v for k, v in (inp.get("bloc_stances") or {}).items()}
+    parties = {f["name"]: f.get("party") for f in factions}
     def stance_for(name):
         v = stances.get(name.lower())
+        if v is None and parties.get(name):  # a stance given for the whole party covers its wings
+            v = stances.get(parties[name].lower())
         if v is None:
             v = next((val for k, val in stances.items() if k in name.lower() or name.lower() in k), 0)
         try:
             return max(-2, min(2, int(round(float(v)))))
         except (TypeError, ValueError):
             return 0
-    missing = [f["name"] for f in factions if f["name"].lower() not in stances]
+    missing = [f["name"] for f in factions if f["name"].lower() not in stances and (f.get("party") or "").lower() not in stances]
     key = (inp.get("motion_key") or inp.get("motion") or "").strip().lower()[:80]
     history = data.setdefault("motion_rounds", {})
     round_no = history.get(key, 0)
     undecided_share = UNDECIDED_BY_ROUND[round_no] if round_no < len(UNDECIDED_BY_ROUND) else 0.0
     if speech and speech["degree"] in core.SUCCESS_DEGREES:
         undecided_share /= 2  # a good speech settles minds
+    debate_swing = 0.0
+    if debate:  # (swing toward yes, share of the undecided settled) from debate.apply_to_vote
+        debate_swing, settled = debate
+        undecided_share *= (1 - settled)
 
     bloc_results = []
     yes_total = no_total = abstain_total = 0
@@ -171,6 +178,7 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
         toward_yes = lean * alignment
         p = 0.5 + STANCE_LEAN_WEIGHT * toward_yes + STANCE_WEIGHT * stance
         p += sign * shift * PERSUADABILITY[abs(lean)]
+        p += debate_swing * PERSUADABILITY[abs(lean)]
         p += sign * influence * PERSUADABILITY[abs(lean)] if position != "abstain" else 0
         p = max(0.03, min(0.97, p))
         abstain_rate = ABSTAIN_RATE[abs(lean)]
@@ -204,7 +212,7 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
         yes_total += yes
         no_total += no
         abstain_total += ab
-        bloc_results.append({"name": f["name"], "yes": yes, "no": no, "abstain": ab, "stance": stance,
+        bloc_results.append({"name": f["name"], "party": f.get("party"), "yes": yes, "no": no, "abstain": ab, "stance": stance,
                              **({"split": True} if torn or min(yes, no) >= 0.2 * max(1, yes + no) else {})})
 
     if data.get("includes_player") and position in ("for", "against"):
@@ -275,7 +283,7 @@ def election_tool_spec():
     }
 
 
-def call_election(state, system, inp, rng=random):
+def call_election(state, system, inp, rng=random, candidate_swing=None):
     m = (state.get("mechanics") or {}).get(inp.get("instance_id"))
     if not m or m.get("render_primitive") != "seat_chart":
         return {"error": f"No seat_chart mechanic '{inp.get('instance_id')}'."}, []
@@ -294,7 +302,8 @@ def call_election(state, system, inp, rng=random):
     abstain = 0
     blocs = []
     for f in data["factions"]:
-        prefs = support.get(f["name"].lower()) or next((v for k, v in support.items() if k in f["name"].lower()), {}) or {}
+        prefs = (support.get(f["name"].lower()) or (support.get(f["party"].lower()) if f.get("party") else None)
+                 or next((v for k, v in support.items() if k in f["name"].lower()), {}) or {})
         prefs = {str(k).lower(): v for k, v in prefs.items()} if isinstance(prefs, dict) else {}
         scores = []
         for c in cands:
@@ -302,6 +311,7 @@ def call_election(state, system, inp, rng=random):
                 sc = max(-2.0, min(2.0, float(prefs.get(c.lower(), 0))))
             except (TypeError, ValueError):
                 sc = 0.0
+            sc += 5 * ((candidate_swing or {}).get(c.lower()) or 0)  # what the debate between ballots did for them
             if backs and c.lower() == str(backs).lower():
                 sc += f.get("lean", 0) * (0.15 if secret else 0.3)
             sc += rng.gauss(0, 0.7 if secret else 0.45)  # people differ; secrecy loosens the whip
@@ -319,7 +329,7 @@ def call_election(state, system, inp, rng=random):
         for c, n in zip(cands, ints):
             totals[c] += n
         abstain += ab
-        blocs.append({"name": f["name"], "votes": dict(zip(cands, ints)), "abstain": ab})
+        blocs.append({"name": f["name"], "party": f.get("party"), "votes": dict(zip(cands, ints)), "abstain": ab})
     cast = sum(totals.values())
     ranking = sorted(totals.items(), key=lambda kv: -kv[1])
     winner = ranking[0][0] if cast and ranking[0][1] * 2 > cast else None

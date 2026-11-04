@@ -41,6 +41,7 @@ class TestNpcRolls(unittest.TestCase):
 
     def test_someone_else_gives_the_speech_before_a_vote(self):
         state = fresh_petrograd()
+        state["pace"] = "quick"
         _, events, r = run(state, "call_vote", {"instance_id": "petrograd_soviet", "motion": "x", "player_position": "for",
                                                 "speech_attribute": "oration", "speech_skill": "debate_and_public_argument",
                                                 "speech_by": "kamenev"})
