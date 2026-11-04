@@ -19,6 +19,7 @@ from pathlib import Path
 
 import copy
 import re
+import time
 
 import council
 import dynamics
@@ -350,6 +351,7 @@ level-up options from the system rules before proceeding.
 
 # ==================== narration guard (2026-11-03) ====================
 # Tools whose results the player can only learn through narration: dice, votes, appeals, fights.
+MAX_TOOL_ROUNDS = 6  # model calls with tools per turn, before the forced write-up
 OUTCOME_TOOLS = {"request_check", "call_vote", "sway_unit", "resolve_confrontation", "negotiation_offer"}
 NARRATE_NUDGE = (
     "(From the application, not the player: the player has seen the dice and the numbers but no "
@@ -692,8 +694,19 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
     # if the turn is about to end with it still set, the model is sent back once to write the scene.
     outcome_unnarrated = False
     nudged = False
+    rounds = []
+    started = time.monotonic()
     while True:
+        if len(rounds) >= MAX_TOOL_ROUNDS:
+            # A turn could loop on tool calls with no limit (2026-11-03: a resend took ~5 minutes).
+            # Stop here; the no-tools call below still makes sure a scene gets written.
+            debug_events.append({"type": "gm_retry", "reason": f"stopped after {MAX_TOOL_ROUNDS} rounds of tool calls", "wrote": False})
+            outcome_unnarrated = True
+            break
+        t0 = time.monotonic()
         turn_result = provider.call(model, system_prompt, tool_specs, conversation)
+        rounds.append({"seconds": round(time.monotonic() - t0, 1), "tools": [tc["name"] for tc in turn_result.tool_calls],
+                       "text": bool("".join(turn_result.text_parts).strip())})
         provider.append_assistant_turn(conversation, turn_result)
         text_parts.extend(turn_result.text_parts)
         if any(t.strip() for t in turn_result.text_parts):
@@ -742,6 +755,10 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
                 nudged = True
                 continue  # its tool result told the model to write the scene; give it the chance
             break
+
+    debug_events.append({"type": "timing", "seconds": round(time.monotonic() - started, 1), "rounds": rounds})
+    print(f"[turn] {setting_key} {len(rounds)} model call(s), {time.monotonic() - started:.1f}s: "
+          + " | ".join(f"{r['seconds']}s {','.join(r['tools']) or ('text' if r['text'] else 'empty')}" for r in rounds), flush=True)
 
     # Still no scene: one last call with tools switched off, so the only thing the model CAN do is
     # write (2026-11-03 - a nudge the model could answer with more tool calls wasn't enough).
