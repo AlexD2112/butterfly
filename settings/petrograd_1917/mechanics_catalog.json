@@ -79,6 +79,12 @@
           "Follow Kamenev's lead in the fraction: a broad socialist coalition, no adventures. Loyal to the party, not to every motion."
         ]
       ]
+    },
+    "procedure": {
+      "sits_every_days": 3,
+      "votes_per_sitting": 3,
+      "major_needs_tabling": true,
+      "_note": "The plenum met every few days in autumn 1917; the no-confidence vote (9 Sept) and the new presidium (25 Sept) were separate sittings over two weeks apart."
     }
   },
   "petrograd_garrison": {
@@ -432,6 +438,12 @@
           "note": "Against, with Kamenev - and ready to say so in print."
         }
       ]
+    },
+    "procedure": {
+      "sits_every_days": 3,
+      "votes_per_sitting": 3,
+      "major_needs_tabling": true,
+      "_note": "The CC met every few days (15, 21 Sept; 3, 5, 10, 16 Oct...)."
     }
   },
   "military_revolutionary_committee": {

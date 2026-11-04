@@ -1,3 +1,15 @@
+# Sittings: assemblies take days (2026-11-03)
+
+- Reported: one evening's Soviet session voted power, peace and land, land committees, no
+  confidence, a new presidium, vice-chairs, a ballot procedure and a chairman. Historically the
+  no-confidence vote was 9 September and the new presidium (Trotsky chair) 25 September.
+- sittings.py: a seat_chart body meets in sittings (catalog "procedure": Petrograd Soviet and CC
+  sit every 3 days, 3 votes a sitting; default every 2 days, 4 votes). Procedural votes and each
+  election ballot count half. Past the limit the chair adjourns; between sittings the body isn't in
+  session. weight: major questions are tabled for the next sitting unless urgency (two-thirds).
+  extraordinary: true overrides for real emergencies. Card: "On the agenda for ..." / "The sitting
+  adjourns" / "Not in session".
+
 # Contested votes and elections (2026-11-03)
 
 - Reported: every motion carried ~600-350 with the player's side voting as one, including a
