@@ -770,6 +770,49 @@ def api_character_resend_last(character_id):
     return jsonify({"input": last["player_input"]})
 
 
+REROLL_WINDOW_TURNS = 10
+REROLL_MOCK_AFTER = 3          # rerolls within the window before the game starts saying something
+REROLL_MOCKS = {
+    "_any": ["History doesn't take mulligans.", "The dice remember. So will the chroniclers.",
+             "Again? Fortune is starting to keep a tally.", "Every great leader rerolls. Said no historian, ever."],
+    "petrograd_1917": ["Kerensky also kept asking for a recount.", "The dialectic is not a slot machine.",
+                       "Lenin would call this 'parliamentary cretinism'.", "Somewhere, Plekhanov is sighing.",
+                       "The proletariat does not reroll. The proletariat endures."],
+    "rome_59_bce": ["Alea iacta est. You keep picking them back up.", "Bibulus is watching the skies - and your dice."],
+    "britannia_876": ["Alfred burned the cakes once. You keep burning the dice.", "Guthrum never asks for a second throw."],
+    "crusades_1097": ["Deus vult. Deus does not vult a reroll.", "Even Raymond accepts a bad omen eventually."],
+}
+
+
+def _reroll_mock(history, turn_number, setting_key=None, rng=None):
+    import random
+    recent = [r for r in history if r.get("turn", 0) >= turn_number - REROLL_WINDOW_TURNS]
+    same_turn = sum(1 for r in history if r.get("turn") == turn_number)
+    if len(recent) >= REROLL_MOCK_AFTER or same_turn >= 2:
+        return (rng or random).choice(REROLL_MOCKS["_any"] + REROLL_MOCKS.get(setting_key, []))
+    return None
+
+
+@app.route("/api/character/<int:character_id>/reroll_last", methods=["POST"])
+def api_character_reroll_last(character_id):
+    """Reroll (2026-11-03, single-player): undo the latest turn - dice, changes, narration - and play
+    the same move again. Free to use; the game just starts teasing you if you lean on it."""
+    user = current_user()
+    row = db.get_character(character_id, user["id"])
+    if row is None:
+        return jsonify({"error": "Character not found."}), 404
+    turns = db.get_turns(character_id)
+    before, why = _state_before_last(turns, row["state"])
+    if before is None:
+        return jsonify({"error": f"This turn can't be rerolled: {why}."}), 400
+    last = turns[-1]
+    history = list(row["state"].get("_rerolls") or []) + [{"turn": last.get("turn_number"), "date": row["state"].get("date")}]
+    before["_rerolls"] = history[-50:]
+    db.save_character_state(character_id, user["id"], before)
+    db.delete_turn(last["id"])
+    return jsonify({"input": last["player_input"], "mock": _reroll_mock(history, last.get("turn_number") or 0, row["setting_key"])})
+
+
 @app.route("/api/character/<int:character_id>/npc/<key>")
 def api_character_npc(character_id, key):
     """One NPC as the player's character knows them (2026-11-03): npcs.player_view decides how much

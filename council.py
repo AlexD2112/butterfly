@@ -130,6 +130,11 @@ Conversations are played, not resolved (2026-11-03):
   scene up unless the clock really forces it (a vote being called that the player chose to attend
   counts). End with the other person waiting on the player's next word.
 
+Whose roll is it (2026-11-03): when someone else does the thing - the player lets Kamenev present
+the motion, sends Natalia with the message - roll for them (request_check actor, or call_vote
+speech_by), and let the consequences fall on them. When several people try together, roll them all
+(actors, combine: best when they help one effort, each when everyone must manage it themselves).
+
 People can't read minds (2026-11-03):
 - The player's message mixes what their character visibly does or says aloud with what they want,
   plan, feel or tell you as GM ("I don't want them to know it's me", "obviously don't say that",

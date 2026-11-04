@@ -1,3 +1,16 @@
+# Other characters roll; group rolls; reroll (2026-11-03)
+
+- Reported: the player let Kamenev bring the motion forward and the dice rolled the player's
+  oration. request_check takes actor (an NPC with a sheet: their modifier, their degree), or
+  actors + combine (best: one effort, best roll carries it; each: everyone answers for their own).
+  call_vote takes speech_by. An NPC's roll moves their standing (-3..+3: crit +2, strong +1,
+  failure -1, critical failure -2), shown on their card and in the NPC SHEETS prompt; at_stake
+  still rides on the group result (or the player's own roll under each).
+- Reroll (single-player): every latest turn has a Reroll button - undo it from the snapshot (dice,
+  changes, narration) and replay the same move. Rerolls are logged in state["_rerolls"] (carried
+  across the undo); 3+ within 10 turns, or twice on the same turn, and a mocking toast appears
+  (per-setting lines).
+
 # No mind-reading (2026-11-03)
 
 - Reported: characters greet the player already knowing what he wants (Natalia: "You want the

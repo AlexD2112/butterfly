@@ -833,6 +833,15 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=Non
     if npc_sheets:
         for spec in specs:
             if spec["name"] == "request_check":
+                spec["parameters"]["properties"]["actor"] = {
+                    "type": "string",
+                    "description": "Who makes the attempt, if not the player: an NPC with a sheet (Kamenev presenting the motion, Natalia carrying a message). Their sheet rolls; the consequences land on them."}
+                spec["parameters"]["properties"]["actors"] = {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Several people attempting it together ('player' plus NPC ids). Use with combine."}
+                spec["parameters"]["properties"]["combine"] = {
+                    "type": "string", "enum": ["best", "each"],
+                    "description": "best: one effort, the best roll carries it (they help each other). each: everyone rolls and answers for their own result (all of them must get past the sentries)."}
                 spec["parameters"]["properties"]["opposed_by"] = {
                     "type": "string",
                     "description": "When target_npc has a sheet: the skill or attribute they resist with (default: the same skill the player uses, or their Resolve when being talked round). 'none' if they aren't actively resisting. The application sets the DC from their sheet."}
@@ -859,7 +868,10 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=Non
         specs.append(mechanics.tool_spec())
         primitives = {e.get("render_primitive") for e in mechanics_catalog.values()}
         if "seat_chart" in primitives:
-            specs.append(operations.vote_tool_spec())
+            vote = operations.vote_tool_spec()
+            vote["parameters"]["properties"]["speech_by"] = {
+                "type": "string", "description": "Who gives the speech, if not the player (e.g. 'kamenev' when the player lets him present it). Their sheet rolls it."}
+            specs.append(vote)
         if "forces" in primitives:
             specs.append(operations.sway_tool_spec())
             conf = operations.confrontation_tool_spec()
@@ -1021,30 +1033,61 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
             nkey, nname = _npc_key(state, setting_key, inp["target_npc"])
             if negotiation.open_for(state, nkey):
                 return json.dumps({"error": f"A negotiation with {nname} is open: make this a negotiation_offer (list the demands it meets or dodges) instead of a separate check."}), events
-        dc_source = None
+        actors = [a for a in (inp.get("actors") or [inp.get("actor") or "player"]) if a] or ["player"]
+        actors = list(dict.fromkeys("player" if str(a).lower() in ("player", "me", "you") else a for a in actors))
+        if any(a != "player" for a in actors) and not setting_key:
+            return json.dumps({"error": "Only the player can roll in this setting."}), events
+        base_dc = inp["dc"]
+        rolls, stake_changes, auto_changes = [], [], []
+        for actor in actors:
+            dc, dc_source = base_dc, None
+            if setting_key and inp.get("target_npc"):
+                # an NPC with a sheet sets the DC (2026-11-03) - the GM's number is only a fallback
+                sheet_dc, dc_source = npc_sheets_mod.opposed_dc(state, setting_key, system, inp["target_npc"], inp["attribute"],
+                                                                inp.get("skill"), inp.get("opposed_by"), inp.get("ask"))
+                if sheet_dc is not None:
+                    dc = sheet_dc
+            if actor == "player":
+                result = system.roll_check(state["character"], inp["attribute"], inp.get("skill"), dc, inp.get("target_npc"))
+                auto_changes += system.apply_auto_liability_effects(state, result)
+            else:
+                # another character makes the attempt (2026-11-03): their sheet, their consequences
+                result = npc_sheets_mod.roll_for(state, setting_key, system, actor, inp["attribute"], inp.get("skill"), dc,
+                                                 inp.get("target_npc"))
+                if result is None:
+                    return json.dumps({"error": f"'{actor}' has no sheet - give them one with create_npc_sheet, or roll for the player."}), events
+            if dc_source:
+                result["dc_source"] = dc_source
+                if inp.get("ask") == "major":
+                    result["gm_instruction"] = (npc_sheets_mod.ASK_STEPS.get(result["degree"], "") +
+                                                " A major ask is a negotiation: play it over several exchanges.")
+            rolls.append(result)
         if setting_key and inp.get("target_npc"):
-            # an NPC with a sheet sets the DC (2026-11-03) - the GM's number is only a fallback
-            sheet_dc, dc_source = npc_sheets_mod.opposed_dc(state, setting_key, system, inp["target_npc"], inp["attribute"],
-                                                  inp.get("skill"), inp.get("opposed_by"), inp.get("ask"))
-            if sheet_dc is not None:
-                inp["dc"] = sheet_dc
             npc_sheets_mod.record_encounter(state, setting_key, inp["target_npc"])
-        result = system.roll_check(
-            state["character"], inp["attribute"], inp.get("skill"), inp["dc"], inp.get("target_npc")
-        )
-        if dc_source:
-            result["dc_source"] = dc_source
-            if inp.get("ask") == "major":
-                result["gm_instruction"] = (npc_sheets_mod.ASK_STEPS.get(result["degree"], "") +
-                                            " A major ask is a negotiation: play it over several exchanges.")
-        auto_changes = system.apply_auto_liability_effects(state, result)
-        stake_changes = _apply_at_stake(state, resource_schema, dyn, inp.get("at_stake"), result["degree"], "at stake in check")
+        combine = inp.get("combine") if inp.get("combine") in ("best", "each") else "best"
+        order = ["critical_failure", "failure", "success_at_cost", "success", "strong_success", "critical_success"]
+        best = max(rolls, key=lambda r: (order.index(r["degree"]), r["total"]))
+        if combine == "best" or len(rolls) == 1:
+            stake_degree = best["degree"]
+        else:  # each answers for themselves: the side's stake rides on the player's own roll, if they rolled
+            stake_degree = next((r["degree"] for r in rolls if not r.get("actor")), best["degree"])
+        stake_changes = _apply_at_stake(state, resource_schema, dyn, inp.get("at_stake"), stake_degree, "at stake in check")
         follow = _post_change_bookkeeping(state, dyn, resource_schema, system) if stake_changes else []
-        events.append({"type": "check", "description": inp.get("description", ""), "at_stake": inp.get("at_stake"), **result})
+        for r in rolls:
+            ev = {"type": "check", "description": inp.get("description", ""), "at_stake": inp.get("at_stake"), **r}
+            if len(rolls) > 1:
+                ev["group"] = combine
+                ev["counts"] = combine == "each" or r is best
+            events.append(ev)
         if auto_changes or stake_changes or follow:
             events.append({"type": "state_update", "reasoning": "Automatic: liability trigger / at-stake resource.",
                            "changes": auto_changes + stake_changes + follow})
-        payload = dict(result)
+        payload = dict(rolls[0]) if len(rolls) == 1 else {
+            "rolls": rolls, "combine": combine, "group_degree": best["degree"],
+            "gm_instruction": ("They act together: the best roll carries the group - narrate who made it work. " if combine == "best"
+                               else "Each answers for their own roll - narrate each outcome and who bears it. ") + best["gm_instruction"]}
+        if any(r.get("actor") for r in rolls):
+            payload["note"] = "Consequences of an NPC's roll land on them (their standing), not on the player's character."
         if stake_changes:
             payload["at_stake_applied"] = {c["key"]: c["after"] - c["before"] for c in stake_changes}
         notices = _notices_for(follow)
@@ -1104,7 +1147,13 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
     if name == "call_vote" and mechanics_catalog:
         m = (state.get("mechanics") or {}).get(inp.get("instance_id")) or {}
         influence_key = (m.get("data") or {}).get("influence_resource") or ((dyn or {}).get("influence") or {}).get("vote")
-        result, changes = operations.call_vote(state, system, inp, influence_value=_resource_value(state, influence_key))
+        roller = None
+        if inp.get("speech_by") and str(inp["speech_by"]).lower() not in ("player", "me") and setting_key:
+            if not npc_sheets_mod.resolve(state, setting_key, inp["speech_by"]):
+                return json.dumps({"error": f"'{inp['speech_by']}' has no sheet to speak with."}), events
+            roller = lambda a, sk, dc: npc_sheets_mod.roll_for(state, setting_key, system, inp["speech_by"], a, sk, dc)
+        result, changes = operations.call_vote(state, system, inp, influence_value=_resource_value(state, influence_key),
+                                               speech_roller=roller)
         if "error" not in result and result["passed"] and inp.get("canon_event"):
             if dyn:
                 fire = dynamics.try_fire_event(state, dyn, resource_schema, inp["canon_event"], "vote")

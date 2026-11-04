@@ -86,7 +86,7 @@ def _speech_dc(factions, player_position):
     return 12 + round(6 * opposed / total)
 
 
-def call_vote(state, system, inp, influence_value=None, rng=random):
+def call_vote(state, system, inp, influence_value=None, rng=random, speech_roller=None):
     """Returns (result, changes). result is what the GM gets back; changes are for the turn log."""
     from mechanics import find_instances  # local import: mechanics imports nothing from here
     mechanics_by_id = state.get("mechanics") or {}
@@ -114,7 +114,9 @@ def call_vote(state, system, inp, influence_value=None, rng=random):
     shift = 0.0
     if inp.get("speech_attribute") and position != "abstain":
         dc = _speech_dc(factions, position)
-        speech = system.roll_check(state["character"], inp["speech_attribute"], inp.get("speech_skill"), dc)
+        # speech_roller (2026-11-03): someone else gives the speech - their sheet, their dice
+        speech = (speech_roller(inp["speech_attribute"], inp.get("speech_skill"), dc) if speech_roller
+                  else system.roll_check(state["character"], inp["speech_attribute"], inp.get("speech_skill"), dc))
         shift = SPEECH_SHIFT[speech["degree"]]
 
     influence = 0.0

@@ -138,6 +138,39 @@ def opposed_dc(state, setting_key, system, target, player_attribute, player_skil
     return dc, f"{why}: DC {dc}"
 
 
+# ---------------------------------------------------------------- NPCs rolling for themselves (2026-11-03)
+
+STANDING_SHIFT = {"critical_success": 2, "strong_success": 1, "success": 0, "success_at_cost": 0,
+                  "failure": -1, "critical_failure": -2}
+STANDING_WORDS = {-3: "badly damaged", -2: "damaged", -1: "slipping", 0: "steady", 1: "rising", 2: "high", 3: "commanding"}
+
+
+def roll_for(state, setting_key, system, who, attribute, skill, dc, target_npc=None, rng=None):
+    """An NPC with a sheet makes a check themselves (Kamenev speaks; Natalia carries the message).
+    Same dice and degrees as the player's checks; the consequences land on them - their standing -
+    not on the player's character."""
+    import random
+    from systems._shared import core
+    key = resolve(state, setting_key, who)
+    if not key:
+        return None
+    sheet = all_sheets(state, setting_key)[key]
+    if attribute not in ATTRS:
+        attribute = next((a for a, sk in system.SKILLS.items() if skill in sk), "presence")
+    mod = modifier(sheet, skill, system) if skill and modifier(sheet, skill, system) is not None else modifier(sheet, attribute, system)
+    roll = (rng or random).randint(1, 20)
+    total = roll + mod
+    degree = core.degree_for(roll, total, dc)
+    standing = state.setdefault("_npc_standing", {})
+    before = standing.get(key, 0)
+    standing[key] = max(-3, min(3, before + STANDING_SHIFT[degree]))
+    tier = "expertise" if skill in sheet.get("expertise", []) else "proficiency" if skill in sheet.get("proficient", []) else "untrained"
+    return {"actor": key, "actor_name": sheet["name"], "attribute": attribute, "skill": skill, "tier": tier,
+            "modifier": mod, "roll": roll, "total": total, "dc": dc, "margin": total - dc, "degree": degree,
+            "gm_instruction": core.DEGREE_GUIDANCE[degree].replace("the player", sheet["name"]).replace("The player", sheet["name"]),
+            "target_npc": target_npc, "standing_before": STANDING_WORDS[before], "standing_after": STANDING_WORDS[standing[key]]}
+
+
 # ---------------------------------------------------------------- what the player can see
 
 def knowledge_tier(state, setting_key, key):
@@ -197,7 +230,9 @@ def player_view(state, setting_key, key):
     rel = (state.get("relationships") or {}).get(key) or {}
     en = (state.get("enmity") or {}).get(key) or {}
     nxt = None if tier >= 3 else ENCOUNTERS_PER_TIER - (met % ENCOUNTERS_PER_TIER)
+    st = (state.get("_npc_standing") or {}).get(key, 0)
     return {"key": key, "name": sheet["name"], "role": sheet.get("role", ""), "tier": tier,
+            "standing": STANDING_WORDS[st] if st else None,
             "tier_label": TIER_WORDS[tier], "attributes": attrs, "skills": skills,
             "trust": rel.get("trust"), "relationship_note": rel.get("note"), "enmity": en.get("pips"),
             "encounters": met, "next_tier_in": nxt}
@@ -275,6 +310,8 @@ def compact(key, s):
     a = s["attributes"]
     stats = " ".join(f"{x[:2].capitalize()}{a[x]}" for x in ATTRS)
     bits = [f"{key}: {stats} prof+{s.get('proficiency', 2)}"]
+    if s.get("_standing"):
+        bits.append(f"standing {STANDING_WORDS[s['_standing']]}")
     if s.get("expertise"):
         bits.append("exp " + ", ".join(s["expertise"]))
     if s.get("proficient"):
@@ -292,5 +329,6 @@ def prompt_section(state, setting_key):
              "or 'none' when they aren't actively resisting. Pass ask: minor (a favour, information), significant (a",
              "real commitment, a vote), or major (changing sides, an alliance, betraying their own people). New",
              "important figures: create_npc_sheet.)"]
-    lines += [compact(k, s) for k, s in sheets.items()]
+    standing = state.get("_npc_standing") or {}
+    lines += [compact(k, dict(s, _standing=standing.get(k, 0))) for k, s in sheets.items()]
     return "\n".join(lines)
