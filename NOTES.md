@@ -1,3 +1,20 @@
+# Conversations that aren't settled in one roll; resend after an update (2026-11-03)
+
+- Reported: one line to Spiridonova ("we're allies") and she agreed before the player made the
+  offer, and the GM wrapped the scene with a bell. Three changes:
+  - VOICE_GUIDANCE: talk is free (don't roll every line); roll on the actual offer; one roll never
+    settles an alliance or a bloc's votes; don't end a conversation the player is still in.
+  - Being talked round is resisted by the better of the same skill or the NPC's Resolve
+    (Spiridonova: DC 14 instead of 12).
+  - request_check takes ask: minor (+0) / significant (+3) / major (+6). For a major ask the
+    result's gm_instruction says what each degree buys - a success gets a hearing, a strong success
+    their terms, only a critical an agreement in principle.
+- Resend: every turn records the build it was played on (RENDER_GIT_COMMIT, or a code hash
+  locally) and the latest turn keeps a snapshot of the state before it. When the running build is
+  newer, the latest turn shows "Resend this move": POST /resend_last restores the snapshot (rolls
+  and all), deletes the turn, and the page sends the same input again. Once per update, since the
+  replayed turn is on the new build. What the first attempt cost stays spent.
+
 # NPC sheets: code-set DCs, fog of war, new sheets (2026-11-03)
 
 - settings/petrograd_1917/npc_sheets.json: 31 sheets. The 15 stat blocks that were notes in npcs.md
