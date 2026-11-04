@@ -24,6 +24,7 @@ import council
 import dynamics
 import geography
 import mechanics
+import negotiation
 import npcs as npc_sheets_mod
 import operations
 from systems._shared import core as shared_core
@@ -237,6 +238,8 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     digest.pop("opening_gm_note", None)
     digest.pop("memory_log", None)
     earlier_section = _earlier_campaign_section(state)
+    digest.pop("negotiations", None)
+    negotiation_section = "\n\n# " + negotiation.prompt_section(state)
     npc_section = ""
     if npc_sheets_mod.load(setting_key):
         digest.pop("npc_knowledge", None)
@@ -331,7 +334,7 @@ the system's curated catalogs (by id) - never invent one.
 
 # CURRENT STATE (authoritative - always reflects the real game state, not your memory of past turns)
 {json.dumps(digest, indent=2)}
-{mechanics_section}{operations_section}{dynamics_section}{geography_section}{npc_section}{earlier_section}
+{mechanics_section}{operations_section}{dynamics_section}{geography_section}{npc_section}{negotiation_section}{earlier_section}
 {scene_section}
 
 Narrate in second person, present tense. Never resolve an uncertain action without calling
@@ -347,7 +350,7 @@ level-up options from the system rules before proceeding.
 
 # ==================== narration guard (2026-11-03) ====================
 # Tools whose results the player can only learn through narration: dice, votes, appeals, fights.
-OUTCOME_TOOLS = {"request_check", "call_vote", "sway_unit", "resolve_confrontation"}
+OUTCOME_TOOLS = {"request_check", "call_vote", "sway_unit", "resolve_confrontation", "negotiation_offer"}
 NARRATE_NUDGE = (
     "(From the application, not the player: the player has seen the dice and the numbers but no "
     "narration. Write the scene now, in prose: what happens as a result of the outcome(s) above, "
@@ -388,7 +391,7 @@ def undo_turn_from_events(state, debug_events, turn_number_played, earlier_event
     changes = []
     for ev in debug_events or []:
         changes += [c for c in (ev.get("changes") or []) if isinstance(c, dict)]
-        if ev.get("type") in ("operation", "geography", "npc_sheet", "mechanic_update", "level_up"):
+        if ev.get("type") in ("operation", "geography", "npc_sheet", "mechanic_update", "level_up", "negotiation"):
             return f"the turn included a {ev.get('operation') or ev['type'].replace('_', ' ')}, which can't be undone exactly"
     blocked = sorted({c.get("kind") for c in changes} - UNDOABLE - HARMLESS)
     if blocked:
@@ -829,6 +832,7 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=Non
             specs.append(conf)
     if geo:
         specs += geography.tool_specs()
+    specs += negotiation.tool_specs()
     return specs
 
 
@@ -869,10 +873,72 @@ def _notices_for(changes):
     return lines
 
 
+def _npc_key(state, setting_key, who):
+    """An NPC id for negotiations: a sheet's key if they have one, else a relationship key, else a slug."""
+    key = npc_sheets_mod.resolve(state, setting_key, who) if setting_key else None
+    if key:
+        return key, npc_sheets_mod.all_sheets(state, setting_key)[key]["name"]
+    slug = re.sub(r"[^a-z0-9]+", "_", str(who or "").lower()).strip("_")
+    rels = state.get("relationships") or {}
+    key = slug if slug in rels else next((k for k in rels if slug.endswith("_" + k) or k.endswith("_" + slug)), slug)
+    return key, str(who).strip() or key
+
+
+def _handle_negotiation(name, inp, state, system, resource_schema, dyn, setting_key):
+    """Returns (content, events) for the four negotiation tools (2026-11-03, see negotiation.py)."""
+    events = []
+    if not inp.get("npc"):
+        return json.dumps({"error": "npc is required."}), events
+    key, npc_name = _npc_key(state, setting_key, inp["npc"])
+    if name == "open_negotiation":
+        result = negotiation.open_negotiation(state, key, npc_name, inp)
+    elif name == "negotiation_update":
+        result = negotiation.update(state, key, inp)
+    elif name == "close_negotiation":
+        result = negotiation.close(state, key, inp)
+    else:
+        base_dc, why = (None, None)
+        if setting_key:
+            base_dc, why = npc_sheets_mod.opposed_dc(state, setting_key, system, key, inp.get("attribute") or "presence",
+                                                     inp.get("skill"))
+            npc_sheets_mod.record_encounter(state, setting_key, key)
+        if base_dc is None:
+            base_dc = 12
+        result, roll, changes = negotiation.offer(state, key, inp, system, base_dc)
+        if roll:
+            roll = dict(roll, dc_source=(why or "no sheet: base 12") + "; " + result["dc_note"])
+            events.append({"type": "check", "description": inp.get("offer") or f"Offer to {npc_name}", "at_stake": inp.get("at_stake"), **roll})
+            moved = result["moved"]
+            stake = inp.get("at_stake")
+            if stake and stake in (state.get("resources") or {}) and stake not in dynamics.derived_keys(dyn):
+                delta = max(-4, min(4, 2 * moved)) + (4 if result["agreed"] else 0)
+                if delta:
+                    lo, hi = ((resource_schema or {}).get("resources", {}).get(stake) or {}).get("range", [0, 100])
+                    before = state["resources"][stake]
+                    state["resources"][stake] = shared_core.clamp(before + delta, lo, hi)
+                    changes.append({"kind": "resource", "key": stake, "before": before, "after": state["resources"][stake],
+                                    "before_label": shared_core.label_for_value(before),
+                                    "after_label": shared_core.label_for_value(state["resources"][stake]),
+                                    "requested_delta": delta, "clamped": False, "cause": "negotiation"})
+            changes += _post_change_bookkeeping(state, dyn, resource_schema, system)
+            if changes:
+                events.append({"type": "state_update", "reasoning": f"Negotiation with {npc_name}.", "changes": changes})
+            result["roll"] = {k: roll[k] for k in ("roll", "total", "dc", "degree")}
+    if "error" not in result:
+        n = (state.get("negotiations") or {}).get(key) or {}
+        events.append({"type": "negotiation", "operation": name, "npc": npc_name, "result": result,
+                       "position": n.get("position"), "goal": n.get("goal"), "status": n.get("status"),
+                       "demands": copy.deepcopy(n.get("demands"))})  # a snapshot: later offers mark them met
+    return json.dumps(result), events
+
+
 def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn, allow_time_advance, geo=None,
                      setting_key=None):
     name, inp = tc["name"], dict(tc["input"] or {})
     events = []
+
+    if name in ("open_negotiation", "negotiation_offer", "negotiation_update", "close_negotiation"):
+        return _handle_negotiation(name, inp, state, system, resource_schema, dyn, setting_key)
 
     if name == "create_npc_sheet" and setting_key:
         result = npc_sheets_mod.create(state, setting_key, system, inp)
@@ -888,6 +954,10 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         return json.dumps(result), events
 
     if name == "request_check":
+        if inp.get("target_npc") and inp.get("skill") in negotiation.PERSUASION_SKILLS:
+            nkey, nname = _npc_key(state, setting_key, inp["target_npc"])
+            if negotiation.open_for(state, nkey):
+                return json.dumps({"error": f"A negotiation with {nname} is open: make this a negotiation_offer (list the demands it meets or dodges) instead of a separate check."}), events
         dc_source = None
         if setting_key and inp.get("target_npc"):
             # an NPC with a sheet sets the DC (2026-11-03) - the GM's number is only a fallback
@@ -940,6 +1010,7 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         if days:
             if dyn and allow_time_advance:
                 changes += dynamics.advance_time(state, dyn, resource_schema, system, days)
+                changes += negotiation.on_days_passed(state)
             elif not allow_time_advance:
                 changes.append({"kind": "time_ignored", "reason": "this shared world's clock is run by the server"})
         changes += _post_change_bookkeeping(state, dyn, resource_schema, system)
