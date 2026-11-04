@@ -1,3 +1,12 @@
+# Undo turns played before snapshots existed (2026-11-03)
+
+- The Spiridonova turn predates the state snapshot, so it couldn't be resent. engine.undo_turn_from_events
+  now undoes a turn from its own record: resources, world, trust, rivalry, XP and the date carry
+  their before-values; commitments and flags go back to what an earlier turn set (or are removed);
+  divergence entries are popped; turn number, campaign log, world notices and NPC encounters roll
+  back. Turns with anything that can't be put back exactly (votes, fights, mechanics, level-ups,
+  canon events, liabilities, movement) refuse and say why. Resend uses this when there's no snapshot.
+
 # Conversations that aren't settled in one roll; resend after an update (2026-11-03)
 
 - Reported: one line to Spiridonova ("we're allies") and she agreed before the player made the

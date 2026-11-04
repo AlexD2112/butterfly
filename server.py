@@ -209,9 +209,36 @@ def _app_version():
 APP_VERSION = _app_version()
 
 
-def _resend_available(turns):
+def _state_before_last(turns, state):
+    """(state before the latest turn, None) or (None, reason). From the saved snapshot, or - for a
+    turn played before snapshots existed - by undoing it from its own record."""
     last = turns[-1] if turns else None
-    return bool(last and last.get("state_before_json") and (last.get("app_version") or "") != APP_VERSION)
+    if not last:
+        return None, "no turns yet"
+    if last.get("state_before_json"):
+        return json.loads(last["state_before_json"]), None
+    try:
+        events = json.loads(last.get("debug_events_json") or "[]")
+    except (TypeError, ValueError):
+        events = []
+    earlier = []
+    for t in turns[:-1]:
+        try:
+            earlier += json.loads(t.get("debug_events_json") or "[]")
+        except (TypeError, ValueError):
+            pass
+    before = copy.deepcopy(state)
+    why = engine.undo_turn_from_events(before, events, last.get("turn_number"), earlier)
+    return (None, why) if why else (before, None)
+
+
+def _resend_available(turns, state=None):
+    last = turns[-1] if turns else None
+    if not last or (last.get("app_version") or "") == APP_VERSION:
+        return False
+    if last.get("state_before_json"):
+        return True
+    return state is not None and _state_before_last(turns, state)[0] is not None
 
 
 @app.route("/api/admin/unlock", methods=["POST"])
@@ -706,7 +733,7 @@ def api_character_turns(character_id):
     if row is None:
         return jsonify({"error": "Character not found."}), 404
     turns = db.get_turns(character_id)
-    resend = _resend_available(turns)
+    resend = _resend_available(turns, row["state"])
     for t in turns:
         t.pop("state_before_json", None)  # big, and nothing the page needs
     return jsonify({"turns": turns, "resend_available": resend})
@@ -723,10 +750,13 @@ def api_character_resend_last(character_id):
     if row is None:
         return jsonify({"error": "Character not found."}), 404
     turns = db.get_turns(character_id)
-    if not _resend_available(turns):
+    if not turns or (turns[-1].get("app_version") or "") == APP_VERSION:
         return jsonify({"error": "Only the latest turn can be resent, and only after the game has been updated."}), 400
+    before, why = _state_before_last(turns, row["state"])
+    if before is None:
+        return jsonify({"error": f"This turn can't be undone: {why}."}), 400
     last = turns[-1]
-    db.save_character_state(character_id, user["id"], json.loads(last["state_before_json"]))
+    db.save_character_state(character_id, user["id"], before)
     db.delete_turn(last["id"])
     return jsonify({"input": last["player_input"]})
 

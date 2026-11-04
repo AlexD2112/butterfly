@@ -362,6 +362,76 @@ NARRATE_FIRST = (
 MISSING_NARRATION = "(The game master didn't write this scene. The result above stands - carry on from it, or ask what happened.)"
 
 
+# ==================== undoing a turn from its own record (2026-11-03) ====================
+# Turns played before the resend feature have no saved "state before". Most of what a turn changes is
+# recorded with its before-value (resources, world, trust, rivalry, XP, the date), so those turns can
+# still be undone exactly by walking the record backwards. Anything that can't be put back exactly
+# (a vote's seat chart, a fight, a level-up, a canon event...) refuses instead of guessing.
+UNDOABLE = {"resource", "world", "relationship", "enmity", "enmity_auto", "xp", "time", "commitment", "flag", "divergence"}
+HARMLESS = {"derived_resource_ignored", "time_ignored", "canon_event_rejected", "mechanic_rejected", "feat_rejected",
+            "liability_rejected", "level_up_rejected", "skill_upgrade_rejected", "ignored_unknown_category"}
+
+
+def _earlier_value(earlier_events, kind, key):
+    """The last value an earlier turn gave a commitment or flag (None if it didn't exist yet)."""
+    value = None
+    for ev in earlier_events or []:
+        for c in ev.get("changes") or []:
+            if isinstance(c, dict) and c.get("kind") == kind and c.get("key") == key:
+                value = c.get("value")
+    return value
+
+
+def undo_turn_from_events(state, debug_events, turn_number_played, earlier_events=None):
+    """Puts state back to before a recorded turn. Returns None on success, or the reason it can't
+    be done exactly (state is then left untouched - work on a copy)."""
+    changes = []
+    for ev in debug_events or []:
+        changes += [c for c in (ev.get("changes") or []) if isinstance(c, dict)]
+        if ev.get("type") in ("operation", "geography", "npc_sheet", "mechanic_update", "level_up"):
+            return f"the turn included a {ev.get('operation') or ev['type'].replace('_', ' ')}, which can't be undone exactly"
+    blocked = sorted({c.get("kind") for c in changes} - UNDOABLE - HARMLESS)
+    if blocked:
+        return "the turn changed things that can't be put back exactly: " + ", ".join(k.replace("_", " ") for k in blocked)
+    for c in reversed(changes):
+        k = c["kind"]
+        if k == "resource":
+            state["resources"][c["key"]] = c["before"]
+        elif k == "world":
+            state["world"][c["key"]] = c["before"]
+        elif k == "relationship":
+            state["relationships"][c["key"]]["trust"] = c["before"]
+        elif k in ("enmity", "enmity_auto"):
+            state["enmity"][c["key"]]["pips"] = c["before"]
+        elif k == "xp":
+            state["character"]["xp"] = max(0, state["character"]["xp"] - int(c.get("applied", 0)))
+        elif k == "time":
+            state["date"] = c["before"]
+        elif k in ("commitment", "flag"):
+            bucket = state.setdefault("commitments", {}) if k == "commitment" else state["character"].setdefault("flags", {})
+            prior = _earlier_value(earlier_events, k, c["key"])
+            if prior is None:
+                bucket.pop(c["key"], None)
+            else:
+                bucket[c["key"]] = prior
+        elif k == "divergence":
+            log = state.get("divergence_log") or []
+            if log and log[-1].get("note") == c.get("note"):
+                log.pop()
+                state["divergence_score"] = max(0, state.get("divergence_score", 0) - 1)
+    for ev in debug_events or []:
+        if ev.get("type") == "check" and ev.get("target_npc"):
+            entry = (state.get("npc_knowledge") or {}).get(npc_sheets_mod.resolve(state, state.get("setting_pack"), ev["target_npc"]) or "")
+            if entry and entry.get("encounters"):
+                entry["encounters"] -= 1
+    log = state.get("campaign_log_summary") or []
+    if log and log[-1].get("turn") == turn_number_played:
+        log.pop()
+    state["world_notices"] = [n for n in state.get("world_notices") or [] if n.get("turn") != turn_number_played]
+    state["turn_number"] = turn_number_played
+    return None
+
+
 def narration_missing(narration):
     return not (narration or "").strip() or narration.strip() == MISSING_NARRATION
 
