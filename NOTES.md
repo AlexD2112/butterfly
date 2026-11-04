@@ -1,3 +1,18 @@
+# Who knows what: fog of war for information (2026-11-03)
+
+- Reported: Martov knew about a private conversation with Spiridonova. knowledge.py keeps private
+  facts in state["_knowledge"] (underscore: never sent to the page or dumped into the prompt raw)
+  with witnesses and the factions word has reached. record_knowledge (GM) records closed-door talks,
+  letters, secret orders, and adds people the player tells; negotiation offers and deals record
+  themselves. Each day: a private fact reaches each witness's faction at 25%/day and, once a faction
+  knows, becomes common talk at 6%/day per faction; secrets 4% / 1%. Factions come from a new
+  `faction` field on every NPC sheet in all four settings.
+- Prompt: WHO KNOWS WHAT lists each private fact with exactly who knows it, and says nobody else may
+  mention or act on it. VOICE_GUIDANCE has the same rule.
+- Player side: a Secrets section on the sheet (what you said in private, whom you told, and whether
+  it's common talk now). Leaks between other factions are GM-only and never rendered; a fact
+  turning public shows as a Rumour.
+
 # Turn loop capped; timing in the Turn Log (2026-11-03)
 
 - A resend took ~5 minutes. run_turn's tool loop had no limit, so a model that keeps calling tools

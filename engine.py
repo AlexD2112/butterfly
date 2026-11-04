@@ -24,6 +24,7 @@ import time
 import council
 import dynamics
 import geography
+import knowledge
 import mechanics
 import negotiation
 import npcs as npc_sheets_mod
@@ -240,7 +241,7 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     digest.pop("memory_log", None)
     earlier_section = _earlier_campaign_section(state)
     digest.pop("negotiations", None)
-    negotiation_section = "\n\n# " + negotiation.prompt_section(state)
+    negotiation_section = "\n\n# " + negotiation.prompt_section(state) + "\n\n# " + knowledge.prompt_section(state, setting_key)
     npc_section = ""
     if npc_sheets_mod.load(setting_key):
         digest.pop("npc_knowledge", None)
@@ -393,7 +394,7 @@ def undo_turn_from_events(state, debug_events, turn_number_played, earlier_event
     changes = []
     for ev in debug_events or []:
         changes += [c for c in (ev.get("changes") or []) if isinstance(c, dict)]
-        if ev.get("type") in ("operation", "geography", "npc_sheet", "mechanic_update", "level_up", "negotiation"):
+        if ev.get("type") in ("operation", "geography", "npc_sheet", "mechanic_update", "level_up", "negotiation", "knowledge"):
             return f"the turn included a {ev.get('operation') or ev['type'].replace('_', ' ')}, which can't be undone exactly"
     blocked = sorted({c.get("kind") for c in changes} - UNDOABLE - HARMLESS)
     if blocked:
@@ -850,6 +851,7 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=Non
     if geo:
         specs += geography.tool_specs()
     specs += negotiation.tool_specs()
+    specs.append(knowledge.TOOL_SPEC)
     return specs
 
 
@@ -887,6 +889,7 @@ def _notices_for(changes):
     lines = [c["message"] for c in changes if c.get("kind") == "threshold" and c.get("message")]
     lines += [f"canon event fired: {c['key']}" for c in changes if c.get("kind") == "canon_event"]
     lines += [c["message"] for c in changes if c.get("kind") == "movement" and c.get("message")]
+    lines += [c["message"] for c in changes if c.get("kind") in ("knowledge_spread", "knowledge_public") and c.get("message")]
     return lines
 
 
@@ -941,6 +944,12 @@ def _handle_negotiation(name, inp, state, system, resource_schema, dyn, setting_
             if changes:
                 events.append({"type": "state_update", "reasoning": f"Negotiation with {npc_name}.", "changes": changes})
             result["roll"] = {k: roll[k] for k in ("roll", "total", "dc", "degree")}
+            # what's offered behind a closed door is private: only this person knows it, for now
+            who = state.get("character", {}).get("name", "The player").split(" (")[0]
+            knowledge.record(state, setting_key, f"{who} offered {npc_name}: {inp.get('offer', '')}", [key], "private")
+            if result["agreed"]:
+                topic = ((state.get("negotiations") or {}).get(key) or {}).get("topic", "terms")
+                knowledge.record(state, setting_key, f"{npc_name} agreed terms with {who} on {topic}", [key], "private")
     if "error" not in result:
         n = (state.get("negotiations") or {}).get(key) or {}
         events.append({"type": "negotiation", "operation": name, "npc": npc_name, "result": result,
@@ -953,6 +962,13 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
                      setting_key=None):
     name, inp = tc["name"], dict(tc["input"] or {})
     events = []
+
+    if name == "record_knowledge":
+        result = knowledge.record(state, setting_key, inp.get("text"), inp.get("witnesses"), inp.get("secrecy") or "private",
+                                  inp.get("fact_id"))
+        if "error" not in result:
+            events.append({"type": "knowledge", "result": result})
+        return json.dumps(result), events
 
     if name in ("open_negotiation", "negotiation_offer", "negotiation_update", "close_negotiation"):
         return _handle_negotiation(name, inp, state, system, resource_schema, dyn, setting_key)

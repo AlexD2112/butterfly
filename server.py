@@ -33,6 +33,7 @@ import db
 import dynamics
 import geodata
 import geography
+import knowledge
 import mechanics
 import npcs
 import discord_oauth
@@ -230,6 +231,14 @@ def _state_before_last(turns, state):
     before = copy.deepcopy(state)
     why = engine.undo_turn_from_events(before, events, last.get("turn_number"), earlier)
     return (None, why) if why else (before, None)
+
+
+def _client_state(state, setting_key):
+    """The state as the page sees it: internal keys stripped (including who-knows-what, which would
+    give away which factions have heard what), plus the player's own view of their secrets."""
+    out = engine.build_state_digest(state)
+    out["secrets"] = knowledge.player_view(state, setting_key)
+    return out
 
 
 def _resend_available(turns, state=None):
@@ -572,7 +581,7 @@ def api_character_state(character_id):
     if catalog:
         mechanics.ensure_always_present(state, catalog)
     geography.ensure_initialized(state, geography.load(row["setting_key"]))
-    return jsonify({"state": engine.build_state_digest(state), "setting_key": row["setting_key"], "system_key": row["system_key"]})
+    return jsonify({"state": _client_state(state, row["setting_key"]), "setting_key": row["setting_key"], "system_key": row["system_key"]})
 
 
 @app.route("/api/character/<int:character_id>/level_up_options")
@@ -974,7 +983,7 @@ def api_character_turn(character_id):
             {
                 "narration": narration,
                 "debug_events": debug_events,
-                "state": engine.build_state_digest(state),
+                "state": _client_state(state, row["setting_key"]),
                 "budget": db.get_budget_status(user["id"]),
             }
         )

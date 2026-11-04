@@ -1,5 +1,5 @@
 {
- "_comment": "NPC sheets (2026-11-03), read by npcs.py. Same six attributes and skill tiers as the player (Red Admiral). The first 15 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale, not measured quantities. familiarity 0-3 is how well Trotsky knows the person at the start (0 never met / 1 by reputation / 2 worked with / 3 knows well) - it sets how much of the sheet the player can see. Expertise = proficiency added twice; proficient = once.",
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. Same six attributes and skill tiers as the player (Red Admiral). The first 15 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale, not measured quantities. familiarity 0-3 is how well Trotsky knows the person at the start (0 never met / 1 by reputation / 2 worked with / 3 knows well) - it sets how much of the sheet the player can see. Expertise = proficiency added twice; proficient = once. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py).",
  "sheets": {
   "lenin": {
    "name": "Vladimir Lenin",
@@ -24,7 +24,8 @@
     "situation_analysis",
     "operational_security"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "bolsheviks"
   },
   "stalin": {
    "name": "Joseph Stalin",
@@ -47,7 +48,8 @@
     "deception",
     "willpower_vs_coercion"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "bolsheviks"
   },
   "kamenev": {
    "name": "Lev Kamenev",
@@ -68,7 +70,8 @@
     "revolutionary_theory",
     "written_propaganda"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "bolsheviks"
   },
   "zinoviev": {
    "name": "Grigory Zinoviev",
@@ -88,7 +91,8 @@
     "written_propaganda",
     "factional_maneuvering"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "bolsheviks"
   },
   "kerensky": {
    "name": "Alexander Kerensky",
@@ -110,7 +114,8 @@
     "inspiring_loyalty",
     "negotiation"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "government"
   },
   "kollontai": {
    "name": "Alexandra Kollontai",
@@ -133,7 +138,8 @@
     "languages_and_translation",
     "written_propaganda"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "bolsheviks"
   },
   "spiridonova": {
    "name": "Maria Spiridonova",
@@ -153,7 +159,8 @@
     "psychological_endurance",
     "willpower_vs_coercion"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "left_srs"
   },
   "martov": {
    "name": "Julius Martov",
@@ -173,7 +180,8 @@
     "revolutionary_theory",
     "written_propaganda"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "menshevik_internationalists"
   },
   "joffe": {
    "name": "Adolph Joffe",
@@ -193,7 +201,8 @@
     "languages_and_translation",
     "situation_analysis"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "bolsheviks"
   },
   "dybenko": {
    "name": "Pavel Dybenko",
@@ -213,7 +222,8 @@
     "physical_confrontation",
     "inspiring_loyalty"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "bolsheviks"
   },
   "krasnov": {
    "name": "Pyotr Krasnov",
@@ -234,7 +244,8 @@
     "inspiring_loyalty",
     "endurance_and_travel"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "generals"
   },
   "dan": {
    "name": "Fyodor Dan",
@@ -256,7 +267,8 @@
     "factional_maneuvering",
     "written_propaganda"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "mensheviks"
   },
   "chkheidze": {
    "name": "Nikolai Chkheidze",
@@ -275,7 +287,8 @@
     "negotiation",
     "platform_speechmaking"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "mensheviks"
   },
   "podvoisky": {
    "name": "Nikolai Podvoisky",
@@ -297,7 +310,8 @@
     "operational_security",
     "crisis_command"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "bolsheviks"
   },
   "antonov_ovseenko": {
    "name": "Vladimir Antonov-Ovseenko",
@@ -319,7 +333,8 @@
     "physical_confrontation",
     "written_propaganda"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "bolsheviks"
   },
   "natalia_sedova": {
    "name": "Natalia Sedova",
@@ -339,7 +354,8 @@
     "operational_security",
     "languages_and_translation"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "family"
   },
   "sverdlov": {
    "name": "Yakov Sverdlov",
@@ -361,7 +377,8 @@
     "situation_analysis",
     "cultivating_allies"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "bolsheviks"
   },
   "tsereteli": {
    "name": "Irakli Tsereteli",
@@ -382,7 +399,8 @@
     "negotiation",
     "debate_and_public_argument"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "mensheviks"
   },
   "chernov": {
    "name": "Viktor Chernov",
@@ -402,7 +420,8 @@
     "written_propaganda",
     "debate_and_public_argument"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "srs"
   },
   "dzerzhinsky": {
    "name": "Felix Dzerzhinsky",
@@ -424,7 +443,8 @@
     "reading_hidden_agendas",
     "psychological_endurance"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "bolsheviks"
   },
   "lunacharsky": {
    "name": "Anatoly Lunacharsky",
@@ -446,7 +466,8 @@
     "written_propaganda",
     "revolutionary_theory"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "bolsheviks"
   },
   "bukharin": {
    "name": "Nikolai Bukharin",
@@ -467,7 +488,8 @@
     "written_propaganda",
     "debate_and_public_argument"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "bolsheviks"
   },
   "uritsky": {
    "name": "Moisei Uritsky",
@@ -487,7 +509,8 @@
     "situation_analysis",
     "factional_maneuvering"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "bolsheviks"
   },
   "raskolnikov": {
    "name": "Fyodor Raskolnikov",
@@ -507,7 +530,8 @@
     "inspiring_loyalty",
     "physical_confrontation"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "bolsheviks"
   },
   "lazimir": {
    "name": "Pavel Lazimir",
@@ -526,7 +550,8 @@
     "negotiation",
     "cultivating_allies"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "left_srs"
   },
   "kornilov": {
    "name": "Lavr Kornilov",
@@ -548,7 +573,8 @@
     "inspiring_loyalty",
     "endurance_and_travel"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "generals"
   },
   "alekseev": {
    "name": "Mikhail Alekseev",
@@ -570,7 +596,8 @@
     "operational_security",
     "cultivating_allies"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "generals"
   },
   "kaledin": {
    "name": "Alexei Kaledin",
@@ -590,7 +617,8 @@
     "inspiring_loyalty",
     "crisis_command"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "generals"
   },
   "polkovnikov": {
    "name": "Georgy Polkovnikov",
@@ -609,7 +637,8 @@
     "military_strategic_planning",
     "crisis_command"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "government"
   },
   "verkhovsky": {
    "name": "Alexander Verkhovsky",
@@ -628,7 +657,8 @@
     "military_strategic_planning",
     "situation_analysis"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "government"
   },
   "buchanan": {
    "name": "Sir George Buchanan",
@@ -650,7 +680,8 @@
     "reading_hidden_agendas",
     "cultivating_allies"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "allied_embassies"
   }
  }
 }
