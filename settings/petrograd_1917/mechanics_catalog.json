@@ -12,7 +12,7 @@
     ],
     "data_shape": {
       "body_size": "integer - total voting delegates (must equal the sum of seats)",
-      "factions": "array of {name, seats, lean, note} - lean -3..+3 toward the player's side (+3 votes with the player almost always, 0 is persuadable, -3 almost never)",
+      "factions": "list of {name, seats, lean -3..+3, note, party?} - party groups sub-blocs under one party (e.g. two Bolshevik wings)",
       "influence_resource": "fixed: the resource whose value nudges persuadable blocs (soviet_authority)"
     },
     "sourcing_note": "Anchors: on 31 August 1917 the Petrograd Soviet passed a Bolshevik resolution on power for the first time, and on 9 September (Julian) a Bolshevik motion of no confidence in the Menshevik-SR presidium carried - commonly given as 519 to 414 with 67 abstentions - after which Chkheidze's presidium resigned; Trotsky was elected chairman on 25 September. The bloc sizes below are a reasoned reconstruction of a ~1,000-delegate plenum consistent with that 9 September tally (Bolshevik core plus sympathetic non-party soldiers and Left SRs on one side; defensist Mensheviks and mainstream SRs on the other; Menshevik-Internationalists in between), not a recorded roll call. Leans are design values: with no speech and average authority, the no-confidence motion passes most of the time but not always. 2026-11-03: the Bolshevik fraction is split into two blocs (district militants / Kamenev's moderates) - a design reconstruction of the real division in the fraction, so its votes aren't monolithic.",
@@ -24,13 +24,15 @@
           "name": "Bolsheviks (district militants)",
           "seats": 230,
           "lean": 3,
-          "note": "The Vyborg and factory-district men and the Military Organization. Want the majority used now; distrust deals with Mensheviks."
+          "note": "The Vyborg and factory-district men and the Military Organization. Want the majority used now; distrust deals with Mensheviks.",
+          "party": "Bolsheviks"
         },
         {
           "name": "Bolsheviks (Kamenev's moderates)",
           "seats": 170,
           "lean": 2,
-          "note": "Follow Kamenev's lead in the fraction: a broad socialist coalition, no adventures, wait for the Constituent Assembly. Loyal to the party, not to every motion."
+          "note": "Follow Kamenev's lead in the fraction: a broad socialist coalition, no adventures, wait for the Constituent Assembly. Loyal to the party, not to every motion.",
+          "party": "Bolsheviks"
         },
         {
           "name": "Non-party soldiers' delegates",
@@ -62,7 +64,10 @@
           "lean": -3,
           "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument."
         }
-      ]
+      ],
+      "parties": {
+        "Bolsheviks": "The Bolshevik fraction: 400 delegates since the Kornilov affair. One party in the hall, two moods inside it."
+      }
     },
     "split_blocs": {
       "Bolsheviks": [

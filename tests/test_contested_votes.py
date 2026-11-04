@@ -81,6 +81,7 @@ class TestElections(unittest.TestCase):
         state = fresh_petrograd()
         inp = {"instance_id": "petrograd_soviet", "office": "Chairman", "candidates": ["Trotsky", "Chkheidze"],
                "bloc_support": self.support()}
+        state["pace"] = "quick"
         _, _, r1 = run(state, "call_election", inp)
         _, _, r2 = run(state, "call_election", inp)
         self.assertEqual((r1["round"], r2["round"]), (1, 2))

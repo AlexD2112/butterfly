@@ -26,6 +26,7 @@ import dynamics
 import geography
 import couriers
 import sittings
+import debate
 import knowledge
 import mechanics
 import negotiation
@@ -247,6 +248,8 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
     mail_text = couriers.prompt_section(state, setting_key)
     if mail_text:
         negotiation_section += "\n\n# " + mail_text
+    if any((m or {}).get("render_primitive") == "seat_chart" for m in (state.get("mechanics") or {}).values()):
+        negotiation_section += "\n\n# " + debate.prompt_section(state)
     npc_section = ""
     if npc_sheets_mod.load(setting_key):
         digest.pop("npc_knowledge", None)
@@ -298,7 +301,7 @@ fiction actually calls for it. Address anything flagged DUE FOR REVIEW above bef
         primitives = {e.get("render_primitive") for e in mechanics_catalog.values()}
         ops = []
         if "seat_chart" in primitives:
-            ops.append("- Formal votes in a body with a seat_chart: call_vote. The application decides the result; you narrate it. If the player speaks first, pass speech_attribute/skill and the application rolls the speech too. Give every bloc a stance on the motion itself (bloc_stances): allies dislike plenty of things their leaders propose. A question put cold finds many undecided; real bodies debate, amend and vote again (reuse motion_key). Choosing people (a chairman, a presidium) is call_election, not call_vote: several candidates, split blocs, often no majority the first time. Bodies meet in sittings: only a few votes a night, then days until the next sitting; a major question (weight: major) goes on the agenda for the next sitting unless urgency (two-thirds) carries. Hours of speeches and the caucusing between sittings are the game - don't rush to the count.")
+            ops.append("- Formal votes in a body with a seat_chart: call_vote. The application decides the result; you narrate it. If the player speaks first, pass speech_attribute/skill and the application rolls the speech too. Give every bloc a stance on the motion itself (bloc_stances): allies dislike plenty of things their leaders propose. A question put cold finds many undecided; real bodies debate, amend and vote again (reuse motion_key). Choosing people (a chairman, a presidium) is call_election, not call_vote: several candidates, split blocs, often no majority the first time. Bodies meet in sittings: only a few votes a night, then days until the next sitting; a major question (weight: major) goes on the agenda for the next sitting unless urgency (two-thirds) carries. Hours of speeches and the caucusing between sittings are the game - don't rush to the count. Stances and election support can be given for a whole party (e.g. 'Bolsheviks') or for each wing separately when they differ. Each speech in a debate is debate_speech (see PACE).")
         if "forces" in primitives:
             ops.append("- Winning over a unit in person (or talking a hostile one into staying in barracks): sway_unit. Never move a unit's loyalty more than a step by propose_mechanic_update when sway_unit is the honest description of what happened.")
             ops.append("- Any armed clash: resolve_confrontation. Units only fight at loyalty +2/+3 (for the player) or -2/-3 (against); waverers stay home. Narrate who refused - it's usually the story.")
@@ -876,6 +879,7 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=Non
                 "type": "string", "description": "Who gives the speech, if not the player (e.g. 'kamenev' when the player lets him present it). Their sheet rolls it."}
             specs.append(vote)
             specs.append(operations.election_tool_spec())
+            specs.append(debate.SPEC)
         if "forces" in primitives:
             specs.append(operations.sway_tool_spec())
             conf = operations.confrontation_tool_spec()
@@ -1152,7 +1156,9 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         chart = (state.get("mechanics") or {}).get(inp.get("instance_id"))
         if chart and chart.get("render_primitive") == "seat_chart":
             kind = "election" if name == "call_election" else "vote"
-            blocked = sittings.check(state, mechanics_catalog, chart, inp, kind)
+            blocked = sittings.check(state, mechanics_catalog, chart, inp, kind) if debate.pace(state) == "debate" else None
+            if not blocked:
+                blocked = debate.vote_ready(state, chart, inp, kind)
             if blocked:
                 events.append({"type": "sitting", "body": chart.get("title"), "motion": inp.get("motion") or inp.get("office"), **blocked})
                 return json.dumps(blocked), events
@@ -1160,8 +1166,30 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
                 inp["threshold"] = "two_thirds"
             sittings.record(state, chart, inp, kind)
 
+    if name == "debate_speech" and mechanics_catalog:
+        chart = (state.get("mechanics") or {}).get(inp.get("instance_id"))
+        if not chart or chart.get("render_primitive") != "seat_chart":
+            return json.dumps({"error": f"No seat_chart mechanic '{inp.get('instance_id')}'."}), events
+        result = debate.speech(state, setting_key, system, chart, inp)
+        if "error" not in result:
+            roll = result["roll"]
+            events.append({"type": "check", "description": f"{result['speaker']} speaks {result['side']}"
+                           + (f" {result['candidate']}" if result.get("candidate") else "") + f": {inp.get('point', '')}",
+                           **({k: v for k, v in roll.items() if k != "gm_instruction"}),
+                           **({"actor": roll.get("actor_name")} if roll.get("actor_name") else {})})
+            events.append({"type": "debate", "body": chart.get("title"), "motion": inp.get("motion") or inp.get("office") or "",
+                           "speaker": result["speaker"], "side": result["side"], "candidate": result.get("candidate"),
+                           "degree": roll["degree"], "room": result["room"], "speeches": result["speeches_so_far"],
+                           "ready": result["ready_for_vote"]})
+        return json.dumps(result), events
+
     if name == "call_election" and mechanics_catalog:
-        result, changes = operations.call_election(state, system, inp)
+        chart = (state.get("mechanics") or {}).get(inp.get("instance_id")) or {}
+        d = ((chart.get("data") or {}).get("debates") or {}).get(debate.key_for(inp)) or {}
+        result, changes = operations.call_election(state, system, inp,
+                                                   candidate_swing={str(k).lower(): v for k, v in (d.get("candidate_swing") or {}).items()})
+        if "error" not in result and chart:
+            debate.after_ballot(chart, inp)
         if "error" not in result:
             events.append({"type": "operation", "operation": "call_election", "reasoning": inp.get("office", ""),
                            "result": result, "changes": changes})
@@ -1176,7 +1204,7 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
                 return json.dumps({"error": f"'{inp['speech_by']}' has no sheet to speak with."}), events
             roller = lambda a, sk, dc: npc_sheets_mod.roll_for(state, setting_key, system, inp["speech_by"], a, sk, dc)
         result, changes = operations.call_vote(state, system, inp, influence_value=_resource_value(state, influence_key),
-                                               speech_roller=roller)
+                                               speech_roller=roller, debate=debate.apply_to_vote(m, inp) if m else None)
         if "error" not in result and result["passed"] and inp.get("canon_event"):
             if dyn:
                 fire = dynamics.try_fire_event(state, dyn, resource_schema, inp["canon_event"], "vote")

@@ -365,6 +365,7 @@ class TestUndoOldTurns(TestWriteTheScene):
 
     def test_turns_that_cannot_be_undone_exactly_say_so(self):
         vote = ("call_vote", {"instance_id": "petrograd_soviet", "motion": "x", "player_position": "for"})
+        self.assertEqual(self.client.post(f"/api/character/{self.cid}/pace", json={"pace": "quick"}).get_json()["pace"], "quick")
         provider = RecordingProvider([tools_turn(vote, text="They vote."), text_turn("Done.")])
         with patch.object(providers, "get_provider", return_value=(provider, "m")):
             self.client.post(f"/api/character/{self.cid}/turn", json={"input": "Call the vote.", "model_key": "luna"})

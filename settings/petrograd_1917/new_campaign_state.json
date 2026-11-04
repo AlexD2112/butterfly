@@ -326,13 +326,15 @@
             "name": "Bolsheviks (district militants)",
             "seats": 230,
             "lean": 3,
-            "note": "The Vyborg and factory-district men and the Military Organization. Want the majority used now; distrust deals with Mensheviks."
+            "note": "The Vyborg and factory-district men and the Military Organization. Want the majority used now; distrust deals with Mensheviks.",
+            "party": "Bolsheviks"
           },
           {
             "name": "Bolsheviks (Kamenev's moderates)",
             "seats": 170,
             "lean": 2,
-            "note": "Follow Kamenev's lead in the fraction: a broad socialist coalition, no adventures, wait for the Constituent Assembly. Loyal to the party, not to every motion."
+            "note": "Follow Kamenev's lead in the fraction: a broad socialist coalition, no adventures, wait for the Constituent Assembly. Loyal to the party, not to every motion.",
+            "party": "Bolsheviks"
           },
           {
             "name": "Non-party soldiers' delegates",
@@ -364,7 +366,10 @@
             "lean": -3,
             "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument."
           }
-        ]
+        ],
+        "parties": {
+          "Bolsheviks": "The Bolshevik fraction: 400 delegates since the Kornilov affair. One party in the hall, two moods inside it."
+        }
       },
       "status": "active",
       "created_turn": 0,

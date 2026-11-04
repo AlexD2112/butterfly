@@ -371,6 +371,10 @@
   #map-canvas .leaflet-control-attribution a { color: var(--accent-2); }
 
   #model-select { max-width: 210px; text-overflow: ellipsis; }
+  .seat-party { margin: 4px 0 6px; }
+  .seat-party-head .seat-legend-name { font-weight: 600; }
+  .seat-sub { padding-left: 16px; }
+  #pace-select { max-width: 120px; }
   @media (max-width: 640px) {
     header { padding: 8px 12px; }
     header h1 { font-size: 15px; }
@@ -891,6 +895,10 @@
       <button id="menu-btn" title="Back to start menu (does not erase your save)">&larr; Menu</button>
       <label for="model-select">Model:</label>
       <select id="model-select"></select>
+      <select id="pace-select" title="Pace: how long assemblies argue before they vote">
+        <option value="debate">Pace: debate</option>
+        <option value="quick">Pace: quick</option>
+      </select>
       <button id="sheet-toggle-btn" title="Character sheet">Sheet <span class="dot"></span></button>
       <button id="mech-toggle-btn" title="Trackers: the Soviet, the armed forces, and other structures">Trackers</button>
       <button id="memory-toggle-btn" title="Ask what your character would know - doesn't use a turn">Memory</button>
@@ -1556,6 +1564,16 @@ const mechPanel = document.getElementById('mech-panel');
 const mechPanelBackdrop = document.getElementById('mech-panel-backdrop');
 const mechToggleBtn = document.getElementById('mech-toggle-btn');
 const modelSelect = document.getElementById('model-select');
+// Pace (2026-11-03): debate - assemblies argue over several turns; quick - make the case and vote.
+const paceSelect = document.getElementById('pace-select');
+paceSelect.addEventListener('change', async () => {
+  if (!CURRENT_CHARACTER_ID) return;
+  const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/pace`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pace: paceSelect.value }),
+  });
+  const data = await res.json().catch(() => ({}));
+  setStatus(res.ok ? (data.pace === 'quick' ? 'Pace: quick — arguments resolve in one exchange.' : 'Pace: debate — assemblies argue over several turns before they vote.') : (data.error || 'Could not change pace.'));
+}, false);
 const inputBox = document.getElementById('inputbox');
 const sendBtn = document.getElementById('send-btn');
 const statusEl = document.getElementById('status');
@@ -1670,19 +1688,67 @@ function renderSeatChart(data) {
     const pct = Math.max(0, (f.seats || 0) / total * 100);
     return `<div class="seat-bar-seg" style="width:${pct}%;background:${color}" title="${escapeHtml(f.name)}: ${f.seats}/${total}"></div>`;
   }).join('');
-  const legend = factions.map(f => `
-    <div class="seat-legend-row">
+  // Parties first, then their wings (2026-11-03): a bloc with a "party" is shown under a party header
+  // with the party's total, so the Bolsheviks read as one fraction of 400 with two moods inside it.
+  const leanText = f => typeof f.lean === 'number' ? `<span class="seat-lean">${data.lean_toward ? (f.lean > 0 ? '+' : '') + f.lean : leanLabel(f.lean)}</span>` : '';
+  const row = (f, sub) => `
+    <div class="seat-legend-row${sub ? ' seat-sub' : ''}">
       <span class="seat-legend-swatch" style="background:${colorForName(f.name)}"></span>
-      <span class="seat-legend-name">${escapeHtml(f.name)}</span>
-      <span class="seat-legend-count">${f.seats} / ${total}${typeof f.lean === 'number' ? `<span class="seat-lean">${data.lean_toward ? (f.lean > 0 ? '+' : '') + f.lean : leanLabel(f.lean)}</span>` : ''}</span>
+      <span class="seat-legend-name">${escapeHtml(sub && f.name.startsWith(f.party) ? f.name.slice(f.party.length).replace(/^[\s(–-]+|\)$/g, '') || f.name : f.name)}</span>
+      <span class="seat-legend-count">${f.seats} / ${total}${leanText(f)}</span>
     </div>
-    ${f.note ? `<div class="seat-legend-note">${escapeHtml(f.note)}</div>` : ''}
-  `).join('');
+    ${f.note ? `<div class="seat-legend-note${sub ? ' seat-sub' : ''}">${escapeHtml(f.note)}</div>` : ''}`;
+  const seen = new Set();
+  const legend = factions.map(f => {
+    if (!f.party) return row(f, false);
+    if (seen.has(f.party)) return '';
+    seen.add(f.party);
+    const wings = factions.filter(g => g.party === f.party);
+    const seats = wings.reduce((n, g) => n + (g.seats || 0), 0);
+    const note = (data.parties || {})[f.party];
+    return `<div class="seat-party">
+      <div class="seat-legend-row seat-party-head"><span class="seat-legend-name">${escapeHtml(f.party)}</span><span class="seat-legend-count">${seats} / ${total}</span></div>
+      ${note ? `<div class="seat-legend-note">${escapeHtml(note)}</div>` : ''}
+      ${wings.map(g => row(g, true)).join('')}
+    </div>`;
+  }).join('');
   const lastVote = data.last_vote
     ? `<div class="seat-last-vote">Last vote (${escapeHtml(data.last_vote.date || '')}): “${escapeHtml(data.last_vote.motion || '')}” — <strong>${data.last_vote.passed ? 'passed' : 'failed'}</strong> ${data.last_vote.yes}–${data.last_vote.no}${data.last_vote.abstain ? `, ${data.last_vote.abstain} abstained` : ''}</div>`
     : '';
   const axis = data.lean_toward ? `<div class="force-scale">Lean shows support for ${escapeHtml(data.lean_toward)}.</div>` : '';
   return `${axis}<div class="seat-bar">${bar}</div>${legend}${lastVote}`;
+}
+
+// Vote and ballot cards by party, then wing (2026-11-03): "Bolsheviks 310–60 (militants 215–10, Kamenev's 95–50)".
+function partyGroups(blocs) {
+  const groups = [];
+  const byParty = {};
+  blocs.forEach(b => {
+    if (b.party) {
+      if (!byParty[b.party]) { byParty[b.party] = { name: b.party, wings: [] }; groups.push(byParty[b.party]); }
+      byParty[b.party].wings.push(b);
+    } else groups.push({ name: b.name, wings: [b], single: true });
+  });
+  return groups;
+}
+function wingName(b) {
+  return b.party && b.name.startsWith(b.party) ? (b.name.slice(b.party.length).replace(/^[\s(–-]+|\)$/g, '') || b.name) : b.name;
+}
+function partyVoteLines(blocs) {
+  const fmt = b => `${b.yes}–${b.no}${b.abstain ? `, ${b.abstain} abst.` : ''}`;
+  return partyGroups(blocs).map(g => {
+    if (g.single) return g.wings[0].split ? `<div class="oc-sub">Split: ${escapeHtml(g.name)} ${fmt(g.wings[0])}</div>` : '';
+    const sum = g.wings.reduce((a, b) => ({ yes: a.yes + b.yes, no: a.no + b.no, abstain: a.abstain + b.abstain }), { yes: 0, no: 0, abstain: 0 });
+    return `<div class="oc-sub">${escapeHtml(g.name)} ${fmt(sum)} (${g.wings.map(b => `${escapeHtml(wingName(b))} ${fmt(b)}`).join('; ')})</div>`;
+  }).join('');
+}
+function partyBallotLines(blocs, cands) {
+  return partyGroups(blocs).filter(g => !g.single).map(g => {
+    const line = b => cands.map(c => `${escapeHtml(c)} ${(b.votes || {})[c] || 0}`).join(', ');
+    const sum = { votes: {} };
+    g.wings.forEach(b => cands.forEach(c => { sum.votes[c] = (sum.votes[c] || 0) + ((b.votes || {})[c] || 0); }));
+    return `<div class="oc-sub">${escapeHtml(g.name)}: ${line(sum)} (${g.wings.map(b => `${escapeHtml(wingName(b))}: ${line(b)}`).join('; ')})</div>`;
+  }).join('');
 }
 
 function leanLabel(lean) {
@@ -2668,7 +2734,17 @@ function renderOutcomeCards(debugEvents, fresh) {
         <div class="ng-track">${steps.join('')}</div>
         <div class="oc-sub ng-demands">${demands}</div></div></div>`);
     }
-    if (ev.type === 'sitting') {
+    if (ev.type === 'debate') {
+      // Debate (2026-11-03): one speech in a debate and how the room took it.
+      const who = ev.speaker === 'the player' ? 'You' : escapeHtml(ev.speaker || '');
+      cards.push(`<div class="oc"><div class="oc-icon">&#9998;</div><div class="oc-body">
+        <div class="oc-title">${who} — ${ev.side === 'against' ? 'against' : 'for'}${ev.candidate ? ' ' + escapeHtml(ev.candidate) : ''}: ${escapeHtml((ev.degree || '').replace(/_/g, ' '))}</div>
+        <div class="oc-sub">${escapeHtml(ev.motion || '')} · the hall: ${escapeHtml(ev.room || '')} · speech ${ev.speeches}${ev.ready ? ' · can be put to the vote' : ''}</div></div></div>`);
+    }
+    if (ev.type === 'sitting' && ev.reason === 'debate_first') {
+      cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body"><div class="oc-title">Not yet put — the debate goes on</div>
+        <div class="oc-sub">${escapeHtml(ev.motion || '')} · ${ev.speeches_needed} more speech${ev.speeches_needed === 1 ? '' : 'es'} before a vote</div></div></div>`);
+    } else if (ev.type === 'sitting') {
       // Sittings (2026-11-03): the body adjourned, isn't sitting, or put the question on the agenda.
       const title = ev.reason === 'tabled' ? `On the agenda for ${escapeHtml(ev.tabled_until || '')}` : ev.reason === 'sitting_over' ? 'The sitting adjourns' : 'Not in session';
       cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body"><div class="oc-title">${title}</div>
@@ -2682,13 +2758,13 @@ function renderOutcomeCards(debugEvents, fresh) {
           <div class="oc-title">${escapeHtml(r.motion || 'Vote')} — ${r.passed ? 'carried' : 'defeated'}</div>
           <div class="tally"><span class="yes" style="width:${100 * r.yes / total}%"></span><span class="no" style="width:${100 * r.no / total}%"></span><span class="ab" style="width:${100 * r.abstain / total}%"></span></div>
           <div class="oc-sub">${r.yes} for · ${r.no} against · ${r.abstain} abstained · ${escapeHtml(r.body || '')}${r.round > 1 ? ` · vote ${r.round}` : ''}</div>
-          ${(r.blocs || []).filter(b => b.split).map(b => `<div class="oc-sub">Split: ${escapeHtml(b.name)} ${b.yes}–${b.no}${b.abstain ? `, ${b.abstain} abstained` : ''}</div>`).join('')}</div></div>`);
+          ${partyVoteLines(r.blocs || [])}</div></div>`);
       } else if (ev.operation === 'call_election') {
         const total = Math.max(1, r.cast || 0);
         const rows = (r.results || []).map(x => `<div class="oc-sub">${escapeHtml(x.candidate)} — ${x.votes} (${Math.round(100 * x.votes / total)}%)</div>`).join('');
         cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body">
           <div class="oc-title">${escapeHtml(r.office)}, ballot ${r.round} (${escapeHtml(r.ballot)}) — ${r.elected ? `${escapeHtml(r.elected)} elected` : 'no majority'}</div>
-          ${rows}<div class="oc-sub">${r.abstain} abstained</div></div></div>`);
+          ${rows}<div class="oc-sub">${r.abstain} abstained</div>${partyBallotLines(r.blocs || [], (r.results || []).map(x => x.candidate))}</div></div>`);
       } else if (ev.operation === 'sway_unit') {
         cards.push(`<div class="oc"><div class="oc-icon">&#9873;</div><div class="oc-body">
           <div class="oc-title">${escapeHtml(r.unit)}: ${LOYALTY_WORDS[r.loyalty_after] || r.loyalty_after}</div>
@@ -2970,6 +3046,7 @@ async function loadCharacterState(isNew) {
   MEMORY_SETTING = data.setting_key;
   renderSidebar(data.state);
   renderMechPanel(data.state);
+  paceSelect.value = data.state.pace === 'quick' ? 'quick' : 'debate';
   if (isNew) {
     const openingRes = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/opening_scene`);
     const openingData = await openingRes.json();

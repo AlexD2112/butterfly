@@ -2,13 +2,14 @@
 
 import unittest
 
-from tests.test_hard_mechanics import fresh_petrograd, run
+from tests.test_hard_mechanics import argued, fresh_petrograd, run
 from tests.test_contested_votes import BLOCS
 
 
 def vote(state, motion, **kw):
     inp = {"instance_id": "petrograd_soviet", "motion": motion, "player_position": "for",
            "bloc_stances": {b: 1 for b in BLOCS}, **kw}
+    argued(state, kw.get("motion_key") or motion)
     return run(state, "call_vote", inp)[2]
 
 
@@ -42,7 +43,10 @@ class TestSittings(unittest.TestCase):
     def test_election_ballots_count_for_half(self):
         state = fresh_petrograd()
         inp = {"instance_id": "petrograd_soviet", "office": "Chairman", "candidates": ["A", "B"], "bloc_support": {}}
-        outs = [run(state, "call_election", inp)[2] for _ in range(7)]
+        outs = []
+        for _ in range(7):
+            argued(state, "Chairman", 2)
+            outs.append(run(state, "call_election", inp)[2])
         self.assertTrue(all("results" in o for o in outs[:6]))
         self.assertEqual(outs[6]["reason"], "sitting_over")
 

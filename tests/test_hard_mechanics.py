@@ -60,6 +60,14 @@ def fresh_petrograd():
     return state
 
 
+def argued(state, key, n=4, instance_id="petrograd_soviet"):
+    """Debate pace (2026-11-03): mark a question as argued enough to be put, without rolling speeches."""
+    d = state["mechanics"][instance_id]["data"].setdefault("debates", {}).setdefault(
+        key.strip().lower(), {"motion": key, "speeches": [], "swing": 0.0, "candidate_swing": {}, "since_ballot": 0})
+    d["speeches"] += [{"speaker": f"s{i}", "side": "for", "degree": "failure"} for i in range(n)]
+    d["since_ballot"] += n
+
+
 def run(state, name, inp, allow_time_advance=True):
     provider = FakeProvider(one_tool_turn(name, inp))
     narration, events = engine.run_turn(
@@ -254,6 +262,7 @@ class TestVotes(unittest.TestCase):
 
     def test_vote_fires_its_canon_event_only_through_the_gate(self):
         state = fresh_petrograd()  # 4 September: presidium_no_confidence isn't allowed before the 5th
+        state["pace"] = "quick"
         with patch.object(random, "random", return_value=0.5), patch.object(random, "uniform", return_value=0.0):
             _, events, result = run(state, "call_vote", {"instance_id": "petrograd_soviet", "motion": "No confidence",
                                                           "player_position": "for", "canon_event": "presidium_no_confidence"})

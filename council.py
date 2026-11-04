@@ -130,6 +130,14 @@ Conversations are played, not resolved (2026-11-03):
   scene up unless the clock really forces it (a vote being called that the player chose to attend
   counts). End with the other person waiting on the player's next word.
 
+The player speaks for himself (2026-11-03):
+- When the player asks to be heard, asks for the floor, or says he will answer someone, and hasn't
+  given the words, don't write the speech for him or summarise what he "argued". Give him the floor
+  - the chair nods, the hall quiets, his opponent sits down - and end the turn there, waiting.
+- When he has given his words, use them: quote or closely follow what he wrote, roll on what he
+  actually said (its strength, not your improvement of it), and don't add arguments he didn't make.
+  A short line from him is a short speech.
+
 Whose roll is it (2026-11-03): when someone else does the thing - the player lets Kamenev present
 the motion, sends Natalia with the message - roll for them (request_check actor, or call_vote
 speech_by), and let the consequences fall on them. When several people try together, roll them all
