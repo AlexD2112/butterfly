@@ -40,6 +40,8 @@ import json
 from pathlib import Path
 
 import geography
+import knowledge
+import random
 import operations
 from systems._shared import core
 
@@ -303,6 +305,10 @@ def advance_time(state, dyn, resource_schema, system, days, rng=None):
             for c in geography.tick_day(geo, state):
                 changes.append(c)
                 add_notice(state, c["message"], "movement")
+        for c in knowledge.spread_one_day(state, state.get("setting_pack"), rng=rng or random):
+            changes.append(c)
+            if not c.get("gm_only"):
+                add_notice(state, c["message"], "rumour")
         changes += check_thresholds(state, dyn, resource_schema, system, rng=rng)
     changes.insert(0, {"kind": "time", "before": before_date, "after": state["date"], "days": days})
     return changes

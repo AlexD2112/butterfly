@@ -1,5 +1,5 @@
 {
- "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see.",
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py).",
  "sheets": {
   "godfrey_of_bouillon": {
    "name": "Godfrey of Bouillon",
@@ -22,7 +22,8 @@
     "chivalrous_bearing",
     "sermon_and_preaching"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "lotharingians"
   },
   "raymond_of_toulouse": {
    "name": "Raymond IV of Toulouse",
@@ -45,7 +46,8 @@
     "unyielding_oath",
     "court_rhetoric"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "provencals"
   },
   "alexios_i": {
    "name": "Emperor Alexios I Komnenos",
@@ -69,7 +71,8 @@
     "spycraft",
     "tongues_of_the_realm"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "byzantines"
   },
   "tancred": {
    "name": "Tancred",
@@ -91,7 +94,8 @@
     "battle_nerve",
     "rallying_the_host"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "normans_of_italy"
   },
   "adhemar_of_le_puy": {
    "name": "Adhemar of Le Puy",
@@ -114,7 +118,8 @@
     "courtly_grace",
     "chronicle_and_scripture"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "provencals"
   },
   "yaghi_siyan": {
    "name": "Yaghi-Siyan",
@@ -136,7 +141,8 @@
     "reading_intentions",
     "battle_nerve"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "antioch"
   },
   "kerbogha": {
    "name": "Kerbogha of Mosul",
@@ -158,7 +164,8 @@
     "arms_and_armor",
     "blustering_threats"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "mosul"
   },
   "firuz": {
    "name": "Firuz",
@@ -180,7 +187,8 @@
     "tongues_of_the_realm",
     "reading_intentions"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "antioch"
   },
   "stephen_of_blois": {
    "name": "Stephen of Blois",
@@ -201,7 +209,8 @@
     "courtly_grace",
     "statecraft_and_law"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "northern_french"
   },
   "robert_of_normandy": {
    "name": "Robert Curthose",
@@ -223,7 +232,8 @@
     "chivalrous_bearing",
     "kinship_ties"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "northern_french"
   },
   "baldwin_of_boulogne": {
    "name": "Baldwin of Boulogne",
@@ -245,7 +255,8 @@
     "wooing_and_alliance",
     "horsemanship"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "lotharingians"
   },
   "peter_the_hermit": {
    "name": "Peter the Hermit",
@@ -266,7 +277,8 @@
     "rallying_the_host",
     "penance_and_fasting"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "pilgrims"
   }
  }
 }

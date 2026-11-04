@@ -1,5 +1,5 @@
 {
- "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see.",
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py).",
  "sheets": {
   "guthrum": {
    "name": "Guthrum",
@@ -22,7 +22,8 @@
     "horsemanship",
     "siegecraft_and_engineering"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "danes"
   },
   "halfdan_ragnarsson": {
    "name": "Halfdan Ragnarsson",
@@ -44,7 +45,8 @@
     "blustering_threats",
     "wilderness_endurance"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "danes"
   },
   "ceolwulf_ii": {
    "name": "Ceolwulf II of Mercia",
@@ -63,7 +65,8 @@
     "courtly_grace",
     "statecraft_and_law"
    ],
-   "familiarity": 1
+   "familiarity": 1,
+   "faction": "mercia"
   },
   "ealhswith": {
    "name": "Ealhswith",
@@ -85,7 +88,8 @@
     "reading_intentions",
     "tongues_of_the_realm"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "wessex_court"
   },
   "odda_of_devon": {
    "name": "Odda, Ealdorman of Devon",
@@ -107,7 +111,8 @@
     "rallying_the_host",
     "terrain_and_logistics"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "wessex_court"
   },
   "wulfhere_of_wiltshire": {
    "name": "Wulfhere, Ealdorman of Wiltshire",
@@ -127,7 +132,8 @@
     "kinship_ties",
     "horsemanship"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "wessex_court"
   },
   "waerferth": {
    "name": "Wærferth, Bishop of Worcester",
@@ -149,7 +155,8 @@
     "tongues_of_the_realm",
     "statecraft_and_law"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "mercia"
   },
   "ubba": {
    "name": "Ubba Ragnarsson",
@@ -171,7 +178,8 @@
     "blustering_threats",
     "wilderness_endurance"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "danes"
   },
   "aethelnoth": {
    "name": "Æthelnoth, Ealdorman of Somerset",
@@ -193,7 +201,8 @@
     "wilderness_endurance",
     "arms_and_armor"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "wessex_court"
   },
   "aethelred_of_canterbury": {
    "name": "Æthelred, Archbishop of Canterbury",
@@ -214,7 +223,8 @@
     "statecraft_and_law",
     "chronicle_and_scripture"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "wessex_court"
   }
  }
 }

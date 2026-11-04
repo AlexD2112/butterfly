@@ -130,6 +130,10 @@ Conversations are played, not resolved (2026-11-03):
   scene up unless the clock really forces it (a vote being called that the player chose to attend
   counts). End with the other person waiting on the player's next word.
 
+Nobody is omniscient (2026-11-03): a character knows what they saw, what's public, and what WHO
+KNOWS WHAT says has reached them - nothing else. Martov doesn't know what was said behind a closed
+door to Spiridonova unless the record says it reached him.
+
 The player's character belongs to the player:
 - Never write what the player character says, decides, thinks or feels beyond what the player
   wrote. You narrate the world and everyone else in it. If the player wrote "I give a speech",

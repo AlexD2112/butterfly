@@ -2199,6 +2199,12 @@ function renderSidebar(state) {
     `<div class="card"><div class="card-title">${(cm.description || id)}</div><div class="commitment-status ${cm.status}">${cm.status}</div></div>`
   ).join('') || '<div class="card-desc">None yet.</div>';
 
+  // Secrets (2026-11-03): what you've said or done in private, and whom you told. Which other
+  // factions have heard is the fog of war - you only learn that a secret is out when it's common talk.
+  const secretRows = (state.secrets || []).map(f => `<div class="card"><div class="card-desc">${escapeHtml(f.text)}</div>
+      <div class="card-desc" style="color:var(--muted)">${f.common_talk ? '<b>Common talk now.</b>' : (f.you_told.length ? `Known to: ${escapeHtml(f.you_told.join(', '))}` : 'Only you know.')}${f.date ? ` · ${escapeHtml(f.date)}` : ''}</div></div>`).join('')
+    || '<div class="card-desc">Nothing said in private yet.</div>';
+
   const canonRows = Object.entries(state.canon_events || {})
     .map(([k, e]) => `<div class="canon-event ${e.status}"><span>${k.replace(/_/g, ' ')}</span><span>${e.status}</span></div>`)
     .join('');
@@ -2239,6 +2245,7 @@ function renderSidebar(state) {
     ${section('Relationships', relRows || '<div class="card-desc">None yet.</div>', false)}
     ${section('Enmity', enmityRows, false)}
     ${section('Commitments', `<div class="card-list">${commitmentCards}</div>`, false)}
+    ${section('Secrets', secretRows, false)}
     ${section('Canon Events', canonRows || '<div class="card-desc">None yet.</div>', false)}
     ${section('Divergence Log', divergenceEntries, false)}
   `;
@@ -2445,6 +2452,8 @@ function degreeClass(degree) { return degree.replace(/_/g, '-'); }
 
 // One line of a turn's change list. Split out (2026-10-26) so world/operation/tracker events reuse it.
 function renderChangeLine(c) {
+    if (c.gm_only) return '';  // who-knows-what leaks between other factions stay off the player's screen
+    if (c.kind === 'knowledge_public') return `RUMOUR — ${escapeHtml(c.message || '')}`;
     if (c.kind === 'resource') {
       const clampNote = c.clamped ? ' <span class="clamped">(clamped)</span>' : '';
       const why = c.cause ? ` (${escapeHtml(c.cause)})` : ` [requested ${c.requested_delta > 0 ? '+' : ''}${c.requested_delta}]`;
@@ -2504,7 +2513,7 @@ function renderMechanics(debugEvents) {
       return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}${featPart}${stakePart}<br><span style="color:var(--muted)">${escapeHtml(ev.description || '')}</span></div>`;
     }
     if (ev.type === 'state_update' || ev.type === 'level_up') {
-      const changeLines = (ev.changes || []).map(renderChangeLine).join('<br>');
+      const changeLines = (ev.changes || []).map(renderChangeLine).filter(Boolean).join('<br>');
       return `<div class="line">${ev.type === 'level_up' ? 'LEVEL-UP CHOICE' : 'STATE UPDATE'} — ${ev.reasoning || ''}<br>${changeLines}</div>`;
     }
     if (ev.type === 'world' || ev.type === 'mechanic_update' || ev.type === 'operation') {
@@ -2526,6 +2535,11 @@ function renderMechanics(debugEvents) {
     if (ev.type === 'timing') {
       const parts = (ev.rounds || []).map(r => `${r.seconds}s ${r.tools.length ? r.tools.join(', ') : (r.text ? 'writing' : 'nothing')}`);
       return `<div class="line">TIMING — ${ev.seconds}s over ${(ev.rounds || []).length} call(s): ${escapeHtml(parts.join(' · '))}</div>`;
+    }
+    if (ev.type === 'knowledge') {
+      const r = ev.result || {};
+      return r.recorded ? `<div class="line">KEPT PRIVATE — known to ${escapeHtml((r.known_to || []).join(', '))} (${escapeHtml(r.secrecy || '')})</div>`
+        : `<div class="line">TOLD — ${escapeHtml((r.added || []).join(', '))}</div>`;
     }
     if (ev.type === 'gm_retry') {
       return `<div class="line">GM RETRY — no scene was written after the result; asked again with tools off (${ev.wrote ? 'it wrote one' : 'still nothing'})</div>`;
@@ -2657,6 +2671,7 @@ function renderOutcomeCards(debugEvents, fresh) {
         if (c.check) cards.push(`<div class="oc deg-${(c.check.degree || '').replace(/_/g, '-')}"><div class="die">${c.check.roll}</div><div class="oc-body"><div class="oc-title">${DEGREE_LABEL[c.check.degree] || ''}</div><div class="oc-sub">${escapeHtml(c.check.description || '')} · ${c.check.roll} ${fmtMod(c.check.modifier || 0)} = ${c.check.total} vs ${c.check.dc}</div></div></div>`);
       }
       if (c.kind === 'canon_event' && c.message) dispatch('History', c.message);
+      if (c.kind === 'knowledge_public' && c.message) dispatch('Rumour', c.message);
       if ((c.kind === 'resource' || c.kind === 'world') && typeof c.before === 'number' && c.after !== c.before) {
         const key = (c.kind === 'world' ? 'world.' : '') + c.key;
         net[key] = (net[key] || 0) + (c.after - c.before);

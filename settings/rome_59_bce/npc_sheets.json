@@ -1,5 +1,5 @@
 {
- "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see.",
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see. faction (2026-11-03): who they talk to - private news a person hears tends to reach their faction first (knowledge.py).",
  "sheets": {
   "pompey": {
    "name": "Gnaeus Pompeius Magnus",
@@ -22,7 +22,8 @@
     "patrician_bearing",
     "logistics_and_supply"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "pompey_household"
   },
   "crassus": {
    "name": "Marcus Licinius Crassus",
@@ -45,7 +46,8 @@
     "patron_client_charm",
     "reading_hidden_agendas"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "crassus_household"
   },
   "cato": {
    "name": "Marcus Porcius Cato",
@@ -68,7 +70,8 @@
     "stoic_endurance",
     "philosophy_and_rhetoric_theory"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "optimates"
   },
   "bibulus": {
    "name": "Marcus Calpurnius Bibulus",
@@ -89,7 +92,8 @@
     "gravitas_under_pressure",
     "covert_correspondence"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "optimates"
   },
   "cicero": {
    "name": "Marcus Tullius Cicero",
@@ -112,7 +116,8 @@
     "covert_correspondence",
     "patron_client_charm"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "cicero_circle"
   },
   "clodius": {
    "name": "Publius Clodius Pulcher",
@@ -135,7 +140,8 @@
     "threats_and_coercion",
     "bribery_and_graft"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "populares"
   },
   "julia": {
    "name": "Julia",
@@ -156,7 +162,8 @@
     "patron_client_charm",
     "reading_hidden_agendas"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "caesar_family"
   },
   "vatinius": {
    "name": "Publius Vatinius",
@@ -178,7 +185,8 @@
     "bribery_and_graft",
     "threats_and_coercion"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "populares"
   },
   "servilia": {
    "name": "Servilia",
@@ -200,7 +208,8 @@
     "reading_hidden_agendas",
     "covert_correspondence"
    ],
-   "familiarity": 3
+   "familiarity": 3,
+   "faction": "servilia_household"
   },
   "lucullus": {
    "name": "Lucius Licinius Lucullus",
@@ -222,7 +231,8 @@
     "provincial_administration",
     "military_exhortation"
    ],
-   "familiarity": 2
+   "familiarity": 2,
+   "faction": "optimates"
   },
   "ariovistus": {
    "name": "Ariovistus",
@@ -244,7 +254,8 @@
     "threats_and_coercion",
     "swordsmanship"
    ],
-   "familiarity": 0
+   "familiarity": 0,
+   "faction": "suebi"
   }
  }
 }
