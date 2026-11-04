@@ -350,6 +350,14 @@
   .redo-scene { margin-top: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent, #b8954a); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .redo-scene:disabled { opacity: .5; cursor: default; }
   .redo-note { color: var(--muted); font-size: .9em; }
+  .reroll-btn { margin-top: 6px; font-size: 12px; padding: 3px 10px; border-radius: 999px; background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer; }
+  .reroll-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent-2); }
+  .mock-toast { position: fixed; left: 50%; top: 18%; transform: translate(-50%, -10px) rotate(-1.5deg); z-index: 90; background: var(--panel);
+    border: 1px solid var(--accent-2); color: var(--accent-2); font-family: var(--font-display); font-size: 20px; padding: 14px 22px;
+    border-radius: 8px; box-shadow: 0 16px 50px rgba(0,0,0,.6); opacity: 0; transition: opacity .25s ease, transform .25s ease; pointer-events: none; }
+  .mock-toast.show { opacity: 1; transform: translate(-50%, 0) rotate(-1.5deg); }
+  .oc-dim { opacity: .6; }
+  .oc-group { font-weight: 400; color: var(--muted); font-size: .85em; }
   .player .intent { margin-left: 8px; color: var(--muted); font-style: italic; }
   .ng-track { display: flex; gap: 4px; margin: 6px 0 4px; }
   .ng-step { width: 26px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); }
@@ -1796,6 +1804,7 @@ async function openNpc(key) {
   catch (e) { panel.innerHTML = `<div class="card-desc">Couldn't load (${escapeHtml(String(e))}).</div>`; return; }
   const trust = d.trust === undefined || d.trust === null ? '' : `Trust ${d.trust > 0 ? '+' : ''}${d.trust}`;
   const enmity = d.enmity ? ` · Rivalry ${'●'.repeat(d.enmity)}${'○'.repeat(3 - d.enmity)}` : '';
+  const standingNote = d.standing ? ` · Standing: ${escapeHtml(d.standing)}` : '';
   let body;
   if (d.no_sheet) {
     body = '<div class="card-desc">Not someone you can size up yet - no more than a name and a face.</div>';
@@ -1815,7 +1824,7 @@ async function openNpc(key) {
   panel.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px"><div><h3>${escapeHtml(d.name)}</h3>
       <div class="npc-role">${escapeHtml(d.role || d.relationship_note || '')}</div></div><button id="npc-close" title="Close (Esc)">&times;</button></div>
     ${body}
-    <div class="npc-foot"><span class="card-desc">${trust}${enmity}</span><button id="npc-ask" type="button">Ask your memory about them</button></div>`;
+    <div class="npc-foot"><span class="card-desc">${trust}${enmity}${standingNote}</span><button id="npc-ask" type="button">Ask your memory about them</button></div>`;
   document.getElementById('npc-close').addEventListener('click', closeNpc);
   document.getElementById('npc-ask').addEventListener('click', async () => { closeNpc(); await openMemory(); askMemory(`Who is ${d.name} to me, and what do I know about them?`); });
 }
@@ -2512,7 +2521,7 @@ function renderMechanics(debugEvents) {
       const skillPart = ev.skill ? ` / ${ev.skill} (${ev.tier})` : '';
       const featPart = ev.feat_bonus ? ` [+${ev.feat_bonus} from ${escapeHtml(ev.feat_bonus_source || 'a feat')}]` : '';
       const stakePart = ev.at_stake ? ` [at stake: ${escapeHtml(ev.at_stake.replace(/_/g, ' '))}]` : '';
-      return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}${featPart}${stakePart}<br><span style="color:var(--muted)">${escapeHtml(ev.description || '')}</span></div>`;
+      return `<div class="line ${degreeClass(ev.degree)}">CHECK ${ev.actor_name ? escapeHtml(ev.actor_name) + ' — ' : ''}${ev.attribute}${skillPart} vs DC ${ev.dc}: rolled ${ev.roll} ${fmtMod(ev.modifier)} &rarr; total ${ev.total} = ${ev.degree.toUpperCase().replace(/_/g, ' ')}${ev.target_npc ? ` (target: ${ev.target_npc})` : ''}${featPart}${stakePart}<br><span style="color:var(--muted)">${escapeHtml(ev.description || '')}</span></div>`;
     }
     if (ev.type === 'state_update' || ev.type === 'level_up') {
       const changeLines = (ev.changes || []).map(renderChangeLine).filter(Boolean).join('<br>');
@@ -2637,9 +2646,13 @@ function renderOutcomeCards(debugEvents, fresh) {
     if (ev.type === 'check') {
       const deg = ev.degree || '';
       const skill = ev.skill ? ` · ${prettyKey(ev.skill)}` : '';
-      cards.push(`<div class="oc deg-${deg.replace(/_/g, '-')}${fresh ? ' fresh' : ''}">
+      // Whose roll (2026-11-03): another character's attempt, or one of several rolling together.
+      const who = ev.actor_name ? `${escapeHtml(ev.actor_name)} · ` : (ev.group ? 'You · ' : '');
+      const groupNote = ev.group ? (ev.group === 'best' ? (ev.counts ? ' · carries the group' : ' · helped') : ' · own result') : '';
+      const standing = ev.actor_name && ev.standing_after && ev.standing_after !== ev.standing_before ? ` · standing ${escapeHtml(ev.standing_before)} → ${escapeHtml(ev.standing_after)}` : '';
+      cards.push(`<div class="oc deg-${deg.replace(/_/g, '-')}${fresh ? ' fresh' : ''}${ev.group === 'best' && !ev.counts ? ' oc-dim' : ''}">
         <div class="die" title="d20">${ev.roll ?? '?'}</div>
-        <div class="oc-body"><div class="oc-title">${DEGREE_LABEL[deg] || capFirst(prettyKey(deg))}</div>
+        <div class="oc-body"><div class="oc-title">${who}${DEGREE_LABEL[deg] || capFirst(prettyKey(deg))}<span class="oc-group">${groupNote}${standing}</span></div>
         <div class="oc-sub">${capFirst(ev.attribute || '')}${skill} · ${ev.roll} ${fmtMod(ev.modifier || 0)} = ${ev.total} vs ${ev.dc}${ev.at_stake ? ` · risking ${prettyKey(ev.at_stake)}` : ''}</div>
         ${ev.description ? `<div class="oc-desc">${escapeHtml(ev.description)}</div>` : ''}</div></div>`);
     }
@@ -2816,8 +2829,44 @@ function addResendButton(div) {
   });
 }
 
+// Reroll (2026-11-03): undo the latest turn and play the same move again. Lean on it and the game
+// starts teasing you.
+function addRerollButton(div) {
+  document.querySelectorAll('.reroll-btn').forEach(b => b.remove());
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'reroll-btn';
+  btn.title = 'Undo this turn (dice and all) and play the same move again';
+  btn.textContent = '↻ Reroll';
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/character/${CURRENT_CHARACTER_ID}/reroll_last`, { method: 'POST' });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      div.remove();
+      if (data.mock) showMock(data.mock);
+      await sendTurn(data.input);
+    } catch (e) {
+      btn.disabled = false;
+      btn.insertAdjacentHTML('afterend', `<span class="clamped"> ${escapeHtml(String(e.message || e))}</span>`);
+    }
+  });
+  div.appendChild(btn);
+}
+function showMock(text) {
+  const el = document.createElement('div');
+  el.className = 'mock-toast';
+  el.textContent = text;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 3200);
+}
+
 function appendTurn(userText, narration, debugEvents, opts = {}) {
   document.querySelectorAll('.resend-bar').forEach(b => b.remove());
+  document.querySelectorAll('.reroll-btn').forEach(b => b.remove());
   clearSuggestions();
   document.querySelectorAll('.redo-scene').forEach(b => b.closest('.narration') && b.remove());
   const div = document.createElement('div');
@@ -2939,6 +2988,7 @@ async function loadCharacterState(isNew) {
       try { debugEvents = t.debug_events_json ? JSON.parse(t.debug_events_json) : []; } catch (e) { debugEvents = []; }
       const div = appendTurn(t.player_input, t.narration, debugEvents, { instant: true, noSuggestions: i < turns.length - 1, canRedo: i === turns.length - 1 });
       if (resendAvailable && i === turns.length - 1) addResendButton(div);
+      else if (i === turns.length - 1) addRerollButton(div);
     });
     if (turns.length === 0 && data.state.turn_number > 0) {
       appendSystemNote('This game has progress saved but no recorded history (it may predate history recording). The game master still has the campaign summary.');
@@ -2998,7 +3048,8 @@ async function sendTurn(presetText) {
       appendTurn(text, `[Error: ${data.error}]`, [], { instant: true });
       setStatus('Error — see message above.');
     } else {
-      appendTurn(text, data.narration, data.debug_events, { canRedo: true });
+      const turnDiv = appendTurn(text, data.narration, data.debug_events, { canRedo: true });
+      addRerollButton(turnDiv);
       renderSidebar(data.state);
       renderMechPanel(data.state);
       renderBudget(data.budget);
