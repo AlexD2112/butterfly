@@ -204,7 +204,7 @@ class TestPromptAndTools(unittest.TestCase):
         self.assertIn("place", conf["parameters"]["required"])
 
     def test_settings_without_geography_are_untouched(self):
-        self.assertIsNone(G.load("rome_59_bce"))
+        self.assertIsNone(G.load("no_such_setting"))
 
 
 class TestCountryAndLifecycle(unittest.TestCase):

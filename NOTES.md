@@ -1,3 +1,20 @@
+# Today's systems in Rome, Britannia and the Crusades (2026-11-03)
+
+- NPC sheets for all three (npc_sheets.json): the 7 stat blocks each npcs.md had, plus new sheets -
+  Rome: Vatinius, Servilia, Lucullus, Ariovistus; Britannia: Ubba, Aethelnoth, Archbishop Aethelred;
+  Crusades: Firuz, Stephen of Blois, Robert Curthose, Baldwin of Boulogne, Peter the Hermit. Skills
+  are each system's own (Apollo / Monarch). npcs.md stat lines removed; rules.md section 11 updated.
+- Travel graphs (tools/build_simple_geography.py -> geography.json): 25-29 towns each with the main
+  roads and sea lanes of the period (Via Appia/Flaminia/Aemilia/Domitia...; Wessex herepaths and
+  Roman roads; Nicaea-Dorylaeum-Heraclea-Marash-Antioch, the Cilician and Syrian Gates, the coast to
+  Jaffa). Player travel only: these settings' armies are org trees, not forces trackers, so there
+  are no units on the map yet. No map view either (no verified landmarks).
+- Negotiations already worked everywhere; the side-check redirect now recognizes any system's
+  Presence/Oration skills instead of Red Admiral's skill names.
+- Persuasion resistance: an NPC's will is now the better of Resolve or a trained Resolve skill (Cato's
+  Unbending Will). This also raises Spiridonova's base from 14 to 16 in Petrograd.
+- VOICE_GUIDANCE no longer assumes 1917 (it's sent to every setting): examples made generic.
+
 # Negotiations tracked in code (2026-11-03)
 
 - Reported again after PR #12: Spiridonova still left on the bell, a generous offer that met her

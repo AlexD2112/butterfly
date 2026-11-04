@@ -26,8 +26,6 @@ MOVE = {"critical_success": 2, "strong_success": 1, "success": 1, "success_at_co
 DEMAND_MET_DC = -2
 DEMAND_DODGED_DC = 2
 MAX_DEMANDS = 4
-PERSUASION_SKILLS = {"negotiation", "personal_persuasion", "cultivating_allies", "debate_and_public_argument",
-                     "inspiring_loyalty", "platform_speechmaking"}
 
 INSTRUCTIONS = {
     "critical_success": "A real breakthrough: they move two steps and warm to the player personally.",
