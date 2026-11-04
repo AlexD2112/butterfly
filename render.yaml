@@ -18,7 +18,10 @@ services:
     # --worker-class gthread --threads 4 --timeout 900: unchanged from every earlier version of this
     # file - a real AI turn (Council Mode especially) can legitimately take a while, and threads (not
     # separate worker PROCESSES) let one slow request not block every other player's.
-    startCommand: gunicorn server:app --workers 1 --worker-class gthread --threads 4 --timeout 900
+    # --threads 16 (2026-11-03, was 4): each AI turn holds a thread for its whole length (minutes at
+    # worst), and multiplayer pages hold one for their live stream - with 4, a couple of slow turns
+    # left nothing to serve page loads, which looked like the site being down.
+    startCommand: gunicorn server:app --workers 1 --worker-class gthread --threads 16 --timeout 900
     # A real persistent disk (2026-09-03) - already existed on the live service (added via the
     # dashboard during earlier setup), declared here now so this file actually reflects reality
     # instead of leaving it silently undeclared. mountPath/sizeGB match the real current disk exactly

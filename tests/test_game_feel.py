@@ -377,5 +377,17 @@ class TestUndoOldTurns(TestWriteTheScene):
         self.assertIn("call_vote", res.get_json()["error"])
 
 
+class TestTurnCap(unittest.TestCase):
+    def test_a_turn_that_loops_on_tools_is_stopped_and_still_narrated(self):
+        loop = tools_turn(("route_info", {"to": "Smolny"}))
+        provider = RecordingProvider([loop] * engine.MAX_TOOL_ROUNDS + [text_turn("At last, the scene.")])
+        state = engine.load_premade_character_state("petrograd_1917")
+        narration, events = engine.run_turn(provider, "m", state, "petrograd_1917", "red_admiral", [], "x")
+        self.assertEqual(provider.calls, engine.MAX_TOOL_ROUNDS + 1)
+        self.assertIn("At last", narration)
+        timing = next(e for e in events if e["type"] == "timing")
+        self.assertEqual(len(timing["rounds"]), engine.MAX_TOOL_ROUNDS)
+
+
 if __name__ == "__main__":
     unittest.main()

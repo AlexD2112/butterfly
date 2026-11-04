@@ -2523,6 +2523,10 @@ function renderMechanics(debugEvents) {
         r.dc_note || '', (r.still_wanted || []).length ? `still wants: ${r.still_wanted.join('; ')}` : ''].filter(Boolean);
       return `<div class="line">NEGOTIATION (${escapeHtml(ev.operation.replace(/_/g, ' '))}) — ${escapeHtml(ev.npc)}: ${escapeHtml(bits.join(' · '))}</div>`;
     }
+    if (ev.type === 'timing') {
+      const parts = (ev.rounds || []).map(r => `${r.seconds}s ${r.tools.length ? r.tools.join(', ') : (r.text ? 'writing' : 'nothing')}`);
+      return `<div class="line">TIMING — ${ev.seconds}s over ${(ev.rounds || []).length} call(s): ${escapeHtml(parts.join(' · '))}</div>`;
+    }
     if (ev.type === 'gm_retry') {
       return `<div class="line">GM RETRY — no scene was written after the result; asked again with tools off (${ev.wrote ? 'it wrote one' : 'still nothing'})</div>`;
     }

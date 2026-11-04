@@ -1,3 +1,10 @@
+# Turn loop capped; timing in the Turn Log (2026-11-03)
+
+- A resend took ~5 minutes. run_turn's tool loop had no limit, so a model that keeps calling tools
+  (or keeps getting refusals from the new negotiation/geography rules) could go round for minutes.
+  Now at most MAX_TOOL_ROUNDS = 6 model calls with tools, then the no-tools write-up call.
+- Every turn records a "timing" event (seconds per model call and which tools it asked for), shown
+  in the Turn Log and printed to the server log as "[turn] ...".
 # Today's systems in Rome, Britannia and the Crusades (2026-11-03)
 
 - NPC sheets for all three (npc_sheets.json): the 7 stat blocks each npcs.md had, plus new sheets -
