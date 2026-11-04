@@ -37,11 +37,11 @@ class TestNegotiation(unittest.TestCase):
     def test_meeting_demands_lowers_the_dc_and_dodging_raises_it(self):
         _, events, r = offer(self.state, "failure", meets=["land_to_the_peasant_committees_at_once", "an_immediate_peace"])
         check = next(e for e in events if e["type"] == "check")
-        self.assertEqual(check["dc"], 14 - 4)  # her base 14 (Resolve), two demands met
+        self.assertEqual(check["dc"], 16 - 4)  # her base 16 (Resolve +4, trained willpower +2), two demands met
         state2 = fresh_petrograd()
         run(state2, "open_negotiation", OPEN)
         _, events, _ = offer(state2, "failure", dodges=["land"])
-        self.assertEqual(next(e for e in events if e["type"] == "check")["dc"], 16)
+        self.assertEqual(next(e for e in events if e["type"] == "check")["dc"], 18)
 
     def test_failure_stalls_and_only_a_critical_failure_loses_ground(self):
         _, _, r = offer(self.state, "failure", at_stake="left_sr_alliance")

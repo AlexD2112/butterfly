@@ -1,0 +1,220 @@
+{
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see.",
+ "sheets": {
+  "guthrum": {
+   "name": "Guthrum",
+   "role": "Danish king of the Great Summer Army",
+   "attributes": {
+    "oration": 13,
+    "intellect": 15,
+    "resolve": 17,
+    "presence": 14,
+    "cunning": 17,
+    "physique": 16
+   },
+   "proficiency": 3,
+   "expertise": [
+    "rallying_the_host",
+    "battle_nerve"
+   ],
+   "proficient": [
+    "intrigue_and_plot",
+    "horsemanship",
+    "siegecraft_and_engineering"
+   ],
+   "familiarity": 1
+  },
+  "halfdan_ragnarsson": {
+   "name": "Halfdan Ragnarsson",
+   "role": "Danish king in Northumbria",
+   "attributes": {
+    "oration": 12,
+    "intellect": 13,
+    "resolve": 16,
+    "presence": 13,
+    "cunning": 14,
+    "physique": 17
+   },
+   "proficiency": 2,
+   "expertise": [
+    "arms_and_armor"
+   ],
+   "proficient": [
+    "rallying_the_host",
+    "blustering_threats",
+    "wilderness_endurance"
+   ],
+   "familiarity": 1
+  },
+  "ceolwulf_ii": {
+   "name": "Ceolwulf II of Mercia",
+   "role": "King of Mercia under Danish sufferance",
+   "attributes": {
+    "oration": 12,
+    "intellect": 13,
+    "resolve": 11,
+    "presence": 12,
+    "cunning": 13,
+    "physique": 11
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "courtly_grace",
+    "statecraft_and_law"
+   ],
+   "familiarity": 1
+  },
+  "ealhswith": {
+   "name": "Ealhswith",
+   "role": "Alfred's wife, of the Mercian royal kin",
+   "attributes": {
+    "oration": 12,
+    "intellect": 14,
+    "resolve": 15,
+    "presence": 16,
+    "cunning": 13,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [
+    "kinship_ties"
+   ],
+   "proficient": [
+    "courtly_grace",
+    "reading_intentions",
+    "tongues_of_the_realm"
+   ],
+   "familiarity": 3
+  },
+  "odda_of_devon": {
+   "name": "Odda, Ealdorman of Devon",
+   "role": "Ealdorman of Devon",
+   "attributes": {
+    "oration": 12,
+    "intellect": 12,
+    "resolve": 15,
+    "presence": 13,
+    "cunning": 11,
+    "physique": 16
+   },
+   "proficiency": 2,
+   "expertise": [
+    "battle_nerve"
+   ],
+   "proficient": [
+    "arms_and_armor",
+    "rallying_the_host",
+    "terrain_and_logistics"
+   ],
+   "familiarity": 3
+  },
+  "wulfhere_of_wiltshire": {
+   "name": "Wulfhere, Ealdorman of Wiltshire",
+   "role": "Ealdorman of Wiltshire, uneasy in his loyalty",
+   "attributes": {
+    "oration": 13,
+    "intellect": 12,
+    "resolve": 10,
+    "presence": 13,
+    "cunning": 14,
+    "physique": 13
+   },
+   "proficiency": 2,
+   "expertise": [],
+   "proficient": [
+    "intrigue_and_plot",
+    "kinship_ties",
+    "horsemanship"
+   ],
+   "familiarity": 2
+  },
+  "waerferth": {
+   "name": "Wærferth, Bishop of Worcester",
+   "role": "Bishop of Worcester, a Mercian scholar",
+   "attributes": {
+    "oration": 14,
+    "intellect": 17,
+    "resolve": 13,
+    "presence": 14,
+    "cunning": 12,
+    "physique": 9
+   },
+   "proficiency": 2,
+   "expertise": [
+    "chronicle_and_scripture"
+   ],
+   "proficient": [
+    "sermon_and_preaching",
+    "tongues_of_the_realm",
+    "statecraft_and_law"
+   ],
+   "familiarity": 2
+  },
+  "ubba": {
+   "name": "Ubba Ragnarsson",
+   "role": "Danish war-leader raiding the western coasts",
+   "attributes": {
+    "oration": 11,
+    "intellect": 11,
+    "resolve": 16,
+    "presence": 13,
+    "cunning": 13,
+    "physique": 17
+   },
+   "proficiency": 2,
+   "expertise": [
+    "arms_and_armor"
+   ],
+   "proficient": [
+    "rallying_the_host",
+    "blustering_threats",
+    "wilderness_endurance"
+   ],
+   "familiarity": 0
+  },
+  "aethelnoth": {
+   "name": "Æthelnoth, Ealdorman of Somerset",
+   "role": "Ealdorman of Somerset; knows the marshes",
+   "attributes": {
+    "oration": 11,
+    "intellect": 13,
+    "resolve": 15,
+    "presence": 12,
+    "cunning": 13,
+    "physique": 14
+   },
+   "proficiency": 2,
+   "expertise": [
+    "terrain_and_logistics"
+   ],
+   "proficient": [
+    "battle_nerve",
+    "wilderness_endurance",
+    "arms_and_armor"
+   ],
+   "familiarity": 2
+  },
+  "aethelred_of_canterbury": {
+   "name": "Æthelred, Archbishop of Canterbury",
+   "role": "Archbishop of Canterbury",
+   "attributes": {
+    "oration": 14,
+    "intellect": 15,
+    "resolve": 12,
+    "presence": 14,
+    "cunning": 11,
+    "physique": 9
+   },
+   "proficiency": 2,
+   "expertise": [
+    "sermon_and_preaching"
+   ],
+   "proficient": [
+    "statecraft_and_law",
+    "chronicle_and_scripture"
+   ],
+   "familiarity": 2
+  }
+ }
+}

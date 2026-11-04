@@ -971,7 +971,8 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
         return json.dumps(result), events
 
     if name == "request_check":
-        if inp.get("target_npc") and inp.get("skill") in negotiation.PERSUASION_SKILLS:
+        skill_attr = next((a for a, sk in system.SKILLS.items() if inp.get("skill") in sk), None)
+        if inp.get("target_npc") and skill_attr in ("presence", "oration"):
             nkey, nname = _npc_key(state, setting_key, inp["target_npc"])
             if negotiation.open_for(state, nkey):
                 return json.dumps({"error": f"A negotiation with {nname} is open: make this a negotiation_offer (list the demands it meets or dodges) instead of a separate check."}), events

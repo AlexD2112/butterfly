@@ -141,10 +141,10 @@ class TestAsks(unittest.TestCase):
     def test_being_talked_round_meets_their_resolve_and_the_size_of_the_ask(self):
         state = fresh_petrograd()
         dc, why = npcs.opposed_dc(state, "petrograd_1917", SYSTEM, "spiridonova", "presence", "personal_persuasion")
-        self.assertEqual(dc, 14)  # Resolve 18 (+4) beats her Presence-based persuasion (+2)
+        self.assertEqual(dc, 16)  # her will (Resolve +4, proficient willpower +2) beats her Presence-based persuasion (+2)
         self.assertIn("resolve", why)
         dc, why = npcs.opposed_dc(state, "petrograd_1917", SYSTEM, "spiridonova", "presence", "personal_persuasion", ask="major")
-        self.assertEqual(dc, 20)
+        self.assertEqual(dc, 22)
         self.assertIn("major ask", why)
         dc, _ = npcs.opposed_dc(state, "petrograd_1917", SYSTEM, "dan", "oration", "debate_and_public_argument")
         self.assertEqual(dc, 16)  # his debate (+6) is better than his Resolve (+1)

@@ -1,0 +1,250 @@
+{
+ "_comment": "NPC sheets (2026-11-03), read by npcs.py. The first 7 come from the stat blocks that used to sit in npcs.md (attributes, proficiency and expertise unchanged; proficient skills added); the rest are new design values on the same scale. familiarity 0-3 is how well the player character knows them at the start; it sets how much of the sheet the player can see.",
+ "sheets": {
+  "pompey": {
+   "name": "Gnaeus Pompeius Magnus",
+   "role": "Rome's greatest general; Caesar's ally in the triumvirate",
+   "attributes": {
+    "oration": 14,
+    "intellect": 14,
+    "resolve": 15,
+    "presence": 17,
+    "cunning": 13,
+    "physique": 16
+   },
+   "proficiency": 3,
+   "expertise": [
+    "military_exhortation",
+    "popularis_appeal"
+   ],
+   "proficient": [
+    "horsemanship_and_campaigning",
+    "patrician_bearing",
+    "logistics_and_supply"
+   ],
+   "familiarity": 2
+  },
+  "crassus": {
+   "name": "Marcus Licinius Crassus",
+   "role": "Richest man in Rome; the third triumvir",
+   "attributes": {
+    "oration": 12,
+    "intellect": 15,
+    "resolve": 13,
+    "presence": 13,
+    "cunning": 16,
+    "physique": 12
+   },
+   "proficiency": 3,
+   "expertise": [
+    "bribery_and_graft",
+    "provincial_administration"
+   ],
+   "proficient": [
+    "political_intrigue",
+    "patron_client_charm",
+    "reading_hidden_agendas"
+   ],
+   "familiarity": 3
+  },
+  "cato": {
+   "name": "Marcus Porcius Cato",
+   "role": "Leader of the optimates; incorruptible and immovable",
+   "attributes": {
+    "oration": 15,
+    "intellect": 16,
+    "resolve": 19,
+    "presence": 12,
+    "cunning": 9,
+    "physique": 13
+   },
+   "proficiency": 2,
+   "expertise": [
+    "unbending_will",
+    "roman_law_and_precedent"
+   ],
+   "proficient": [
+    "forensic_oratory",
+    "stoic_endurance",
+    "philosophy_and_rhetoric_theory"
+   ],
+   "familiarity": 3
+  },
+  "bibulus": {
+   "name": "Marcus Calpurnius Bibulus",
+   "role": "Caesar's fellow consul, watching the skies from his house",
+   "attributes": {
+    "oration": 11,
+    "intellect": 13,
+    "resolve": 12,
+    "presence": 10,
+    "cunning": 12,
+    "physique": 10
+   },
+   "proficiency": 2,
+   "expertise": [
+    "roman_law_and_precedent"
+   ],
+   "proficient": [
+    "gravitas_under_pressure",
+    "covert_correspondence"
+   ],
+   "familiarity": 3
+  },
+  "cicero": {
+   "name": "Marcus Tullius Cicero",
+   "role": "Consular orator, wavering between the triumvirs and the optimates",
+   "attributes": {
+    "oration": 19,
+    "intellect": 18,
+    "resolve": 13,
+    "presence": 15,
+    "cunning": 13,
+    "physique": 9
+   },
+   "proficiency": 3,
+   "expertise": [
+    "forensic_oratory",
+    "philosophy_and_rhetoric_theory"
+   ],
+   "proficient": [
+    "roman_law_and_precedent",
+    "covert_correspondence",
+    "patron_client_charm"
+   ],
+   "familiarity": 3
+  },
+  "clodius": {
+   "name": "Publius Clodius Pulcher",
+   "role": "Patrician seeking adoption into the plebs to become tribune",
+   "attributes": {
+    "oration": 15,
+    "intellect": 13,
+    "resolve": 14,
+    "presence": 14,
+    "cunning": 17,
+    "physique": 14
+   },
+   "proficiency": 2,
+   "expertise": [
+    "political_intrigue",
+    "contio_speechmaking"
+   ],
+   "proficient": [
+    "popularis_appeal",
+    "threats_and_coercion",
+    "bribery_and_graft"
+   ],
+   "familiarity": 2
+  },
+  "julia": {
+   "name": "Julia",
+   "role": "Caesar's daughter",
+   "attributes": {
+    "oration": 11,
+    "intellect": 14,
+    "resolve": 13,
+    "presence": 16,
+    "cunning": 12,
+    "physique": 9
+   },
+   "proficiency": 2,
+   "expertise": [
+    "marital_and_familial_alliance"
+   ],
+   "proficient": [
+    "patron_client_charm",
+    "reading_hidden_agendas"
+   ],
+   "familiarity": 3
+  },
+  "vatinius": {
+   "name": "Publius Vatinius",
+   "role": "Tribune of the plebs, Caesar's man in the assemblies",
+   "attributes": {
+    "oration": 12,
+    "intellect": 13,
+    "resolve": 13,
+    "presence": 11,
+    "cunning": 15,
+    "physique": 12
+   },
+   "proficiency": 2,
+   "expertise": [
+    "political_intrigue"
+   ],
+   "proficient": [
+    "contio_speechmaking",
+    "bribery_and_graft",
+    "threats_and_coercion"
+   ],
+   "familiarity": 3
+  },
+  "servilia": {
+   "name": "Servilia",
+   "role": "Cato's half-sister, mother of Brutus, Caesar's lover",
+   "attributes": {
+    "oration": 12,
+    "intellect": 16,
+    "resolve": 15,
+    "presence": 16,
+    "cunning": 17,
+    "physique": 9
+   },
+   "proficiency": 2,
+   "expertise": [
+    "political_intrigue"
+   ],
+   "proficient": [
+    "marital_and_familial_alliance",
+    "reading_hidden_agendas",
+    "covert_correspondence"
+   ],
+   "familiarity": 3
+  },
+  "lucullus": {
+   "name": "Lucius Licinius Lucullus",
+   "role": "Conqueror of the east, retired to his gardens and his grudge against Pompey",
+   "attributes": {
+    "oration": 13,
+    "intellect": 16,
+    "resolve": 12,
+    "presence": 15,
+    "cunning": 13,
+    "physique": 11
+   },
+   "proficiency": 3,
+   "expertise": [
+    "logistics_and_supply"
+   ],
+   "proficient": [
+    "patrician_bearing",
+    "provincial_administration",
+    "military_exhortation"
+   ],
+   "familiarity": 2
+  },
+  "ariovistus": {
+   "name": "Ariovistus",
+   "role": "King of the Suebi beyond the Rhine, 'friend of the Roman people'",
+   "attributes": {
+    "oration": 13,
+    "intellect": 12,
+    "resolve": 16,
+    "presence": 15,
+    "cunning": 14,
+    "physique": 16
+   },
+   "proficiency": 3,
+   "expertise": [
+    "military_exhortation"
+   ],
+   "proficient": [
+    "horsemanship_and_campaigning",
+    "threats_and_coercion",
+    "swordsmanship"
+   ],
+   "familiarity": 0
+  }
+ }
+}
