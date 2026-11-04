@@ -350,6 +350,12 @@
   .redo-scene { margin-top: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent, #b8954a); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .redo-scene:disabled { opacity: .5; cursor: default; }
   .redo-note { color: var(--muted); font-size: .9em; }
+  .ng-track { display: flex; gap: 4px; margin: 6px 0 4px; }
+  .ng-step { width: 26px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); }
+  .ng-step.on { background: var(--accent-2); opacity: .55; }
+  .ng-step.here { opacity: 1; }
+  .ng-demands { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .ng-demand.met { color: var(--good, #a6d872); }
   .resend-bar { margin-top: 8px; font-family: var(--font-ui); font-size: 13px; }
   #map-canvas .map-you { width: 14px; height: 14px; background: #f0d48a; border: 2px solid #1a1408; transform: rotate(45deg); box-shadow: 0 0 0 2px #f0d48a66, 0 0 10px #000; }
   #map-canvas .leaflet-control-attribution { background: rgba(14,21,18,.8); color: var(--muted); }
@@ -2511,6 +2517,12 @@ function renderMechanics(debugEvents) {
       const lines = extras.concat((ev.changes || []).map(renderChangeLine));
       return `<div class="line world-event">${label}${ev.reasoning ? ` — ${escapeHtml(ev.reasoning)}` : ''}<br>${lines.join('<br>')}</div>`;
     }
+    if (ev.type === 'negotiation') {
+      const r = ev.result || {};
+      const bits = [r.position_before && r.position_after ? `${r.position_before} → ${r.position_after}` : (ev.status || ''),
+        r.dc_note || '', (r.still_wanted || []).length ? `still wants: ${r.still_wanted.join('; ')}` : ''].filter(Boolean);
+      return `<div class="line">NEGOTIATION (${escapeHtml(ev.operation.replace(/_/g, ' '))}) — ${escapeHtml(ev.npc)}: ${escapeHtml(bits.join(' · '))}</div>`;
+    }
     if (ev.type === 'gm_retry') {
       return `<div class="line">GM RETRY — no scene was written after the result; asked again with tools off (${ev.wrote ? 'it wrote one' : 'still nothing'})</div>`;
     }
@@ -2576,6 +2588,7 @@ function renderPlayerLine(text) {
   return `<div class="player do"><span class="tag">Do</span><span>${escapeHtml(text)}</span></div>`;
 }
 
+const NEG_WORDS = { '-2': 'hostile', '-1': 'wary', 0: 'listening', 1: 'interested', 2: 'close to a deal', 3: 'agreed' };
 function renderOutcomeCards(debugEvents, fresh) {
   const cards = [];
   const net = {};          // key -> net change this turn, for the "what changed" chips
@@ -2595,6 +2608,18 @@ function renderOutcomeCards(debugEvents, fresh) {
         <div class="oc-body"><div class="oc-title">${DEGREE_LABEL[deg] || capFirst(prettyKey(deg))}</div>
         <div class="oc-sub">${capFirst(ev.attribute || '')}${skill} · ${ev.roll} ${fmtMod(ev.modifier || 0)} = ${ev.total} vs ${ev.dc}${ev.at_stake ? ` · risking ${prettyKey(ev.at_stake)}` : ''}</div>
         ${ev.description ? `<div class="oc-desc">${escapeHtml(ev.description)}</div>` : ''}</div></div>`);
+    }
+    if (ev.type === 'negotiation' && ev.demands) {
+      // Negotiation track (2026-11-03): where they stand, and what they still want.
+      const goal = ev.goal || 3, pos = ev.position ?? 0;
+      const steps = [];
+      for (let i = -2; i <= goal; i++) steps.push(`<span class="ng-step${i <= pos ? ' on' : ''}${i === pos ? ' here' : ''}" title="${escapeHtml(NEG_WORDS[i] || '')}"></span>`);
+      const demands = ev.demands.map(d => `<span class="ng-demand${d.met ? ' met' : ''}">${d.met ? '&#10003;' : '&#9675;'} ${escapeHtml(d.text)}</span>`).join('');
+      const state = ev.status === 'agreed' ? 'Agreed' : ev.status === 'closed' ? 'Talks closed' : capFirst(NEG_WORDS[pos] || '');
+      cards.push(`<div class="oc"><div class="oc-icon">&#9741;</div><div class="oc-body">
+        <div class="oc-title">${escapeHtml(ev.npc)} — ${escapeHtml(state)}</div>
+        <div class="ng-track">${steps.join('')}</div>
+        <div class="oc-sub ng-demands">${demands}</div></div></div>`);
     }
     if (ev.type === 'operation' && ev.result && !ev.result.error) {
       const r = ev.result;

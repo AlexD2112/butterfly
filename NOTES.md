@@ -1,3 +1,19 @@
+# Negotiations tracked in code (2026-11-03)
+
+- Reported again after PR #12: Spiridonova still left on the bell, a generous offer that met her
+  terms failed on a 5 and cost 4 alliance points, and each line was judged alone.
+- negotiation.py: state["negotiations"][npc] = position (-2 hostile .. 3 agreed, start from trust and
+  rivalry), goal by stakes (minor 1 / significant 2 / major 3), demands written down at opening.
+  Tools: open_negotiation, negotiation_offer (meets / dodges demand ids: -2 / +2 DC each, from the
+  NPC's sheet DC or 12), negotiation_update (raise or drop demands), close_negotiation (only:
+  player_walked_away, time_passed, events_intervened). Movement: critical +2, strong/success/at-cost
+  +1 (at cost: GM adds a demand), failure 0, critical failure -1 (and -1 trust). No deal while a
+  demand is unmet unless the roll is a critical. Agreement: +1 trust; at_stake moves 2 per step,
+  +4 on agreement. Days passing closes open talks.
+- While open: the prompt says the NPC STAYS; request_check with a persuasion skill against them is
+  refused (use negotiation_offer). Works for any setting, sheet or not.
+- Card in the log: position track and demands with ticks.
+
 # Undo turns played before snapshots existed (2026-11-03)
 
 - The Spiridonova turn predates the state snapshot, so it couldn't be resent. engine.undo_turn_from_events
