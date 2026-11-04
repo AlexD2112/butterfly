@@ -2668,6 +2668,12 @@ function renderOutcomeCards(debugEvents, fresh) {
         <div class="ng-track">${steps.join('')}</div>
         <div class="oc-sub ng-demands">${demands}</div></div></div>`);
     }
+    if (ev.type === 'sitting') {
+      // Sittings (2026-11-03): the body adjourned, isn't sitting, or put the question on the agenda.
+      const title = ev.reason === 'tabled' ? `On the agenda for ${escapeHtml(ev.tabled_until || '')}` : ev.reason === 'sitting_over' ? 'The sitting adjourns' : 'Not in session';
+      cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body"><div class="oc-title">${title}</div>
+        <div class="oc-sub">${escapeHtml(ev.motion || '')} · ${escapeHtml(ev.body || '')}</div></div></div>`);
+    }
     if (ev.type === 'operation' && ev.result && !ev.result.error) {
       const r = ev.result;
       if (ev.operation === 'call_vote') {
