@@ -323,10 +323,16 @@
         "influence_resource": "soviet_authority",
         "factions": [
           {
-            "name": "Bolsheviks",
-            "seats": 400,
+            "name": "Bolsheviks (district militants)",
+            "seats": 230,
             "lean": 3,
-            "note": "Swelling since Kornilov. Kamenev leads the fraction and wants to use the majority carefully; the district organizers want to use it now."
+            "note": "The Vyborg and factory-district men and the Military Organization. Want the majority used now; distrust deals with Mensheviks."
+          },
+          {
+            "name": "Bolsheviks (Kamenev's moderates)",
+            "seats": 170,
+            "lean": 2,
+            "note": "Follow Kamenev's lead in the fraction: a broad socialist coalition, no adventures, wait for the Constituent Assembly. Loyal to the party, not to every motion."
           },
           {
             "name": "Non-party soldiers' delegates",

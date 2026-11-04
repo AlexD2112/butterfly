@@ -580,6 +580,7 @@ def api_character_state(character_id):
     catalog = mechanics.load_catalog(row["setting_key"])
     if catalog:
         mechanics.ensure_always_present(state, catalog)
+        mechanics.split_old_blocs(state, catalog)
     geography.ensure_initialized(state, geography.load(row["setting_key"]))
     return jsonify({"state": _client_state(state, row["setting_key"]), "setting_key": row["setting_key"], "system_key": row["system_key"]})
 

@@ -1,3 +1,20 @@
+# Contested votes and elections (2026-11-03)
+
+- Reported: every motion carried ~600-350 with the player's side voting as one, including a
+  vice-chair for Martov; "turning everything into binary votes". Lean toward the player decided it
+  all (Bolsheviks lean 3 -> 98% yes on anything).
+- call_vote now requires bloc_stances (-2..+2 per bloc: does this motion serve them?). p = 0.5 +
+  0.08 x lean + 0.15 x stance (+ speech, influence). Blocs whose camp and interests disagree split
+  (noise 0.15, +8% abstain). A question put cold finds 22% of a bloc undecided (11% on the second
+  vote, 5% on the third, reuse motion_key); undecided go 50% abstain / 35% no / 15% yes. A
+  successful speech halves the undecided. Missing stances count as 0 and are reported. With honest
+  stances the 9 September no-confidence vote comes out about 490-420 (historically 519-414).
+- call_election: several candidates, bloc_support per bloc per candidate, open or secret ballot
+  (secret loosens discipline), player_backs nudges the player's camp. Majority of votes cast or
+  nobody is elected this round; rounds counted per office. Card shows the count per candidate.
+- The Soviet's Bolshevik bloc is split: district militants 230 (lean 3) / Kamenev's moderates 170
+  (lean 2). Old saves are split the same way on load (catalog split_blocs).
+
 # Other characters roll; group rolls; reroll (2026-11-03)
 
 - Reported: the player let Kamenev bring the motion forward and the dice rolled the player's

@@ -356,6 +356,29 @@ def validate_data(primitive, data, previous=None):
     return validator(data, previous)
 
 
+def split_old_blocs(state, catalog):
+    """Saves from before a bloc was split in the catalog (split_blocs: {old name: [[new name, share,
+    lean offset, note]...]}) get the same split, seats kept. 2026-11-03: the Petrograd Soviet's single
+    400-seat Bolshevik bloc became two, so the fraction stops voting as one man."""
+    changes = []
+    for iid, m in (state.get("mechanics") or {}).items():
+        rule = ((catalog or {}).get(m.get("type_key")) or {}).get("split_blocs") if isinstance((catalog or {}).get(m.get("type_key")), dict) else None
+        if not rule or m.get("render_primitive") != "seat_chart":
+            continue
+        factions = m["data"]["factions"]
+        for old, parts in rule.items():
+            i = next((i for i, f in enumerate(factions) if f["name"] == old), None)
+            if i is None:
+                continue
+            f = factions[i]
+            seats = [int(round(f["seats"] * share)) for _, share, _, _ in parts]
+            seats[-1] = f["seats"] - sum(seats[:-1])
+            factions[i:i + 1] = [{"name": name, "seats": n, "lean": max(-3, min(3, f.get("lean", 0) + off)), "note": note}
+                                 for (name, _, off, note), n in zip(parts, seats)]
+            changes.append({"kind": "mechanic_updated", "instance_id": iid, "note": f"split '{old}'"})
+    return changes
+
+
 def ensure_always_present(state, catalog):
     """Creates any catalog type marked always_present that a save doesn't have yet (2026-11-03: the
     country-wide order of battle, added after some campaigns had started)."""

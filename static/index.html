@@ -2675,7 +2675,14 @@ function renderOutcomeCards(debugEvents, fresh) {
         cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body">
           <div class="oc-title">${escapeHtml(r.motion || 'Vote')} — ${r.passed ? 'carried' : 'defeated'}</div>
           <div class="tally"><span class="yes" style="width:${100 * r.yes / total}%"></span><span class="no" style="width:${100 * r.no / total}%"></span><span class="ab" style="width:${100 * r.abstain / total}%"></span></div>
-          <div class="oc-sub">${r.yes} for · ${r.no} against · ${r.abstain} abstained · ${escapeHtml(r.body || '')}</div></div></div>`);
+          <div class="oc-sub">${r.yes} for · ${r.no} against · ${r.abstain} abstained · ${escapeHtml(r.body || '')}${r.round > 1 ? ` · vote ${r.round}` : ''}</div>
+          ${(r.blocs || []).filter(b => b.split).map(b => `<div class="oc-sub">Split: ${escapeHtml(b.name)} ${b.yes}–${b.no}${b.abstain ? `, ${b.abstain} abstained` : ''}</div>`).join('')}</div></div>`);
+      } else if (ev.operation === 'call_election') {
+        const total = Math.max(1, r.cast || 0);
+        const rows = (r.results || []).map(x => `<div class="oc-sub">${escapeHtml(x.candidate)} — ${x.votes} (${Math.round(100 * x.votes / total)}%)</div>`).join('');
+        cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body">
+          <div class="oc-title">${escapeHtml(r.office)}, ballot ${r.round} (${escapeHtml(r.ballot)}) — ${r.elected ? `${escapeHtml(r.elected)} elected` : 'no majority'}</div>
+          ${rows}<div class="oc-sub">${r.abstain} abstained</div></div></div>`);
       } else if (ev.operation === 'sway_unit') {
         cards.push(`<div class="oc"><div class="oc-icon">&#9873;</div><div class="oc-body">
           <div class="oc-title">${escapeHtml(r.unit)}: ${LOYALTY_WORDS[r.loyalty_after] || r.loyalty_after}</div>
