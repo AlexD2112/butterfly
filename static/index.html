@@ -371,9 +371,21 @@
   #map-canvas .leaflet-control-attribution a { color: var(--accent-2); }
 
   #model-select { max-width: 210px; text-overflow: ellipsis; }
-  .seat-party { margin: 4px 0 6px; }
-  .seat-party-head .seat-legend-name { font-weight: 600; }
-  .seat-sub { padding-left: 16px; }
+  .vote-groups { margin-top: 6px; font-size: 12px; }
+  .vg-row { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0; color: var(--muted); }
+  .vg-party { color: inherit; font-weight: 600; margin-top: 3px; }
+  .vg-wing { padding-left: 14px; }
+  .vg-name em { font-style: normal; font-size: 10px; color: #c98a5a; }
+  .vg-n { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .vg-n .vy { color: #7fa86a; } .vg-n .vn { color: #c46a5a; }
+  .seat-group { padding: 4px 0; border-top: 1px solid var(--border, rgba(255,255,255,0.08)); }
+  .seat-party { border-left: 3px solid; padding-left: 8px; margin: 2px 0; }
+  .seat-party-head .seat-legend-name { font-weight: 600; font-size: 13.5px; }
+  .seat-party-note { color: var(--muted); font-size: 11px; padding: 0 0 4px; font-style: italic; }
+  .seat-wings { padding-left: 12px; }
+  .seat-bar-group { display: flex; height: 100%; }
+  .seat-bar-group + .seat-bar-group { border-left: 2px solid var(--bg, #111); }
+  .seat-strain { white-space: nowrap; font-size: 10px; color: #c98a5a; border: 1px solid #c98a5a55; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
   #pace-select { max-width: 120px; }
   @media (max-width: 640px) {
     header { padding: 8px 12px; }
@@ -1680,41 +1692,63 @@ function colorForName(name) {
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
   return SEAT_COLORS[hash % SEAT_COLORS.length];
 }
+// Colours for one chart (2026-11-06): each party gets one hue and its wings shades of it; no two
+// groups share a colour (the old per-name hash gave both Bolshevik wings the same brown).
+function shadeHex(hex, t) {
+  const n = parseInt(hex.slice(1), 16), mix = c => Math.round(t >= 0 ? c + (255 - c) * t : c * (1 + t));
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+function seatColors(factions) {
+  const groups = partyGroups(factions);
+  const used = new Set(), colors = {};
+  groups.forEach(g => {
+    let i = 0, hash = 0;
+    for (let k = 0; k < g.name.length; k++) hash = (hash * 31 + g.name.charCodeAt(k)) >>> 0;
+    while (used.has((hash + i) % SEAT_COLORS.length) && i < SEAT_COLORS.length) i++;
+    const idx = (hash + i) % SEAT_COLORS.length;
+    used.add(idx);
+    const base = SEAT_COLORS[idx];
+    const shades = g.wings.length === 1 ? [0] : g.wings.map((_, j) => -0.22 + 0.5 * j / (g.wings.length - 1));
+    g.wings.forEach((w, j) => { colors[w.name] = shadeHex(base, shades[j]); });
+    colors['party:' + g.name] = base;
+  });
+  return colors;
+}
 function renderSeatChart(data) {
   const factions = data.factions || [];
   const total = data.body_size || factions.reduce((s, f) => s + (f.seats || 0), 0) || 1;
-  const bar = factions.map(f => {
-    const color = colorForName(f.name);
-    const pct = Math.max(0, (f.seats || 0) / total * 100);
-    return `<div class="seat-bar-seg" style="width:${pct}%;background:${color}" title="${escapeHtml(f.name)}: ${f.seats}/${total}"></div>`;
-  }).join('');
-  // Parties first, then their wings (2026-11-03): a bloc with a "party" is shown under a party header
-  // with the party's total, so the Bolsheviks read as one fraction of 400 with two moods inside it.
+  const colors = seatColors(factions);
+  const groups = partyGroups(factions);
+  const strain = ((data.strain || {}).wings) || {};
+  // the bar runs party by party, wings side by side, a gap between parties
+  const bar = groups.map(g => `<div class="seat-bar-group" style="width:${100 * g.wings.reduce((n, w) => n + (w.seats || 0), 0) / total}%">${
+    g.wings.map(w => `<div class="seat-bar-seg" style="flex:${w.seats || 0};background:${colors[w.name]}" title="${escapeHtml(w.name)}: ${w.seats}/${total}"></div>`).join('')}</div>`).join('');
   const leanText = f => typeof f.lean === 'number' ? `<span class="seat-lean">${data.lean_toward ? (f.lean > 0 ? '+' : '') + f.lean : leanLabel(f.lean)}</span>` : '';
   const row = (f, sub) => `
-    <div class="seat-legend-row${sub ? ' seat-sub' : ''}">
-      <span class="seat-legend-swatch" style="background:${colorForName(f.name)}"></span>
-      <span class="seat-legend-name">${escapeHtml(sub && f.name.startsWith(f.party) ? f.name.slice(f.party.length).replace(/^[\s(–-]+|\)$/g, '') || f.name : f.name)}</span>
-      <span class="seat-legend-count">${f.seats} / ${total}${leanText(f)}</span>
+    <div class="seat-legend-row">
+      <span class="seat-legend-swatch" style="background:${colors[f.name]}"></span>
+      <span class="seat-legend-name">${escapeHtml(sub ? wingName(f) : f.name)}${(strain[f.name] || 0) >= 2 ? ' <span class="seat-strain" title="Has voted against its own party several times">at odds with the party</span>' : ''}</span>
+      <span class="seat-legend-count">${f.seats}${leanText(f)}</span>
     </div>
-    ${f.note ? `<div class="seat-legend-note${sub ? ' seat-sub' : ''}">${escapeHtml(f.note)}</div>` : ''}`;
-  const seen = new Set();
-  const legend = factions.map(f => {
-    if (!f.party) return row(f, false);
-    if (seen.has(f.party)) return '';
-    seen.add(f.party);
-    const wings = factions.filter(g => g.party === f.party);
-    const seats = wings.reduce((n, g) => n + (g.seats || 0), 0);
-    const note = (data.parties || {})[f.party];
-    return `<div class="seat-party">
-      <div class="seat-legend-row seat-party-head"><span class="seat-legend-name">${escapeHtml(f.party)}</span><span class="seat-legend-count">${seats} / ${total}</span></div>
-      ${note ? `<div class="seat-legend-note">${escapeHtml(note)}</div>` : ''}
-      ${wings.map(g => row(g, true)).join('')}
+    ${f.note ? `<div class="seat-legend-note">${escapeHtml(f.note)}</div>` : ''}`;
+  const legend = groups.map(g => {
+    if (g.single) {
+      const f = g.wings[0];
+      return `<div class="seat-group">${row(f, false)}${f.party && f.party !== f.name ? `<div class="seat-legend-note">Party: ${escapeHtml(f.party)}</div>` : ''}</div>`;
+    }
+    const seats = g.wings.reduce((n, w) => n + (w.seats || 0), 0);
+    const note = (data.parties || {})[g.name];
+    return `<div class="seat-group seat-party" style="border-left-color:${colors['party:' + g.name]}">
+      <div class="seat-legend-row seat-party-head"><span class="seat-legend-name">${escapeHtml(g.name)}</span><span class="seat-legend-count">${seats} / ${total} · ${Math.round(100 * seats / total)}%</span></div>
+      ${note ? `<div class="seat-party-note">${escapeHtml(note)}</div>` : ''}
+      <div class="seat-wings">${g.wings.map(w => row(w, true)).join('')}</div>
     </div>`;
   }).join('');
-  const lastVote = data.last_vote
-    ? `<div class="seat-last-vote">Last vote (${escapeHtml(data.last_vote.date || '')}): “${escapeHtml(data.last_vote.motion || '')}” — <strong>${data.last_vote.passed ? 'passed' : 'failed'}</strong> ${data.last_vote.yes}–${data.last_vote.no}${data.last_vote.abstain ? `, ${data.last_vote.abstain} abstained` : ''}</div>`
-    : '';
+  const lv = data.last_vote;
+  const lastVote = !lv ? '' : lv.kind === 'election'
+    ? `<div class="seat-last-vote">Last ballot (${escapeHtml(lv.date || '')}): ${escapeHtml(lv.motion || '')} — <strong>${lv.elected ? `${escapeHtml(lv.elected)} elected` : 'no majority'}</strong>${!lv.elected && lv.leader ? `, ${escapeHtml(lv.leader)} led with ${lv.yes} of ${lv.cast}` : ''}</div>`
+    : `<div class="seat-last-vote">Last vote (${escapeHtml(lv.date || '')}): “${escapeHtml(lv.motion || '')}” — ${/^Election:/.test(lv.motion || '') ? `<strong>${lv.passed ? 'elected' : 'no majority'}</strong>` : `<strong>${lv.passed ? 'passed' : 'failed'}</strong> ${lv.yes}–${lv.no}${lv.abstain ? `, ${lv.abstain} abstained` : ''}`}</div>`;
   const axis = data.lean_toward ? `<div class="force-scale">Lean shows support for ${escapeHtml(data.lean_toward)}.</div>` : '';
   return `${axis}<div class="seat-bar">${bar}</div>${legend}${lastVote}`;
 }
@@ -1729,26 +1763,36 @@ function partyGroups(blocs) {
       byParty[b.party].wings.push(b);
     } else groups.push({ name: b.name, wings: [b], single: true });
   });
+  groups.forEach(g => { if (g.wings.length === 1) g.single = true; });  // a party down to one bloc reads as that bloc
   return groups;
 }
 function wingName(b) {
-  return b.party && b.name.startsWith(b.party) ? (b.name.slice(b.party.length).replace(/^[\s(–-]+|\)$/g, '') || b.name) : b.name;
+  if (!(b.party && b.name.startsWith(b.party))) return b.name;
+  const rest = b.name.slice(b.party.length).replace(/^[\s(–-]+|\)$/g, '');
+  return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : b.name;
 }
 function partyVoteLines(blocs) {
-  const fmt = b => `${b.yes}–${b.no}${b.abstain ? `, ${b.abstain} abst.` : ''}`;
-  return partyGroups(blocs).map(g => {
-    if (g.single) return g.wings[0].split ? `<div class="oc-sub">Split: ${escapeHtml(g.name)} ${fmt(g.wings[0])}</div>` : '';
+  // every party and bloc, party first and its wings after (2026-11-06): the card used to list only split blocs
+  const fmt = b => `<span class="vy">${b.yes}</span>–<span class="vn">${b.no}</span>${b.abstain ? ` <span class="va">${b.abstain} abst.</span>` : ''}`;
+  return `<div class="vote-groups">${partyGroups(blocs).map(g => {
+    if (g.single) {
+      const b = g.wings[0];
+      return `<div class="vg-row"><span class="vg-name">${escapeHtml(b.name)}${b.split ? ' <em>split</em>' : ''}</span><span class="vg-n">${fmt(b)}</span></div>`;
+    }
     const sum = g.wings.reduce((a, b) => ({ yes: a.yes + b.yes, no: a.no + b.no, abstain: a.abstain + b.abstain }), { yes: 0, no: 0, abstain: 0 });
-    return `<div class="oc-sub">${escapeHtml(g.name)} ${fmt(sum)} (${g.wings.map(b => `${escapeHtml(wingName(b))} ${fmt(b)}`).join('; ')})</div>`;
-  }).join('');
+    return `<div class="vg-row vg-party"><span class="vg-name">${escapeHtml(g.name)}</span><span class="vg-n">${fmt(sum)}</span></div>` +
+      g.wings.map(b => `<div class="vg-row vg-wing"><span class="vg-name">${escapeHtml(wingName(b))}${b.split ? ' <em>split</em>' : ''}</span><span class="vg-n">${fmt(b)}</span></div>`).join('');
+  }).join('')}</div>`;
 }
 function partyBallotLines(blocs, cands) {
-  return partyGroups(blocs).filter(g => !g.single).map(g => {
-    const line = b => cands.map(c => `${escapeHtml(c)} ${(b.votes || {})[c] || 0}`).join(', ');
+  const line = b => cands.map(c => `${escapeHtml(c)} ${(b.votes || {})[c] || 0}`).join(' · ');
+  return `<div class="vote-groups">${partyGroups(blocs).map(g => {
+    if (g.single) return `<div class="vg-row"><span class="vg-name">${escapeHtml(g.wings[0].name)}</span><span class="vg-n">${line(g.wings[0])}</span></div>`;
     const sum = { votes: {} };
     g.wings.forEach(b => cands.forEach(c => { sum.votes[c] = (sum.votes[c] || 0) + ((b.votes || {})[c] || 0); }));
-    return `<div class="oc-sub">${escapeHtml(g.name)}: ${line(sum)} (${g.wings.map(b => `${escapeHtml(wingName(b))}: ${line(b)}`).join('; ')})</div>`;
-  }).join('');
+    return `<div class="vg-row vg-party"><span class="vg-name">${escapeHtml(g.name)}</span><span class="vg-n">${line(sum)}</span></div>` +
+      g.wings.map(b => `<div class="vg-row vg-wing"><span class="vg-name">${escapeHtml(wingName(b))}</span><span class="vg-n">${line(b)}</span></div>`).join('');
+  }).join('')}</div>`;
 }
 
 function leanLabel(lean) {
@@ -2733,6 +2777,15 @@ function renderOutcomeCards(debugEvents, fresh) {
         <div class="oc-title">${escapeHtml(ev.npc)} — ${escapeHtml(state)}</div>
         <div class="ng-track">${steps.join('')}</div>
         <div class="oc-sub ng-demands">${demands}</div></div></div>`);
+    }
+    if (ev.type === 'blocs' && !ev.refused) {
+      // reorganize_blocs (2026-11-06): a change in who sits where (a refused change stays off the card)
+      const what = ev.action === 'move_delegates' ? `${ev.seats} delegates: ${escapeHtml(ev.from)} → ${escapeHtml(ev.to)}`
+        : ev.action === 'new_wing' ? `${escapeHtml(ev.party)}: a new wing, ${escapeHtml(ev.name)} (${ev.seats})`
+        : ev.action === 'merge_wings' ? `${escapeHtml(ev.from)} merges into ${escapeHtml(ev.into)}`
+        : ev.action === 'break_away' ? `${escapeHtml(ev.bloc)} breaks with ${escapeHtml(ev.old_party || '')}` : `${escapeHtml(ev.bloc)} organises as ${escapeHtml(ev.new_party || '')}`;
+      cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body"><div class="oc-title">${what}</div>
+        <div class="oc-sub">${escapeHtml(ev.cause || '')} · ${escapeHtml(ev.body || '')}</div></div></div>`);
     }
     if (ev.type === 'debate') {
       // Debate (2026-11-03): one speech in a debate and how the room took it.

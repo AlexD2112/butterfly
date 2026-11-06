@@ -12,10 +12,10 @@
     ],
     "data_shape": {
       "body_size": "integer - total voting delegates (must equal the sum of seats)",
-      "factions": "list of {name, seats, lean -3..+3, note, party?} - party groups sub-blocs under one party (e.g. two Bolshevik wings)",
+      "factions": "list of {name, seats, lean -3..+3, note, party?} - party groups wings under one party (Bolsheviks, SRs, Mensheviks). Party membership is fixed after creation: only reorganize_blocs changes it.",
       "influence_resource": "fixed: the resource whose value nudges persuadable blocs (soviet_authority)"
     },
-    "sourcing_note": "Anchors: on 31 August 1917 the Petrograd Soviet passed a Bolshevik resolution on power for the first time, and on 9 September (Julian) a Bolshevik motion of no confidence in the Menshevik-SR presidium carried - commonly given as 519 to 414 with 67 abstentions - after which Chkheidze's presidium resigned; Trotsky was elected chairman on 25 September. The bloc sizes below are a reasoned reconstruction of a ~1,000-delegate plenum consistent with that 9 September tally (Bolshevik core plus sympathetic non-party soldiers and Left SRs on one side; defensist Mensheviks and mainstream SRs on the other; Menshevik-Internationalists in between), not a recorded roll call. Leans are design values: with no speech and average authority, the no-confidence motion passes most of the time but not always. 2026-11-03: the Bolshevik fraction is split into two blocs (district militants / Kamenev's moderates) - a design reconstruction of the real division in the fraction, so its votes aren't monolithic.",
+    "sourcing_note": "Anchors: on 31 August 1917 the Petrograd Soviet passed a Bolshevik resolution on power for the first time, and on 9 September (Julian) a Bolshevik motion of no confidence in the Menshevik-SR presidium carried - commonly given as 519 to 414 with 67 abstentions - after which Chkheidze's presidium resigned; Trotsky was elected chairman on 25 September. The bloc sizes below are a reasoned reconstruction of a ~1,000-delegate plenum consistent with that 9 September tally (Bolshevik core plus sympathetic non-party soldiers and Left SRs on one side; defensist Mensheviks and mainstream SRs on the other; Menshevik-Internationalists in between), not a recorded roll call. Leans are design values: with no speech and average authority, the no-confidence motion passes most of the time but not always. 2026-11-03: the Bolshevik fraction is split into two blocs (district militants / Kamenev's moderates) - a design reconstruction of the real division in the fraction, so its votes aren't monolithic. 2026-11-06: the SRs (leadership / Left SRs) and Mensheviks (defensists / Martov's Internationalists) are parties with wings too: in September 1917 both were still formally one party each; the Left SRs were expelled after October and the Menshevik-Internationalists stayed inside their party.",
     "seed_data": {
       "body_size": 1000,
       "influence_resource": "soviet_authority",
@@ -44,29 +44,35 @@
           "name": "Left Socialist-Revolutionaries",
           "seats": 70,
           "lean": 1,
-          "note": "Breaking from the SR leadership over land and the war. Natural allies, but they want to be partners, not followers."
-        },
-        {
-          "name": "Menshevik-Internationalists",
-          "seats": 55,
-          "lean": 0,
-          "note": "Martov's people. Agree with much of the critique, fear a one-party seizure. Persuadable by argument, not by pressure."
+          "note": "Breaking from the SR leadership over land and the war. Natural allies, but they want to be partners, not followers.",
+          "party": "Socialist-Revolutionaries"
         },
         {
           "name": "Socialist-Revolutionaries (leadership)",
           "seats": 180,
           "lean": -2,
-          "note": "Chernov's and Avksentiev's party machine, still tied to coalition with the government."
+          "note": "Chernov's and Avksentiev's party machine, still tied to coalition with the government.",
+          "party": "Socialist-Revolutionaries"
+        },
+        {
+          "name": "Menshevik-Internationalists",
+          "seats": 55,
+          "lean": 0,
+          "note": "Martov's people. Agree with much of the critique, fear a one-party seizure. Persuadable by argument, not by pressure.",
+          "party": "Mensheviks"
         },
         {
           "name": "Mensheviks (defensist)",
           "seats": 155,
           "lean": -3,
-          "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument."
+          "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument.",
+          "party": "Mensheviks"
         }
       ],
       "parties": {
-        "Bolsheviks": "The Bolshevik fraction: 400 delegates since the Kornilov affair. One party in the hall, two moods inside it."
+        "Bolsheviks": "The Bolshevik fraction: 400 delegates since the Kornilov affair. One party in the hall, two moods inside it.",
+        "Socialist-Revolutionaries": "The Party of Socialist-Revolutionaries: 250 delegates, the biggest party in Russia, held together mostly by its name. The Left SRs vote with the Bolsheviks more often than with their own Central Committee.",
+        "Mensheviks": "The RSDLP (Mensheviks): 210 delegates, formally one party. Dan and Tsereteli's defensists run it; Martov's Internationalists fight the war and the coalition from inside it."
       }
     },
     "split_blocs": {
@@ -90,6 +96,14 @@
       "votes_per_sitting": 3,
       "major_needs_tabling": true,
       "_note": "The plenum met every few days in autumn 1917; the no-confidence vote (9 Sept) and the new presidium (25 Sept) were separate sittings over two weeks apart."
+    },
+    "party_of": {
+      "Bolsheviks (district militants)": "Bolsheviks",
+      "Bolsheviks (Kamenev's moderates)": "Bolsheviks",
+      "Left Socialist-Revolutionaries": "Socialist-Revolutionaries",
+      "Socialist-Revolutionaries (leadership)": "Socialist-Revolutionaries",
+      "Menshevik-Internationalists": "Mensheviks",
+      "Mensheviks (defensist)": "Mensheviks"
     }
   },
   "petrograd_garrison": {

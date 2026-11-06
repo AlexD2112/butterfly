@@ -225,7 +225,17 @@ def validate_seat_chart(data, previous=None):
                 notes.append(f"{f['name']} lean {prev_lean}->{lean} limited to {stepped}")
                 lean = stepped
         clean = {"name": f["name"], "seats": seats, "lean": lean, "note": str(f.get("note", ""))}
-        party = f.get("party") or (prev or {}).get("party")
+        # Party membership (2026-11-06): set when the chart is created; after that only reorganize_blocs
+        # changes it - an update can't move a bloc between parties or invent a wing.
+        if previous is None:
+            party = f.get("party")
+        else:
+            party = (prev or {}).get("party")
+            if f.get("party") and f.get("party") != party:
+                notes.append(f"{f['name']}: party change to '{f.get('party')}' ignored (use reorganize_blocs)")
+        if previous is not None and prev is None and f["name"] in {p.get("party") for p in previous.get("factions", [])}:
+            errors.append(f"'{f['name']}' is a party with wings, not a bloc; change its wings, or use reorganize_blocs")
+            continue
         if party:
             clean["party"] = str(party)  # a sub-group of a party (2026-11-03): shown and addressed under it
         clean_factions.append(clean)
@@ -255,10 +265,10 @@ def validate_seat_chart(data, previous=None):
             clean[key] = data[key]
     # Code-owned bookkeeping (2026-11-03): sittings, agenda, debates, ballot rounds - an update from the
     # GM never resets these.
-    for key in ("motion_rounds", "election_rounds", "sitting", "tabled", "debates", "parties"):
+    for key in ("motion_rounds", "election_rounds", "sitting", "tabled", "debates", "parties", "strain", "reorg"):
         if previous is not None and key in previous:
             clean[key] = previous[key]
-        elif key == "parties" and isinstance(data.get("parties"), dict):
+        elif previous is None and key == "parties" and isinstance(data.get("parties"), dict):
             clean[key] = {str(k): str(v) for k, v in data["parties"].items()}
     return clean, errors, notes
 
@@ -390,6 +400,8 @@ def split_old_blocs(state, catalog):
             for old, parts in rule.items():
                 if not f.get("party") and f["name"] in {p[0] for p in parts}:
                     f["party"] = old
+    import parties  # 2026-11-06: the other parties' wings, notes, wings sitting together
+    changes += parties.migrate(state, catalog)
     return changes
 
 

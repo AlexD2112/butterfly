@@ -27,6 +27,7 @@ import geography
 import couriers
 import sittings
 import debate
+import parties
 import knowledge
 import mechanics
 import negotiation
@@ -250,6 +251,9 @@ def build_system_prompt(state, setting_key, system_key, extra_context=None, allo
         negotiation_section += "\n\n# " + mail_text
     if any((m or {}).get("render_primitive") == "seat_chart" for m in (state.get("mechanics") or {}).values()):
         negotiation_section += "\n\n# " + debate.prompt_section(state)
+        party_text = parties.prompt_lines(state)
+        if party_text:
+            negotiation_section += "\n\n# " + party_text
     npc_section = ""
     if npc_sheets_mod.load(setting_key):
         digest.pop("npc_knowledge", None)
@@ -880,6 +884,7 @@ def build_tool_specs(system, mechanics_catalog, dyn, allow_time_advance, geo=Non
             specs.append(vote)
             specs.append(operations.election_tool_spec())
             specs.append(debate.SPEC)
+            specs.append(parties.SPEC)
         if "forces" in primitives:
             specs.append(operations.sway_tool_spec())
             conf = operations.confrontation_tool_spec()
@@ -1165,6 +1170,14 @@ def handle_tool_call(tc, state, system, resource_schema, mechanics_catalog, dyn,
             if inp.get("urgency"):
                 inp["threshold"] = "two_thirds"
             sittings.record(state, chart, inp, kind)
+
+    if name == "reorganize_blocs" and mechanics_catalog:
+        chart = (state.get("mechanics") or {}).get(inp.get("instance_id"))
+        if not chart or chart.get("render_primitive") != "seat_chart":
+            return json.dumps({"error": f"No seat_chart mechanic '{inp.get('instance_id')}'."}), events
+        result = parties.reorganize(state, chart, inp)
+        events.append({"type": "blocs", "body": chart.get("title"), **{k: v for k, v in result.items() if k != "gm_instruction"}})
+        return json.dumps(result), events
 
     if name == "debate_speech" and mechanics_catalog:
         chart = (state.get("mechanics") or {}).get(inp.get("instance_id"))
