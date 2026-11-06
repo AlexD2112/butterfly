@@ -1,3 +1,32 @@
+# Parties and wings, done properly; strict rules for changing them (2026-11-06)
+
+- Reported: the party breakdown was "slightly off". Found by running the app and looking: both
+  Bolshevik wings had the same colour (per-name hash), wings and non-party blocs looked alike,
+  older saves had no party notes, the vote card listed only split blocs, and an election showed
+  as "Last vote ... failed 325-451".
+- Tracker: each party is a box in one colour with its share of the hall and its note; wings are
+  indented in shades of that colour; the seat bar runs party by party. A wing that has voted
+  against its own party twice or more is tagged "at odds with the party". Elections read "Last
+  ballot ... no majority, Trotsky led with 301 of 753".
+- Vote and ballot cards list every party (total), its wings below, and every non-party bloc.
+- The SRs (leadership / Left SRs, 250) and Mensheviks (defensists / Martov's Internationalists,
+  210) are parties with wings too; catalog party_of + parties.migrate fill them into older
+  saves (not once the body has been reorganised in play) and put wings next to each other.
+- parties.py / reorganize_blocs, strict:
+  - move_delegates: at most 10% of the source bloc, two moves per body per day;
+  - new_wing: only after that bloc has divided (minority >= 25%) in 3 votes; max 3 wings;
+  - merge_wings: not while either wing is at odds with the party;
+  - break_away: only after the wing has voted against its party's majority 4 times;
+  - found_party: a non-party bloc of at least 5% of the hall;
+  - cooldowns per body: any regrouping 14 days; a break-away or new party 30 days;
+  - every change needs a cause. Strain is counted by the application from the actual tallies
+    (votes and ballots), so the GM can't declare a split into being. Refusals stay off the
+    player's screen and tell the GM to show the tension without the split.
+- Validator: after creation, an update can't change a bloc's party, give a new bloc a party, add
+  party notes, or bring back a party as one bloc; strain and the reorg log are kept.
+- The GM sees a PARTIES AND WINGS section (party totals, wings, strain) and the vote result's
+  party totals, with the instruction to tell a vote party by party, wings second.
+
 # Debate pace, parties with wings, the player's own words (2026-11-03)
 
 - Reported: the chairman ballot moved too fast, the GM wrote the player's speech when he only

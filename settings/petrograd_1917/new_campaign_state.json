@@ -346,29 +346,35 @@
             "name": "Left Socialist-Revolutionaries",
             "seats": 70,
             "lean": 1,
-            "note": "Breaking from the SR leadership over land and the war. Natural allies, but they want to be partners, not followers."
-          },
-          {
-            "name": "Menshevik-Internationalists",
-            "seats": 55,
-            "lean": 0,
-            "note": "Martov's people. Agree with much of the critique, fear a one-party seizure. Persuadable by argument, not by pressure."
+            "note": "Breaking from the SR leadership over land and the war. Natural allies, but they want to be partners, not followers.",
+            "party": "Socialist-Revolutionaries"
           },
           {
             "name": "Socialist-Revolutionaries (leadership)",
             "seats": 180,
             "lean": -2,
-            "note": "Chernov's and Avksentiev's party machine, still tied to coalition with the government."
+            "note": "Chernov's and Avksentiev's party machine, still tied to coalition with the government.",
+            "party": "Socialist-Revolutionaries"
+          },
+          {
+            "name": "Menshevik-Internationalists",
+            "seats": 55,
+            "lean": 0,
+            "note": "Martov's people. Agree with much of the critique, fear a one-party seizure. Persuadable by argument, not by pressure.",
+            "party": "Mensheviks"
           },
           {
             "name": "Mensheviks (defensist)",
             "seats": 155,
             "lean": -3,
-            "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument."
+            "note": "Chkheidze, Tsereteli and Dan's bloc - the old presidium. They built this Soviet and believe it must not become a Bolshevik instrument.",
+            "party": "Mensheviks"
           }
         ],
         "parties": {
-          "Bolsheviks": "The Bolshevik fraction: 400 delegates since the Kornilov affair. One party in the hall, two moods inside it."
+          "Bolsheviks": "The Bolshevik fraction: 400 delegates since the Kornilov affair. One party in the hall, two moods inside it.",
+          "Socialist-Revolutionaries": "The Party of Socialist-Revolutionaries: 250 delegates, the biggest party in Russia, held together mostly by its name. The Left SRs vote with the Bolsheviks more often than with their own Central Committee.",
+          "Mensheviks": "The RSDLP (Mensheviks): 210 delegates, formally one party. Dan and Tsereteli's defensists run it; Martov's Internationalists fight the war and the coalition from inside it."
         }
       },
       "status": "active",

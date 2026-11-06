@@ -215,6 +215,9 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
         bloc_results.append({"name": f["name"], "party": f.get("party"), "yes": yes, "no": no, "abstain": ab, "stance": stance,
                              **({"split": True} if torn or min(yes, no) >= 0.2 * max(1, yes + no) else {})})
 
+    import parties
+    parties.record_vote(data, bloc_results)
+
     if data.get("includes_player") and position in ("for", "against"):
         if position == "for":
             yes_total += 1
@@ -246,6 +249,15 @@ def call_vote(state, system, inp, influence_value=None, rng=random, speech_rolle
             "stuck with the way things are. Debate and a second vote would find fewer undecided." if round_no == 0 else "")
         ),
     }
+    by_party = {}
+    for b in bloc_results:
+        if b.get("party"):
+            g = by_party.setdefault(b["party"], {"party": b["party"], "yes": 0, "no": 0, "abstain": 0, "wings": []})
+            g["yes"] += b["yes"]; g["no"] += b["no"]; g["abstain"] += b["abstain"]; g["wings"].append(b["name"])
+    if any(len(g["wings"]) > 1 for g in by_party.values()):
+        result["parties"] = [g for g in by_party.values() if len(g["wings"]) > 1]
+        result["gm_instruction"] += (" Tell it party by party (see parties), then where a party's wings voted "
+                                     "differently - wings are one party's internal moods, not separate parties.")
     history[key] = round_no + 1
     if missing:
         result["assumed_neutral"] = missing  # stance not given: taken as 0 (the motion neither helps nor hurts them)
@@ -343,7 +355,10 @@ def call_election(state, system, inp, rng=random, candidate_swing=None):
             "candidate under pressure to withdraw, a debate before the next ballot (call_election again).")
             + " Show where blocs split between candidates."),
     }
+    import parties
+    parties.record_election(data, blocs)
     data["last_vote"] = {"motion": f"Election: {office} (round {round_no + 1})", "passed": bool(winner),
+                         "kind": "election", "elected": winner, "leader": ranking[0][0] if ranking else None, "cast": cast,
                          "yes": ranking[0][1] if ranking else 0, "no": cast - (ranking[0][1] if ranking else 0),
                          "abstain": abstain, "date": state.get("date"), "turn": state.get("turn_number", 0)}
     return result, [{"kind": "election", "instance_id": inp.get("instance_id"), "office": office, "elected": winner,
