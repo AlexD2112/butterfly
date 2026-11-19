@@ -238,6 +238,10 @@ def _client_state(state, setting_key):
     give away which factions have heard what), plus the player's own view of their secrets."""
     out = engine.build_state_digest(state)
     out["secrets"] = knowledge.player_view(state, setting_key)
+    ch = out.get("character") or {}
+    if isinstance(ch.get("level"), int):  # the HUD's XP bar (2026-11-18)
+        from systems._shared import core
+        out["xp_next"] = core.xp_to_next_level(ch["level"], ch.get("next_level_xp_discount", 0.0))
     return out
 
 

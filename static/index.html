@@ -226,6 +226,89 @@
     @keyframes fp-roll { from { transform: rotate(-200deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
   }
   .oc .oc-icon { flex: none; width: 38px; text-align: center; font-size: 18px; color: var(--accent-2); }
+
+  /* ---- game feel (2026-11-18): roll cards, loot chips, level banner, HUD plate ---- */
+  .oc.roll { align-items: stretch; padding: 10px 14px 10px 10px; gap: 14px; }
+  .d20 { position: relative; flex: none; width: 54px; height: 54px; display: grid; place-items: center; }
+  .d20 svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .d20 svg .face { fill: #2a362d; stroke: #4c5e4e; stroke-width: 2; }
+  .d20 svg .facet { fill: none; stroke: #4c5e4e; stroke-width: 1.2; opacity: .8; }
+  .d20-n { position: relative; font-family: var(--font-display); font-weight: 700; font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .roll.deg-critical-success .d20 svg .face { fill: #b08d4f; stroke: #e2c27f; }
+  .roll.deg-critical-success .d20-n { color: #1a1408; }
+  .roll.deg-strong-success .d20 svg .face, .roll.deg-success .d20 svg .face { fill: #3f5a32; stroke: #7a9b5f; }
+  .roll.deg-success-at-cost .d20 svg .face { fill: #5e4b26; stroke: #b08d4f; }
+  .roll.deg-failure .d20 svg .face { fill: #5a2a1e; stroke: #a5503a; }
+  .roll.deg-critical-failure .d20 svg .face { fill: #8f2f1f; stroke: #e0705a; }
+  .roll .roll-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .roll .roll-deg { font-family: var(--font-ui); font-weight: 800; font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase; }
+  .roll.deg-critical-success { border-color: #6e5a30; box-shadow: 0 0 0 1px #6e5a3055, 0 0 22px -6px #b08d4f88; }
+  .roll.deg-critical-failure { border-color: #6e2c20; box-shadow: 0 0 22px -8px #b5482f99; }
+  .roll.deg-critical-success .roll-deg { color: #e2c27f; } .roll.deg-critical-failure .roll-deg { color: #e0705a; }
+  .roll-meter { position: relative; height: 8px; border-radius: 4px; background: #0f1713; border: 1px solid var(--border); margin: 7px 0 4px; }
+  .roll-meter .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #6d7f69; transition: width .7s cubic-bezier(.2,.8,.3,1); }
+  .roll.deg-critical-success .roll-meter .fill, .roll.deg-strong-success .roll-meter .fill, .roll.deg-success .roll-meter .fill { background: var(--ok); }
+  .roll.deg-critical-success .roll-meter .fill { background: linear-gradient(90deg, #7a9b5f, #e2c27f); }
+  .roll.deg-success-at-cost .roll-meter .fill { background: var(--accent-2); }
+  .roll.deg-failure .roll-meter .fill, .roll.deg-critical-failure .roll-meter .fill { background: var(--bad); }
+  .roll-meter .dc { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--text); border-radius: 1px; }
+  .roll-meter .dc span { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); font-size: 9.5px; letter-spacing: 1px; color: var(--muted); white-space: nowrap; }
+  .roll-math { font-size: 11.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .roll-math .rm { border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; background: #121b16; color: var(--text); }
+  .roll-math b { color: var(--text); }
+  @media (prefers-reduced-motion: no-preference) {
+    .oc.fresh .d20 { animation: fp-roll .7s cubic-bezier(.2,.8,.3,1.2) both; }
+    .roll.fresh.deg-critical-success .d20 { animation: fp-roll .7s cubic-bezier(.2,.8,.3,1.2) both, fp-glow 1.6s .7s ease-out 2; }
+    .roll.fresh.deg-critical-failure { animation: fp-shake .45s .7s ease both; }
+    @keyframes fp-glow { 0%,100% { filter: drop-shadow(0 0 0 #e2c27f00); } 50% { filter: drop-shadow(0 0 10px #e2c27fcc); } }
+    @keyframes fp-shake { 0%,100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+    .loot.fresh { animation: fp-pop .45s cubic-bezier(.2,.9,.3,1.4) both; }
+    @keyframes fp-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+    .levelup.fresh::after { animation: fp-shine 1.4s .3s ease-out both; }
+    @keyframes fp-shine { from { transform: translateX(-120%) skewX(-20deg); } to { transform: translateX(320%) skewX(-20deg); } }
+    .hud-delta { animation: fp-float 1.6s ease-out both; }
+    @keyframes fp-float { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-14px); } }
+  }
+  .loot { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-ui); font-size: 12px; border-radius: 6px;
+    padding: 4px 9px 4px 6px; border: 1px solid var(--border); background: linear-gradient(180deg, #1d2a22, #16201b); }
+  .loot i { font-style: normal; width: 18px; height: 18px; border-radius: 4px; display: grid; place-items: center; font-size: 10px; font-weight: 800; }
+  .loot b { font-weight: 600; }
+  .loot .amt { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .loot.up { border-color: #3d5232; } .loot.up i { background: #3f5a32; color: #cfe3b8; } .loot.up .amt { color: #a9cf8a; }
+  .loot.down { border-color: #5a3024; } .loot.down i { background: #5a2a1e; color: #f0b3a3; } .loot.down .amt { color: #e08a74; }
+  .loot.gold { border-color: #6e5a30; } .loot.gold i { background: #b08d4f; color: #1a1408; } .loot.gold .amt { color: #e2c27f; }
+  .levelup { position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px; border-radius: 8px; padding: 10px 14px;
+    background: linear-gradient(90deg, #2e2513, #1c2318); border: 1px solid #6e5a30; font-family: var(--font-ui); }
+  .levelup::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 30%; background: linear-gradient(90deg, transparent, #fff3, transparent); transform: translateX(-120%); }
+  .levelup .lv { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: #e2c27f; line-height: 1; }
+  .levelup .lv-t { font-size: 11px; font-weight: 800; letter-spacing: 2.5px; color: #e2c27f; }
+  .levelup .lv-s { font-size: 12px; color: var(--muted); }
+  .stamp { display: inline-block; margin-left: 8px; font-size: 10.5px; font-weight: 800; letter-spacing: 2px; padding: 1px 7px; border: 2px solid; border-radius: 4px; transform: rotate(-4deg); vertical-align: 1px; }
+  .stamp.carried { color: #a9cf8a; border-color: #5f7f4a; } .stamp.defeated { color: #e08a74; border-color: #8a3f2e; } .stamp.open { color: var(--accent-2); border-color: #6e5a30; }
+  .tally { position: relative; overflow: visible; }
+  .tally .maj { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .7; }
+  .ng-track2 { display: flex; gap: 3px; margin: 6px 0 2px; }
+  .ng-track2 .st { flex: 1; text-align: center; font-size: 9.5px; letter-spacing: .5px; color: #5d6d5c; padding-top: 7px; position: relative; text-transform: uppercase; }
+  .ng-track2 .st::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--border); }
+  .ng-track2 .st.on::before { background: #8c7a4c; } .ng-track2 .st.here { color: #e2c27f; font-weight: 700; } .ng-track2 .st.here::before { background: #e2c27f; }
+  .ng-track2 .st.goal::after { content: '★'; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #b08d4f; }
+  .ng-move { font-size: 11px; color: var(--accent-2); margin-left: 6px; font-weight: 600; }
+  .ng-move.down { color: #e08a74; }
+  .ng-demand { display: inline-flex; gap: 5px; margin-right: 12px; }
+  .ng-demand .box { width: 11px; height: 11px; border: 1px solid #6d7f69; border-radius: 2px; display: inline-grid; place-items: center; font-size: 9px; margin-top: 2px; }
+  .ng-demand.met { color: #a9cf8a; } .ng-demand.met .box { background: #3f5a32; border-color: #7a9b5f; }
+  .hud-plate { display: flex; align-items: center; gap: 10px; }
+  .hud-medal { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 14px;
+    color: #e2c27f; background: radial-gradient(circle at 35% 30%, #3a3220, #1b1a12); border: 2px solid #8c7a4c; position: relative; flex: none; }
+  .hud-medal .lvl { position: absolute; bottom: -6px; right: -8px; font-family: var(--font-ui); font-size: 9.5px; font-weight: 800; background: #b08d4f; color: #1a1408; border-radius: 6px; padding: 0 4px; }
+  .hud-plate .who { font-size: 11px; color: var(--muted); line-height: 1.25; }
+  .hud-xp { width: 110px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 3px; }
+  .hud-xp i { display: block; height: 100%; background: linear-gradient(90deg, #8c7a4c, #e2c27f); transition: width .8s ease; }
+  .hud-meter { position: relative; }
+  .hud-meter .bar { height: 5px; border-radius: 3px; position: relative; }
+  .hud-meter .bar::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), #121b16 calc(10% - 1px) 10%); }
+  .hud-delta { position: absolute; right: 0; top: -12px; font-size: 11px; font-weight: 800; }
+  .hud-delta.up { color: #a9cf8a; } .hud-delta.down { color: #e08a74; }
   .tally { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--border); margin: 6px 0 3px; }
   .tally .yes { background: var(--ok); } .tally .no { background: var(--bad); } .tally .ab { background: #59645a; }
   .oc.oc-dispatch { display: block; background: #1d2318; border-color: #4a4630; }
@@ -2389,15 +2472,24 @@ function renderHud(state) {
     const v = isWorld ? (state.world || {})[k.slice(6)] : (state.resources || {})[k];
     if (typeof v !== 'number') return '';
     const changed = HUD_LAST[k] !== undefined && HUD_LAST[k] !== v;
+    const delta = changed ? Math.round(v - HUD_LAST[k]) : 0;
     HUD_LAST[k] = v;
     return `<div class="hud-meter${v < 25 ? ' low' : ''}${changed ? ' flash' : ''}" title="${escapeHtml(pcLabel(v))}">
-      <div class="row"><span>${escapeHtml(prettyKey(k))}</span><span class="val">${Math.round(v)}</span></div>
+      ${delta ? `<span class="hud-delta ${delta > 0 ? 'up' : 'down'}">${delta > 0 ? '+' : '−'}${Math.abs(delta)}</span>` : ''}
+      <div class="row"><span>${escapeHtml(titleKey(k))}</span><span class="val">${Math.round(v)}</span></div>
       <div class="bar"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div></div>`;
   }).join('');
   const next = ((state.calendar || {}).upcoming || [])[0];
   const style = (state.calendar || {}).style;
   const count = next ? `<span class="hud-count">${escapeHtml(next.label)} ${next.days_until === 0 ? 'today' : `in ${next.days_until} day${next.days_until === 1 ? '' : 's'}`}</span>` : '';
-  hud.innerHTML = `<div class="hud-inner"><span class="hud-date">${escapeHtml(prettyDate(state.date))}${style && /julian/i.test(style) ? '<small>O.S.</small>' : ''}</span>${count}<div class="hud-meters">${meters}</div></div>`;
+  // Character plate (2026-11-18): initials, level, XP towards the next.
+  const ch = state.character;
+  const initials = String(ch.name || '?').replace(/\(.*?\)/g, '').split(/\s+/).filter(Boolean).map(w => w[0]).filter(x => /[A-Za-zА-Яа-я]/.test(x)).slice(0, 1).concat(
+    String(ch.name || '').replace(/\(.*?\)/g, '').trim().split(/\s+/).slice(-1).map(w => w[0] || '')).join('').toUpperCase();
+  const xpPct = state.xp_next ? Math.max(0, Math.min(100, 100 * (ch.xp || 0) / state.xp_next)) : 0;
+  const plate = typeof ch.level === 'number' ? `<div class="hud-plate" title="${escapeHtml(ch.name || '')}"><div class="hud-medal">${escapeHtml(initials)}<span class="lvl">LV ${ch.level}</span></div>
+    ${state.xp_next ? `<div class="who">${ch.level_up_pending ? '<span style="color:#e2c27f;font-weight:700">Level-up ready</span>' : `${ch.xp || 0} / ${state.xp_next} XP`}<div class="hud-xp"><i style="width:${ch.level_up_pending ? 100 : xpPct}%"></i></div></div>` : ''}</div>` : '';
+  hud.innerHTML = `<div class="hud-inner">${plate}<span class="hud-date">${escapeHtml(prettyDate(state.date))}${style && /julian/i.test(style) ? '<small>O.S.</small>' : ''}</span>${count}<div class="hud-meters">${meters}</div></div>`;
   hud.classList.add('on');
   if (document.getElementById('map-panel').classList.contains('open')) drawMapUnits();
 }
@@ -2653,6 +2745,7 @@ function renderMechanics(debugEvents) {
         r.dc_note || '', (r.still_wanted || []).length ? `still wants: ${r.still_wanted.join('; ')}` : ''].filter(Boolean);
       return `<div class="line">NEGOTIATION (${escapeHtml(ev.operation.replace(/_/g, ' '))}) — ${escapeHtml(ev.npc)}: ${escapeHtml(bits.join(' · '))}</div>`;
     }
+    if (ev.type === 'style') return `<div class="line">STYLE CHECK — ${escapeHtml((ev.notes || []).join('; '))} (fed back to the GM next turn)</div>`;
     if (ev.type === 'timing') {
       const parts = (ev.rounds || []).map(r => `${r.seconds}s ${r.tools.length ? r.tools.join(', ') : (r.text ? 'writing' : 'nothing')}`);
       return `<div class="line">TIMING — ${ev.seconds}s over ${(ev.rounds || []).length} call(s): ${escapeHtml(parts.join(' · '))}</div>`;
@@ -2710,6 +2803,32 @@ const OUTCOME_WORDS = {
 
 function prettyKey(k) { return String(k || '').replace(/^world\./, '').replace(/_/g, ' '); }
 function capFirst(t) { t = String(t || ''); return t.charAt(0).toUpperCase() + t.slice(1); }
+// "left_sr_alliance" -> "Left SR Alliance" for chips and the HUD (2026-11-18)
+const UPPER_WORDS = new Set(['sr', 'srs', 'mrc', 'cc', 'rsdlp', 'xp', 'uk', 'us']);
+function titleKey(k) {
+  return prettyKey(k).split(' ').filter(Boolean).map(w => UPPER_WORDS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+const D20_SVG = `<svg viewBox="0 0 100 100" aria-hidden="true"><polygon class="face" points="50,3 92,27 92,73 50,97 8,73 8,27"/>
+  <polyline class="facet" points="50,3 26,62 74,62 50,3"/><polyline class="facet" points="8,27 26,62 8,73"/><polyline class="facet" points="92,27 74,62 92,73"/>
+  <polyline class="facet" points="26,62 50,97 74,62"/></svg>`;
+// A fresh roll tumbles through numbers before it lands.
+function animateFreshDice() {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('.oc.fresh .d20-n:not([data-done])').forEach(el => {
+    el.dataset.done = '1';
+    const final = el.textContent;
+    let n = 0;
+    const t = setInterval(() => {
+      el.textContent = String(1 + Math.floor(Math.random() * 20));
+      if (++n >= 9) { clearInterval(t); el.textContent = final; }
+    }, 60);
+  });
+  document.querySelectorAll('.oc.fresh .roll-meter .fill:not([data-done])').forEach(el => {
+    el.dataset.done = '1';
+    const w = el.style.width; el.style.width = '0%';
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.width = w; }));
+  });
+}
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function prettyDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
@@ -2747,6 +2866,9 @@ function renderOutcomeCards(debugEvents, fresh) {
   const net = {};          // key -> net change this turn, for the "what changed" chips
   const chipsExtra = [];
   const seenMessages = new Set();
+  const negSeen = {};
+  const levelUps = [];
+  let xpGained = 0;
   const dispatch = (kicker, text) => {
     if (!text || seenMessages.has(text)) return;
     seenMessages.add(text);
@@ -2760,23 +2882,36 @@ function renderOutcomeCards(debugEvents, fresh) {
       const who = ev.actor_name ? `${escapeHtml(ev.actor_name)} · ` : (ev.group ? 'You · ' : '');
       const groupNote = ev.group ? (ev.group === 'best' ? (ev.counts ? ' · carries the group' : ' · helped') : ' · own result') : '';
       const standing = ev.actor_name && ev.standing_after && ev.standing_after !== ev.standing_before ? ` · standing ${escapeHtml(ev.standing_before)} → ${escapeHtml(ev.standing_after)}` : '';
-      cards.push(`<div class="oc deg-${deg.replace(/_/g, '-')}${fresh ? ' fresh' : ''}${ev.group === 'best' && !ev.counts ? ' oc-dim' : ''}">
-        <div class="die" title="d20">${ev.roll ?? '?'}</div>
-        <div class="oc-body"><div class="oc-title">${who}${DEGREE_LABEL[deg] || capFirst(prettyKey(deg))}<span class="oc-group">${groupNote}${standing}</span></div>
-        <div class="oc-sub">${capFirst(ev.attribute || '')}${skill} · ${ev.roll} ${fmtMod(ev.modifier || 0)} = ${ev.total} vs ${ev.dc}${ev.at_stake ? ` · risking ${prettyKey(ev.at_stake)}` : ''}</div>
+      // Roll card (2026-11-18): a d20, the total against the DC on a meter, and the arithmetic.
+      const scale = Math.max(30, (ev.total || 0) + 2, (ev.dc || 0) + 4);
+      const pct = v => Math.max(0, Math.min(100, 100 * v / scale));
+      cards.push(`<div class="oc roll deg-${deg.replace(/_/g, '-')}${fresh ? ' fresh' : ''}${ev.group === 'best' && !ev.counts ? ' oc-dim' : ''}">
+        <div class="d20" title="d20">${D20_SVG}<span class="d20-n">${ev.roll ?? '?'}</span></div>
+        <div class="oc-body"><div class="roll-head"><span class="roll-deg">${DEGREE_LABEL[deg] || capFirst(prettyKey(deg))}</span><span class="oc-group">${(who + groupNote.replace(/^ · /, '') + standing).replace(/ · $/, '')}</span></div>
+        <div class="roll-meter"><div class="fill" style="width:${pct(ev.total || 0)}%"></div><div class="dc" style="left:${pct(ev.dc || 0)}%"><span>DC ${ev.dc}</span></div></div>
+        <div class="roll-math"><span class="rm">d20 ${ev.roll}</span>+<span class="rm">${escapeHtml(capFirst(ev.attribute || ''))}${skill ? ' · ' + escapeHtml(prettyKey(ev.skill)) : ''} ${fmtMod(ev.modifier || 0)}</span>= <b>${ev.total}</b> vs <b>${ev.dc}</b>${ev.at_stake ? ` · risking ${escapeHtml(titleKey(ev.at_stake))}` : ''}</div>
         ${ev.description ? `<div class="oc-desc">${escapeHtml(ev.description)}</div>` : ''}</div></div>`);
     }
     if (ev.type === 'negotiation' && ev.demands) {
-      // Negotiation track (2026-11-03): where they stand, and what they still want.
+      // Negotiation track (2026-11-03; 2026-11-18: labelled steps, a goal star, one card per person per
+      // turn showing where they started and where they ended).
       const goal = ev.goal || 3, pos = ev.position ?? 0;
+      const npcKey = 'ng:' + ev.npc;
+      const prior = negSeen[npcKey];
+      const startPos = prior ? prior.start : (ev.result && typeof ev.result.position_before === 'string'
+        ? Number(Object.keys(NEG_WORDS).find(k => NEG_WORDS[k] === ev.result.position_before) ?? pos) : pos);
       const steps = [];
-      for (let i = -2; i <= goal; i++) steps.push(`<span class="ng-step${i <= pos ? ' on' : ''}${i === pos ? ' here' : ''}" title="${escapeHtml(NEG_WORDS[i] || '')}"></span>`);
-      const demands = ev.demands.map(d => `<span class="ng-demand${d.met ? ' met' : ''}">${d.met ? '&#10003;' : '&#9675;'} ${escapeHtml(d.text)}</span>`).join('');
-      const state = ev.status === 'agreed' ? 'Agreed' : ev.status === 'closed' ? 'Talks closed' : capFirst(NEG_WORDS[pos] || '');
-      cards.push(`<div class="oc"><div class="oc-icon">&#9741;</div><div class="oc-body">
-        <div class="oc-title">${escapeHtml(ev.npc)} — ${escapeHtml(state)}</div>
-        <div class="ng-track">${steps.join('')}</div>
-        <div class="oc-sub ng-demands">${demands}</div></div></div>`);
+      for (let i = -2; i <= goal; i++) steps.push(`<span class="st${i <= pos ? ' on' : ''}${i === pos ? ' here' : ''}${i === goal ? ' goal' : ''}">${i === pos ? escapeHtml(ev.status === 'agreed' ? 'deal' : (NEG_WORDS[i] || '')) : '&nbsp;'}</span>`);
+      const demands = ev.demands.map(d => `<span class="ng-demand${d.met ? ' met' : ''}"><span class="box">${d.met ? '&#10003;' : ''}</span>${escapeHtml(String(d.text).replace(/_/g, ' '))}</span>`).join('');
+      const state = ev.status === 'agreed' ? 'Deal made' : ev.status === 'closed' ? 'Talks closed' : capFirst(NEG_WORDS[pos] || '');
+      const move = startPos !== pos ? `<span class="ng-move${pos < startPos ? ' down' : ''}">${pos > startPos ? '▲' : '▼'} from ${escapeHtml(NEG_WORDS[startPos] || '')}</span>` : '';
+      const html = `<div class="oc"><div class="oc-icon">&#9741;</div><div class="oc-body">
+        <div class="oc-title">${escapeHtml(ev.npc)} — ${escapeHtml(state)}${move}</div>
+        <div class="ng-track2">${steps.join('')}</div>
+        <div class="oc-sub ng-demands">${demands}</div></div></div>`;
+      if (prior) cards[prior.index] = ''; // the earlier card for this person this turn gives way to the latest
+      negSeen[npcKey] = { start: startPos, index: cards.length };
+      cards.push(html);
     }
     if (ev.type === 'blocs' && !ev.refused) {
       // reorganize_blocs (2026-11-06): a change in who sits where (a refused change stays off the card)
@@ -2808,15 +2943,16 @@ function renderOutcomeCards(debugEvents, fresh) {
       if (ev.operation === 'call_vote') {
         const total = Math.max(1, (r.yes || 0) + (r.no || 0) + (r.abstain || 0));
         cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body">
-          <div class="oc-title">${escapeHtml(r.motion || 'Vote')} — ${r.passed ? 'carried' : 'defeated'}</div>
-          <div class="tally"><span class="yes" style="width:${100 * r.yes / total}%"></span><span class="no" style="width:${100 * r.no / total}%"></span><span class="ab" style="width:${100 * r.abstain / total}%"></span></div>
+          <div class="oc-title">${escapeHtml(r.motion || 'Vote')}<span class="stamp ${r.passed ? 'carried' : 'defeated'}">${r.passed ? 'CARRIED' : 'DEFEATED'}</span></div>
+          <div class="tally"><span class="yes" style="width:${100 * r.yes / total}%"></span><span class="no" style="width:${100 * r.no / total}%"></span><span class="ab" style="width:${100 * r.abstain / total}%"></span><span class="maj" title="Majority of votes cast" style="left:${50 * ((r.yes || 0) + (r.no || 0)) / total}%"></span></div>
           <div class="oc-sub">${r.yes} for · ${r.no} against · ${r.abstain} abstained · ${escapeHtml(r.body || '')}${r.round > 1 ? ` · vote ${r.round}` : ''}</div>
           ${partyVoteLines(r.blocs || [])}</div></div>`);
       } else if (ev.operation === 'call_election') {
         const total = Math.max(1, r.cast || 0);
-        const rows = (r.results || []).map(x => `<div class="oc-sub">${escapeHtml(x.candidate)} — ${x.votes} (${Math.round(100 * x.votes / total)}%)</div>`).join('');
+        const rows = (r.results || []).map(x => `<div class="oc-sub">${escapeHtml(x.candidate)} — ${x.votes} (${Math.round(100 * x.votes / total)}%)</div>
+          <div class="tally"><span class="yes" style="width:${100 * x.votes / total}%;${r.elected === x.candidate ? '' : 'background:#6d7f69'}"></span><span class="maj" style="left:50%"></span></div>`).join('');
         cards.push(`<div class="oc"><div class="oc-icon">&#9878;</div><div class="oc-body">
-          <div class="oc-title">${escapeHtml(r.office)}, ballot ${r.round} (${escapeHtml(r.ballot)}) — ${r.elected ? `${escapeHtml(r.elected)} elected` : 'no majority'}</div>
+          <div class="oc-title">${escapeHtml(r.office)}, ballot ${r.round} (${escapeHtml(r.ballot)})<span class="stamp ${r.elected ? 'carried' : 'open'}">${r.elected ? `${escapeHtml(r.elected).toUpperCase()} ELECTED` : 'NO MAJORITY'}</span></div>
           ${rows}<div class="oc-sub">${r.abstain} abstained</div>${partyBallotLines(r.blocs || [], (r.results || []).map(x => x.candidate))}</div></div>`);
       } else if (ev.operation === 'sway_unit') {
         cards.push(`<div class="oc"><div class="oc-icon">&#9873;</div><div class="oc-body">
@@ -2848,20 +2984,28 @@ function renderOutcomeCards(debugEvents, fresh) {
         const key = (c.kind === 'world' ? 'world.' : '') + c.key;
         net[key] = (net[key] || 0) + (c.after - c.before);
       }
-      if (c.kind === 'level_up') chipsExtra.push(`<span class="chip gold">Level ${c.new_level}!</span>`);
-      if (c.kind === 'liability_gained') chipsExtra.push(`<span class="chip down">New liability: ${escapeHtml(c.name)}</span>`);
+      const F = fresh ? ' fresh' : '';
+      if (c.kind === 'level_up') levelUps.push(c.new_level);
+      if (c.kind === 'xp' && c.applied) xpGained += c.applied;
+      if (c.kind === 'liability_gained') chipsExtra.push(`<span class="loot down${F}"><i>✖</i><b>${escapeHtml(c.name)}</b> <span class="amt">new liability</span></span>`);
+      if (c.kind === 'feat_gained') chipsExtra.push(`<span class="loot gold${F}"><i>★</i><b>${escapeHtml(c.name)}</b> <span class="amt">new feat</span></span>`);
       if (c.kind === 'relationship' && c.after !== c.before) {
         const d = c.after - c.before;
-        chipsExtra.push(`<span class="chip ${d > 0 ? 'up' : 'down'}">${escapeHtml(prettyKey(c.key))} ${d > 0 ? 'trusts you more' : 'trusts you less'}</span>`);
+        chipsExtra.push(`<span class="loot ${d > 0 ? 'up' : 'down'}${F}" title="trust ${c.before} → ${c.after}"><i>${d > 0 ? '♥' : '♡'}</i><b>${escapeHtml(titleKey(c.key))}</b> <span class="amt">${d > 0 ? 'trust ▲' : 'trust ▼'}</span></span>`);
       }
-      if ((c.kind === 'enmity' || c.kind === 'enmity_auto') && c.after > c.before) chipsExtra.push(`<span class="chip down">${escapeHtml(prettyKey(c.key))}: rivalry deepens</span>`);
+      if ((c.kind === 'enmity' || c.kind === 'enmity_auto') && c.after > c.before) chipsExtra.push(`<span class="loot down${F}"><i>⚔</i><b>${escapeHtml(titleKey(c.key))}</b> <span class="amt">rivalry ▲</span></span>`);
     });
   });
+  const F = fresh ? ' fresh' : '';
   const chips = Object.entries(net).filter(([, d]) => d !== 0).map(([k, d]) =>
-    `<span class="chip ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${Math.abs(d)} ${escapeHtml(prettyKey(k))}</span>`);
+    `<span class="loot ${d > 0 ? 'up' : 'down'}${F}"><i>${d > 0 ? '▲' : '▼'}</i><span class="amt">${d > 0 ? '+' : '−'}${Math.abs(d)}</span><b>${escapeHtml(titleKey(k))}</b></span>`);
+  if (xpGained) chips.push(`<span class="loot gold${F}"><i>✦</i><span class="amt">+${xpGained}</span><b>XP</b></span>`);
   const allChips = chips.concat(chipsExtra);
   if (allChips.length) cards.push(`<div class="chips">${allChips.join('')}</div>`);
-  return cards.length ? `<div class="outcomes">${cards.join('')}</div>` : '';
+  levelUps.forEach(lv => cards.push(`<div class="levelup${F}"><div class="lv">${lv}</div><div><div class="lv-t">LEVEL UP</div>
+    <div class="lv-s">Choose your advance on the character sheet.</div></div></div>`));
+  if (fresh) setTimeout(animateFreshDice, 0);
+  return cards.length ? `<div class="outcomes">${cards.filter(Boolean).join('')}</div>` : '';
 }
 
 function revealWords(el) {

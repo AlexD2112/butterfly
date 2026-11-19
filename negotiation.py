@@ -37,6 +37,16 @@ INSTRUCTIONS = {
 }
 
 
+def _demand_text(d):
+    """A demand as the player reads it (2026-11-18): the GM sometimes passes an id-like slug
+    ("a_public_statement_before_tonights_vote_that_left_sr"), which showed up raw on the card."""
+    text = str(d).strip()
+    if text and " " not in text and "_" in text:
+        text = text.replace("_", " ").strip()
+        text = text[:1].upper() + text[1:]
+    return text
+
+
 def _slug(text):
     return re.sub(r"[^a-z0-9]+", "_", str(text).lower()).strip("_")[:40] or "demand"
 
@@ -67,7 +77,7 @@ def open_negotiation(state, npc_key, npc_name, inp):
     stakes = inp.get("stakes") if inp.get("stakes") in GOALS else "significant"
     demands = []
     for d in (inp.get("demands") or [])[:MAX_DEMANDS]:
-        text = str(d).strip()
+        text = _demand_text(d)
         if text:
             demands.append({"id": _slug(text), "text": text, "met": False})
     if not demands:
@@ -127,7 +137,7 @@ def offer(state, npc_key, inp, system, base_dc):
         "gm_instruction": INSTRUCTIONS.get(roll["degree"], "") + (
             " They'd agree, but won't until the unmet demand is answered - have them name it." if held else "") + (
             " The deal is made: narrate them agreeing to these terms." if n["status"] == "agreed" else
-            f" {n['name']} stays in the conversation - end on them waiting for the player's next word."),
+            f" {n['name']} stays in the conversation (don't write that they're waiting; and don't read the offer back)."),
     }
     return result, roll, changes
 
@@ -147,7 +157,9 @@ def update(state, npc_key, inp):
     if not n:
         return {"error": "No open negotiation with them."}
     for d in inp.get("add_demands") or []:
-        text = str(d).strip()
+        text = _demand_text(d)
+        if text and _slug(text) in {x["id"] for x in n["demands"]}:
+            continue  # already on the list
         if text and len(n["demands"]) < MAX_DEMANDS + 2:
             n["demands"].append({"id": _slug(text), "text": text, "met": False})
     drop = {x["id"] for x in _match(n, inp.get("drop_demands"))}
@@ -191,7 +203,7 @@ def prompt_section(state):
         lines.append(f"OPEN with {n['name']} [{n['npc']}] on {n['topic']}: {POSITION_WORDS[n['position']]} "
                      f"({n['position']}/{n['goal']}). Demands: {demands}.")
         lines.append(f"  {n['name']} STAYS in this conversation: no bell, messenger, exit or interruption ends it. It ends only "
-                     "if the player walks away, days pass, or the deal is made. Close every reply on them waiting for the player.")
+                     "if the player walks away, days pass, or the deal is made. Don't write that they wait for him - just leave them there.")
     return "\n".join(lines)
 
 
