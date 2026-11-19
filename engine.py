@@ -27,6 +27,7 @@ import geography
 import couriers
 import sittings
 import debate
+import style
 import parties
 import knowledge
 import mechanics
@@ -359,7 +360,7 @@ something, a strong success really does go better than asked. When a check plain
 one resource, name it as at_stake and the application moves it for you. If the current
 state shows level_up_pending: true, remind the player at a natural pause and offer them the three
 level-up options from the system rules before proceeding.
-{council.VOICE_GUIDANCE}"""
+{council.VOICE_GUIDANCE}{style.prompt_section(state)}"""
 
 
 # ==================== private intent (2026-11-03) ====================
@@ -812,7 +813,7 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
         if closing:
             debug_events.append({"type": "world", "reasoning": "End of turn: the world moves.", "changes": closing})
 
-    narration = scrub_narration("\n".join(text_parts).strip())
+    narration = style.scrub(scrub_narration("\n".join(text_parts).strip()))
     if not narration and any(e.get("type") in ("check", "operation") for e in debug_events):
         narration = MISSING_NARRATION
 
@@ -828,6 +829,10 @@ def run_turn(provider, model, state, setting_key, system_key, conversation, user
         )
         debug_events.append(council_log)
 
+    if narration and narration != MISSING_NARRATION:
+        notes = style.record(state, narration)
+        if notes:
+            debug_events.append({"type": "style", "notes": notes})
     state["campaign_log_summary"].append({"turn": state["turn_number"], "summary": narration[:400]})
     state["turn_number"] += 1
     return narration, debug_events

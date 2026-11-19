@@ -1,3 +1,30 @@
+# GM voice, a style check that feeds back, and a more game-like screen (2026-11-18)
+
+- Reported: a long Petrograd session read badly. The log showed the same habits turn after turn:
+  23 of 40 scenes ended with someone "waiting for your answer" (often with a bell); the narrator
+  explained each moment ("That restraint costs you nothing."); everyone spoke in epigrams ("Beside
+  you, yes. Beneath you, no."); NPCs read the player's offer back to him and fired lists of
+  questions. Part of it was our own prompt: VOICE_GUIDANCE and the negotiation prompt told the GM
+  to "end on them waiting for the player".
+- council.VOICE_GUIDANCE: those instructions are gone; endings stop where the action stops. A new
+  section quotes the bad lines from the log with what to do instead (verdicts, epigrams, read-backs,
+  interrogations, NPC praise, stock gestures, retelling the player's action, rhythm).
+- style.py: after every turn, lint() checks the narration (waiting endings, bells, narrator
+  verdicts, epigrams, question strings, stock gestures, XP/levels in prose, one-line-paragraph
+  runs, banned words). The notes and the last three closing lines go in state["_style"] and are the
+  very last thing in the next system prompt. scrub() deletes only what's safe: a closing
+  non-dialogue sentence that just says someone waits, and XP/level lines in the prose. A STYLE
+  CHECK line shows in the turn log.
+- Negotiation demands passed as slugs ("a_public_statement_...") are turned into words, and a
+  duplicate isn't added.
+- Screen: roll cards with a d20 that tumbles to its number, the total against the DC on a meter,
+  the arithmetic as chips, a glow on a critical success and a shake on a critical failure. Changes
+  show as item-style chips (Title Case names, arrows, +XP, trust, feats, liabilities); a level-up is
+  a banner. Negotiations: one card per person per turn, labelled step track with a goal star,
+  checkbox demands, "▲ from listening". Votes get a CARRIED/DEFEATED stamp and a majority tick;
+  ballots get per-candidate bars. The HUD has a character plate (initials, level, XP bar from the
+  new xp_next in the client state) and segmented meters that float +/- on change.
+
 # Parties and wings, done properly; strict rules for changing them (2026-11-06)
 
 - Reported: the party breakdown was "slightly off". Found by running the app and looking: both
